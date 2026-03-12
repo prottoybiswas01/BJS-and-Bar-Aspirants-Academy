@@ -58,6 +58,148 @@ const SHEET_HEADERS = {
 const APPROVED_LOGIN_VALUES = ["approved", "yes", "true", "allow", "allowed", "active", "1"];
 const BLOCKED_STATUS_VALUES = ["inactive", "blocked", "suspended", "expired"];
 
+const SAMPLE_DATA = {
+  students: [
+    {
+      id: "LAW-2026-014",
+      name: "Aritra Rahman",
+      phone: "01712000014",
+      email: "aritra.rahman@example.com",
+      batch: "Judiciary 2026",
+      session: "Weekend Intensive",
+      joinedOn: "2025-12-15",
+      status: "Active",
+      profileImage: "",
+      password: "law014",
+      loginApproval: "Approved",
+      passwordResetUrl:
+        "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20LAW-2026-014",
+      highlight: "Preparing for judiciary exams.",
+      enrolledCourseIds: "",
+      completedLessonIds: "",
+    },
+    {
+      id: "BAR-2026-008",
+      name: "Nafisa Tabassum",
+      phone: "01712000008",
+      email: "nafisa.tabassum@example.com",
+      batch: "Bar Council 2026",
+      session: "Evening Program",
+      joinedOn: "2025-11-01",
+      status: "Active",
+      profileImage: "",
+      password: "bar008",
+      loginApproval: "Approved",
+      passwordResetUrl:
+        "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20BAR-2026-008",
+      highlight: "Focused on bar viva and procedure.",
+      enrolledCourseIds: "",
+      completedLessonIds: "",
+    },
+  ],
+  courses: [
+    {
+      id: "judiciary-foundation",
+      title: "Judiciary Foundation",
+      shortTitle: "Judiciary",
+      faculty: "Adv. Mahmudul Hasan",
+      category: "Core Preparation",
+      schedule: "Sun, Tue, Thu at 8:30 PM",
+      nextLive: "2026-03-14T20:30:00+06:00",
+      description: "Constitution, core law topics, and MCQ preparation.",
+    },
+    {
+      id: "criminal-procedure-mastery",
+      title: "Criminal Procedure Mastery",
+      shortTitle: "Criminal Procedure",
+      faculty: "Barrister Samiha Karim",
+      category: "Procedure Track",
+      schedule: "Mon, Wed at 9:00 PM",
+      nextLive: "2026-03-15T21:00:00+06:00",
+      description: "From FIR to trial in a structured, exam-focused format.",
+    },
+  ],
+  lessons: [
+    {
+      id: "jud-01",
+      courseId: "judiciary-foundation",
+      module: "Constitutional Framework",
+      title: "State structure and court hierarchy",
+      duration: "48 min",
+      youtubeId: "M7lc1UVf-VE",
+      releaseDate: "2026-03-05",
+      resources: "PDF outline|MCQ drill set",
+      note: "Start here for judiciary preparation.",
+    },
+    {
+      id: "jud-02",
+      courseId: "judiciary-foundation",
+      module: "Core Principles",
+      title: "Natural justice and judicial review",
+      duration: "44 min",
+      youtubeId: "ysz5S6PUM-U",
+      releaseDate: "2026-03-08",
+      resources: "Case digest|Revision notes",
+      note: "Good for revision before tests.",
+    },
+    {
+      id: "crim-01",
+      courseId: "criminal-procedure-mastery",
+      module: "Investigation Flow",
+      title: "From FIR to police report",
+      duration: "41 min",
+      youtubeId: "aqz-KE-bpKQ",
+      releaseDate: "2026-03-04",
+      resources: "Flowchart|Section list",
+      note: "Overview of the criminal process.",
+    },
+  ],
+  notices: [
+    {
+      id: "notice-01",
+      title: "Monthly Payment Reminder",
+      message: "Students must clear monthly fees to unlock newly uploaded lessons.",
+      publishedOn: "2026-03-12",
+      status: "Published",
+    },
+  ],
+  enrollments: [
+    {
+      studentId: "LAW-2026-014",
+      courseId: "judiciary-foundation",
+      accessStartDate: "2026-01-01",
+      accessEndDate: "2026-07-31",
+      videoAccessUntil: "2026-03-13",
+      lastPaymentDate: "2026-03-05",
+      paymentDueDate: "2026-04-05",
+      monthlyFee: "1500",
+      status: "Active",
+    },
+    {
+      studentId: "LAW-2026-014",
+      courseId: "criminal-procedure-mastery",
+      accessStartDate: "2026-02-10",
+      accessEndDate: "2026-08-10",
+      videoAccessUntil: "2026-03-09",
+      lastPaymentDate: "2026-03-01",
+      paymentDueDate: "2026-04-10",
+      monthlyFee: "1500",
+      status: "Active",
+    },
+    {
+      studentId: "BAR-2026-008",
+      courseId: "criminal-procedure-mastery",
+      accessStartDate: "2026-02-01",
+      accessEndDate: "2026-07-01",
+      videoAccessUntil: "2026-03-12",
+      lastPaymentDate: "2026-03-07",
+      paymentDueDate: "2026-04-07",
+      monthlyFee: "1500",
+      status: "Active",
+    },
+  ],
+};
+
 function doGet(e) {
   try {
     const request = parseRequest_(e);
@@ -109,6 +251,24 @@ function setupLawPortalSheets() {
   });
 
   return buildStatusPayload_();
+}
+
+function seedLawPortalDemoData() {
+  const spreadsheet = getSpreadsheet_();
+  const result = {};
+
+  Object.keys(SHEET_NAMES).forEach((key) => {
+    const sheet = ensureSheetWithHeaders_(spreadsheet, SHEET_NAMES[key], SHEET_HEADERS[key] || []);
+    result[SHEET_NAMES[key]] = seedSheetIfEmpty_(sheet, SHEET_HEADERS[key] || [], SAMPLE_DATA[key] || []);
+  });
+
+  return jsonOutput_({
+    ok: true,
+    message: "Sample data inserted into empty sheets only.",
+    spreadsheetId: spreadsheet.getId(),
+    spreadsheetName: spreadsheet.getName(),
+    seeded: result,
+  });
 }
 
 function handleLogin_(request) {
@@ -312,6 +472,21 @@ function ensureSheetWithHeaders_(spreadsheet, sheetName, headers) {
 
   sheet.setFrozenRows(1);
   return sheet;
+}
+
+function seedSheetIfEmpty_(sheet, headers, rows) {
+  if (!sheet || !headers.length || !rows.length) {
+    return 0;
+  }
+
+  const existingDataRows = Math.max(sheet.getLastRow() - 1, 0);
+  if (existingDataRows > 0) {
+    return 0;
+  }
+
+  const values = rows.map((record) => headers.map((header) => record[header] || ""));
+  sheet.getRange(2, 1, values.length, headers.length).setValues(values);
+  return values.length;
 }
 
 function jsonOutput_(payload) {

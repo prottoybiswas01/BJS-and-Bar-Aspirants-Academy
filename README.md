@@ -157,9 +157,9 @@ With that row:
 
 The frontend is currently configured to use this deployed Apps Script web app:
 
-- Deployment ID: `AKfycbyi6_FD_KA_Gk_DD8NgtHBQLwf2ncobjdwp-ZSc5XOSXWZd4E80oQXRNzElxitXF-VD`
-- Web app endpoint: `https://script.google.com/macros/s/AKfycbyi6_FD_KA_Gk_DD8NgtHBQLwf2ncobjdwp-ZSc5XOSXWZd4E80oQXRNzElxitXF-VD/exec`
-- Library: `https://script.google.com/macros/library/d/1ncU_s4ZSPtOBR7IYu_D1br4dPE78Zyvi3MSPLVKqFFvmv93OdGnLZtyf/1`
+- Deployment ID: `AKfycbwTggMJSfIRDC1TGURJwAca38O0ZWErf2sqAW_236WpxaFuge36t30FZXIrmd9d3JnP`
+- Web app endpoint: `https://script.google.com/macros/s/AKfycbwTggMJSfIRDC1TGURJwAca38O0ZWErf2sqAW_236WpxaFuge36t30FZXIrmd9d3JnP/exec`
+- Library: not required for frontend runtime; the portal uses the deployed Web App `/exec` URL
 
 Connection flow:
 

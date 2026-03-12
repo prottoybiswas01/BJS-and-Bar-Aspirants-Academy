@@ -1,5 +1,5 @@
 const APPS_SCRIPT_DEPLOYMENT_ID =
-  "AKfycbyi6_FD_KA_Gk_DD8NgtHBQLwf2ncobjdwp-ZSc5XOSXWZd4E80oQXRNzElxitXF-VD";
+  "AKfycbwTggMJSfIRDC1TGURJwAca38O0ZWErf2sqAW_236WpxaFuge36t30FZXIrmd9d3JnP";
 
 const APP_CONFIG = Object.freeze({
   dataMode: "remote",
@@ -1096,14 +1096,14 @@ function renderProfileModal(student, courseEntries) {
         .map((entry) => {
           const course = entry.course;
           return `
-            <article class="rounded-[1.75rem] border border-slate-100 bg-slate-50 p-5">
+            <article class="h-full overflow-hidden rounded-[1.75rem] border border-slate-100 bg-slate-50 p-5">
               <div class="flex items-start justify-between gap-3">
-                <div>
+                <div class="min-w-0 flex-1">
                   <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
                     ${course.category}
                   </p>
-                  <h4 class="mt-2 text-lg font-bold text-blue-950">${course.title}</h4>
-                  <p class="mt-1 text-sm text-slate-500">${course.faculty}</p>
+                  <h4 class="mt-2 break-words text-lg font-bold leading-tight text-blue-950">${course.title}</h4>
+                  <p class="mt-1 break-words text-sm text-slate-500">${course.faculty}</p>
                 </div>
                 <span class="rounded-full px-3 py-1 text-[10px] font-bold ${getStatusBadgeClass(
                   entry.status
@@ -1112,60 +1112,60 @@ function renderProfileModal(student, courseEntries) {
                 </span>
               </div>
 
-              <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <div class="rounded-2xl border border-white bg-white p-4">
+              <div class="mt-5 grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+                <div class="min-w-0 rounded-2xl border border-white bg-white p-4">
                   <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
                     Access Start
                   </p>
-                  <p class="mt-2 text-sm font-semibold text-slate-800">
+                  <p class="mt-2 break-words text-sm font-semibold leading-snug text-slate-800">
                     ${formatDate(entry.accessStartDate, "Not set")}
                   </p>
                 </div>
-                <div class="rounded-2xl border border-white bg-white p-4">
+                <div class="min-w-0 rounded-2xl border border-white bg-white p-4">
                   <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
                     Access End
                   </p>
-                  <p class="mt-2 text-sm font-semibold text-slate-800">
+                  <p class="mt-2 break-words text-sm font-semibold leading-snug text-slate-800">
                     ${formatDate(entry.accessEndDate, "Not set")}
                   </p>
                 </div>
-                <div class="rounded-2xl border border-white bg-white p-4">
+                <div class="min-w-0 rounded-2xl border border-white bg-white p-4">
                   <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
                     Videos Unlocked Until
                   </p>
-                  <p class="mt-2 text-sm font-semibold text-slate-800">
+                  <p class="mt-2 break-words text-sm font-semibold leading-snug text-slate-800">
                     ${formatDate(entry.videoAccessUntil || entry.accessEndDate, "Not set")}
                   </p>
                 </div>
-                <div class="rounded-2xl border border-white bg-white p-4">
+                <div class="min-w-0 rounded-2xl border border-white bg-white p-4">
                   <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
                     Last Payment
                   </p>
-                  <p class="mt-2 text-sm font-semibold text-slate-800">
+                  <p class="mt-2 break-words text-sm font-semibold leading-snug text-slate-800">
                     ${formatDate(entry.lastPaymentDate, "Not set")}
                   </p>
                 </div>
-                <div class="rounded-2xl border border-white bg-white p-4">
+                <div class="min-w-0 rounded-2xl border border-white bg-white p-4">
                   <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
                     Payment Due
                   </p>
-                  <p class="mt-2 text-sm font-semibold text-slate-800">
+                  <p class="mt-2 break-words text-sm font-semibold leading-snug text-slate-800">
                     ${formatDate(entry.paymentDueDate, "Not set")}
                   </p>
                 </div>
-                <div class="rounded-2xl border border-white bg-white p-4">
+                <div class="min-w-0 rounded-2xl border border-white bg-white p-4">
                   <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
                     Monthly Fee
                   </p>
-                  <p class="mt-2 text-sm font-semibold text-slate-800">
+                  <p class="mt-2 break-words text-sm font-semibold leading-snug text-slate-800">
                     ${entry.monthlyFee ? `BDT ${entry.monthlyFee}` : "Not set"}
                   </p>
                 </div>
-                <div class="rounded-2xl border border-white bg-white p-4">
+                <div class="min-w-0 rounded-2xl border border-white bg-white p-4 sm:col-span-2 2xl:col-span-3">
                   <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
                     Schedule
                   </p>
-                  <p class="mt-2 text-sm font-semibold text-slate-800">${course.schedule}</p>
+                  <p class="mt-2 break-words text-sm font-semibold leading-snug text-slate-800">${course.schedule}</p>
                 </div>
               </div>
             </article>
@@ -1229,15 +1229,15 @@ function renderCourseList(student, courseEntries) {
           <button
             type="button"
             data-course-id="${course.id}"
-            class="flex w-full items-center justify-between px-8 py-7 text-left transition-colors hover:bg-slate-50"
+            class="flex w-full flex-col items-start justify-between gap-4 px-6 py-6 text-left transition-colors hover:bg-slate-50 sm:flex-row sm:items-center sm:px-8 sm:py-7"
           >
-            <div class="flex items-center space-x-5">
-              <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-xl font-bold text-blue-900 transition-all duration-300 group-hover:bg-blue-900 group-hover:text-white">
+            <div class="flex min-w-0 items-start gap-4 sm:items-center sm:gap-5">
+              <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-xl font-bold text-blue-900 transition-all duration-300 group-hover:bg-blue-900 group-hover:text-white">
                 ${formatNumber(String(index + 1).padStart(2, "0"))}
               </div>
-              <div>
-                <h3 class="text-xl font-bold text-blue-950">${course.title}</h3>
-                <p class="text-sm text-slate-500">
+              <div class="min-w-0">
+                <h3 class="break-words text-xl font-bold text-blue-950">${course.title}</h3>
+                <p class="break-words text-sm text-slate-500">
                   ${formatNumber(lessons.length)} recorded classes • ${formatNumber(
                     resourceCount
                   )} resources
@@ -1245,7 +1245,7 @@ function renderCourseList(student, courseEntries) {
               </div>
             </div>
             <div
-              class="arrow-icon rounded-full bg-slate-100 p-2 transition-transform duration-300"
+              class="arrow-icon shrink-0 rounded-full bg-slate-100 p-2 transition-transform duration-300"
               style="transform: rotate(${isOpen ? 180 : 0}deg)"
             >
               <svg
@@ -1269,17 +1269,17 @@ function renderCourseList(student, courseEntries) {
             <div class="space-y-3 rounded-3xl bg-slate-50 p-4">
               <div class="rounded-2xl border border-slate-100 bg-white p-4">
                 <div class="flex flex-col gap-3 text-sm text-slate-600 md:flex-row md:items-center md:justify-between">
-                  <div>
+                  <div class="min-w-0">
                     <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Faculty</p>
-                    <p class="mt-1 font-semibold text-slate-800">${course.faculty}</p>
+                    <p class="mt-1 break-words font-semibold text-slate-800">${course.faculty}</p>
                   </div>
-                  <div>
+                  <div class="min-w-0">
                     <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Schedule</p>
-                    <p class="mt-1 font-semibold text-slate-800">${course.schedule}</p>
+                    <p class="mt-1 break-words font-semibold text-slate-800">${course.schedule}</p>
                   </div>
-                  <div>
+                  <div class="min-w-0">
                     <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Category</p>
-                    <p class="mt-1 font-semibold text-slate-800">${course.category}</p>
+                    <p class="mt-1 break-words font-semibold text-slate-800">${course.category}</p>
                   </div>
                 </div>
                 <div class="mt-4 flex flex-wrap gap-2">
@@ -1318,7 +1318,7 @@ function renderCourseList(student, courseEntries) {
                         const accessState = getLessonAccessState(entry, lesson);
                         return `
                           <div class="card-hover group/item flex flex-col items-start justify-between rounded-2xl border border-slate-100 bg-white p-5 transition-all hover:border-blue-200 sm:flex-row sm:items-center">
-                            <div class="flex w-full items-center space-x-4 sm:w-auto">
+                            <div class="flex w-full min-w-0 items-center space-x-4 sm:w-auto">
                               <div class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-600 transition group-hover/item:bg-blue-600 group-hover/item:text-white">
                                 <svg
                                   xmlns="http://www.w3.org/2000/svg"
@@ -1329,8 +1329,8 @@ function renderCourseList(student, courseEntries) {
                                   <path d="M8 5v14l11-7z" />
                                 </svg>
                               </div>
-                              <div>
-                                <h4 class="font-bold text-slate-800">
+                              <div class="min-w-0">
+                                <h4 class="break-words font-bold text-slate-800">
                                   Class ${formatNumber(String(lessonIndex + 1).padStart(2, "0"))}: ${
                                     lesson.title
                                   }
