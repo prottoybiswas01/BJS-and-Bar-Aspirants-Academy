@@ -18,6 +18,9 @@ const demoData = {
       session: "Weekend Intensive",
       joinedOn: "2025-12-15",
       status: "Active",
+      profileImage: "https://i.pravatar.cc/240?img=12",
+      passwordResetUrl:
+        "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20LAW-2026-014",
       enrolledCourseIds: [
         "judiciary-foundation",
         "criminal-procedure-mastery",
@@ -35,6 +38,9 @@ const demoData = {
       session: "Evening Program",
       joinedOn: "2025-11-01",
       status: "Active",
+      profileImage: "https://i.pravatar.cc/240?img=32",
+      passwordResetUrl:
+        "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20BAR-2026-008",
       enrolledCourseIds: ["bar-viva-clinic", "criminal-procedure-mastery"],
       completedLessonIds: ["bar-01", "crim-01", "crim-02"],
       highlight: "Focused on viva confidence and criminal procedure.",
@@ -48,6 +54,9 @@ const demoData = {
       session: "Morning Batch",
       joinedOn: "2026-01-18",
       status: "Active",
+      profileImage: "https://i.pravatar.cc/240?img=15",
+      passwordResetUrl:
+        "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20LIT-2026-031",
       enrolledCourseIds: ["legal-drafting-lab", "criminal-procedure-mastery"],
       completedLessonIds: ["draft-01"],
       highlight: "Wants practical drafting and procedure side by side.",
@@ -222,13 +231,90 @@ const demoData = {
       note: "Best used right before mock viva.",
     },
   ],
+  enrollments: [
+    {
+      studentId: "LAW-2026-014",
+      courseId: "judiciary-foundation",
+      accessStartDate: "2026-01-01",
+      accessEndDate: "2026-07-31",
+      videoAccessUntil: "2026-03-13",
+      lastPaymentDate: "2026-03-05",
+      paymentDueDate: "2026-04-05",
+      monthlyFee: "1500",
+      status: "Active",
+    },
+    {
+      studentId: "LAW-2026-014",
+      courseId: "criminal-procedure-mastery",
+      accessStartDate: "2026-02-10",
+      accessEndDate: "2026-08-10",
+      videoAccessUntil: "2026-03-09",
+      lastPaymentDate: "2026-03-01",
+      paymentDueDate: "2026-04-10",
+      monthlyFee: "1500",
+      status: "Active",
+    },
+    {
+      studentId: "LAW-2026-014",
+      courseId: "legal-drafting-lab",
+      accessStartDate: "2026-02-20",
+      accessEndDate: "2026-06-30",
+      videoAccessUntil: "2026-03-07",
+      lastPaymentDate: "2026-02-28",
+      paymentDueDate: "2026-03-30",
+      monthlyFee: "1500",
+      status: "Active",
+    },
+    {
+      studentId: "BAR-2026-008",
+      courseId: "bar-viva-clinic",
+      accessStartDate: "2026-01-15",
+      accessEndDate: "2026-05-30",
+      videoAccessUntil: "2026-03-06",
+      lastPaymentDate: "2026-02-27",
+      paymentDueDate: "2026-03-28",
+      monthlyFee: "1500",
+      status: "Pending",
+    },
+    {
+      studentId: "BAR-2026-008",
+      courseId: "criminal-procedure-mastery",
+      accessStartDate: "2026-02-01",
+      accessEndDate: "2026-06-15",
+      videoAccessUntil: "2026-03-12",
+      lastPaymentDate: "2026-03-02",
+      paymentDueDate: "2026-04-02",
+      monthlyFee: "1500",
+      status: "Active",
+    },
+    {
+      studentId: "LIT-2026-031",
+      courseId: "legal-drafting-lab",
+      accessStartDate: "2026-02-18",
+      accessEndDate: "2026-07-15",
+      videoAccessUntil: "2026-03-02",
+      lastPaymentDate: "2026-02-18",
+      paymentDueDate: "2026-04-08",
+      monthlyFee: "1500",
+      status: "Pending",
+    },
+    {
+      studentId: "LIT-2026-031",
+      courseId: "criminal-procedure-mastery",
+      accessStartDate: "2026-02-25",
+      accessEndDate: "2026-08-05",
+      videoAccessUntil: "2026-03-12",
+      lastPaymentDate: "2026-03-04",
+      paymentDueDate: "2026-04-12",
+      monthlyFee: "1500",
+      status: "Active",
+    },
+  ],
 };
-
-const BENGALI_DIGITS = ["০", "১", "২", "৩", "৪", "৫", "৬", "৭", "৮", "৯"];
 
 const state = {
   data: null,
-  dataModeLabel: "ডেমো ডাটা",
+  dataModeLabel: "Demo Data",
   activeStudentId: "",
   openCourseId: "",
 };
@@ -240,6 +326,8 @@ const dom = {
   navStudentName: document.getElementById("navStudentName"),
   navStudentId: document.getElementById("navStudentId"),
   navAvatar: document.getElementById("navAvatar"),
+  navAvatarImage: document.getElementById("navAvatarImage"),
+  navAvatarFallback: document.getElementById("navAvatarFallback"),
   loginSection: document.getElementById("loginSection"),
   dashboardSection: document.getElementById("dashboardSection"),
   form: document.getElementById("lookup-form"),
@@ -260,10 +348,29 @@ const dom = {
   closeVideoBtn: document.getElementById("closeVideoBtn"),
   videoPlayer: document.getElementById("videoPlayer"),
   videoTitle: document.getElementById("videoTitle"),
+  profileModal: document.getElementById("profileModal"),
+  profileBackdrop: document.getElementById("profileBackdrop"),
+  closeProfileBtn: document.getElementById("closeProfileBtn"),
+  profileBackBtn: document.getElementById("profileBackBtn"),
+  profileLogoutBtn: document.getElementById("profileLogoutBtn"),
+  profileImage: document.getElementById("profileImage"),
+  profileInitials: document.getElementById("profileInitials"),
+  profileStudentName: document.getElementById("profileStudentName"),
+  profileStudentEmail: document.getElementById("profileStudentEmail"),
+  profileStudentId: document.getElementById("profileStudentId"),
+  profileStudentBatch: document.getElementById("profileStudentBatch"),
+  profileStudentSession: document.getElementById("profileStudentSession"),
+  profileCourseCount: document.getElementById("profileCourseCount"),
+  profileAccessWindow: document.getElementById("profileAccessWindow"),
+  profileVideoAccessUntil: document.getElementById("profileVideoAccessUntil"),
+  profileLastPaymentDate: document.getElementById("profileLastPaymentDate"),
+  profilePaymentDate: document.getElementById("profilePaymentDate"),
+  profileCourseGrid: document.getElementById("profileCourseGrid"),
+  profileResetLink: document.getElementById("profileResetLink"),
 };
 
-function toBanglaNumber(value) {
-  return String(value).replace(/\d/g, (digit) => BENGALI_DIGITS[Number(digit)]);
+function formatNumber(value) {
+  return String(value);
 }
 
 function parseList(value) {
@@ -287,6 +394,12 @@ function normalizeData(raw) {
     session: student.session || "N/A",
     joinedOn: student.joinedOn || "",
     status: student.status || "Active",
+    profileImage: student.profileImage || student.photo || student.imageUrl || "",
+    passwordResetUrl:
+      student.passwordResetUrl ||
+      student.resetPasswordUrl ||
+      student.forgotPasswordUrl ||
+      "",
     highlight: student.highlight || "Law student profile loaded from the workbook.",
     enrolledCourseIds: parseList(
       student.enrolledCourseIds || student.courseIds || student.courses || ""
@@ -317,10 +430,72 @@ function normalizeData(raw) {
     note: lesson.note || "Sheet-linked lesson",
   }));
 
+  const enrollments = (raw.enrollments || [])
+    .flatMap((enrollment, index) => {
+      const studentIds = parseList(
+        enrollment.studentId || enrollment.studentIds || enrollment.studentID || ""
+      );
+      const courseIds = parseList(
+        enrollment.courseId || enrollment.courseIds || enrollment.courseID || ""
+      );
+
+      return studentIds.flatMap((studentId) =>
+        courseIds.map((courseId, courseIndex) => ({
+          id: enrollment.id || `enrollment-${index + 1}-${courseIndex + 1}`,
+          studentId,
+          courseId,
+          accessStartDate:
+            enrollment.accessStartDate ||
+            enrollment.startDate ||
+            enrollment.activeFrom ||
+            enrollment.accessFrom ||
+            "",
+          accessEndDate:
+            enrollment.accessEndDate ||
+            enrollment.endDate ||
+            enrollment.validUntil ||
+            enrollment.accessUntil ||
+            "",
+          videoAccessUntil:
+            enrollment.videoAccessUntil ||
+            enrollment.approvedUntil ||
+            enrollment.lessonAccessUntil ||
+            enrollment.accessApprovedUntil ||
+            enrollment.videoUnlockDate ||
+            enrollment.releaseAccessUntil ||
+            enrollment.accessEndDate ||
+            enrollment.endDate ||
+            "",
+          lastPaymentDate:
+            enrollment.lastPaymentDate ||
+            enrollment.paymentApprovedOn ||
+            enrollment.paidOn ||
+            enrollment.latestPaymentDate ||
+            "",
+          paymentDueDate:
+            enrollment.paymentDueDate ||
+            enrollment.nextPaymentDueDate ||
+            enrollment.lastPaymentDueDate ||
+            enrollment.paymentDate ||
+            "",
+          monthlyFee:
+            enrollment.monthlyFee ||
+            enrollment.fee ||
+            enrollment.amount ||
+            enrollment.monthlyAmount ||
+            "",
+          status: enrollment.status || "Active",
+        }))
+      );
+    })
+    .filter((enrollment) => enrollment.studentId && enrollment.courseId);
+
   return {
     students,
     courses,
     lessons,
+    enrollments,
+    hasEnrollmentSheet: enrollments.length > 0,
     courseMap: new Map(courses.map((course) => [course.id, course])),
   };
 }
@@ -340,7 +515,7 @@ async function loadData() {
       const payload = await response.json();
       return {
         data: normalizeData(payload),
-        modeLabel: "লাইভ গুগল শিট",
+        modeLabel: "Live Google Sheet",
       };
     } catch (error) {
       console.warn("Falling back to demo data:", error);
@@ -349,7 +524,7 @@ async function loadData() {
 
   return {
     data: normalizeData(demoData),
-    modeLabel: "ডেমো ডাটা",
+    modeLabel: "Demo Data",
   };
 }
 
@@ -372,10 +547,125 @@ function getActiveStudent() {
   return state.data.students.find((student) => student.id === state.activeStudentId) || null;
 }
 
+function buildFallbackEnrollments(student) {
+  return student.enrolledCourseIds.map((courseId, index) => ({
+    id: `fallback-${student.id}-${index + 1}`,
+    studentId: student.id,
+    courseId,
+    accessStartDate: student.joinedOn || "",
+    accessEndDate: "",
+    paymentDueDate: "",
+    status: student.status || "Active",
+  }));
+}
+
+function parseTimestamp(dateValue) {
+  if (!dateValue) {
+    return null;
+  }
+
+  const date = new Date(dateValue);
+  return Number.isNaN(date.getTime()) ? null : date.getTime();
+}
+
+function getStudentCourseEntries(student) {
+  const sourceEnrollments = state.data.hasEnrollmentSheet
+    ? state.data.enrollments.filter((enrollment) => enrollment.studentId === student.id)
+    : buildFallbackEnrollments(student);
+
+  const seenCourseIds = new Set();
+
+  return sourceEnrollments
+    .filter((enrollment) => {
+      if (seenCourseIds.has(enrollment.courseId)) {
+        return false;
+      }
+
+      seenCourseIds.add(enrollment.courseId);
+      return true;
+    })
+    .map((enrollment) => ({
+      ...enrollment,
+      course: state.data.courseMap.get(enrollment.courseId) || null,
+    }))
+    .filter((entry) => entry.course)
+    .sort((left, right) => {
+      const leftStart = parseTimestamp(left.accessStartDate) ?? Number.MAX_SAFE_INTEGER;
+      const rightStart = parseTimestamp(right.accessStartDate) ?? Number.MAX_SAFE_INTEGER;
+
+      if (leftStart !== rightStart) {
+        return leftStart - rightStart;
+      }
+
+      return left.course.title.localeCompare(right.course.title);
+    });
+}
+
 function getStudentCourses(student) {
-  return student.enrolledCourseIds
-    .map((courseId) => state.data.courseMap.get(courseId))
-    .filter(Boolean);
+  return getStudentCourseEntries(student).map((entry) => entry.course);
+}
+
+function isEnrollmentBlocked(entry) {
+  const normalized = String(entry.status || "").trim().toLowerCase();
+  return normalized === "blocked" || normalized === "suspended";
+}
+
+function getEffectiveVideoAccessTimestamp(entry) {
+  const fallbackTimestamp = Date.now();
+  const accessUntilTimestamp =
+    parseTimestamp(entry.videoAccessUntil) ?? parseTimestamp(entry.accessEndDate) ?? fallbackTimestamp;
+
+  return Math.min(accessUntilTimestamp, Date.now());
+}
+
+function getLessonAccessState(entry, lesson) {
+  if (isEnrollmentBlocked(entry)) {
+    return {
+      canWatch: false,
+      reason: "Access is blocked by admin for this course.",
+      status: "blocked",
+    };
+  }
+
+  const releaseTimestamp = parseTimestamp(lesson.releaseDate);
+  if (releaseTimestamp === null) {
+    return {
+      canWatch: true,
+      reason: "",
+      status: "open",
+    };
+  }
+
+  const accessStartTimestamp = parseTimestamp(entry.accessStartDate);
+  if (accessStartTimestamp !== null && releaseTimestamp < accessStartTimestamp) {
+    return {
+      canWatch: false,
+      reason: `This lesson is outside the approved access window that starts on ${formatDate(
+        entry.accessStartDate,
+        "the selected date"
+      )}.`,
+      status: "outside-window",
+    };
+  }
+
+  const effectiveAccessTimestamp = getEffectiveVideoAccessTimestamp(entry);
+  if (releaseTimestamp > effectiveAccessTimestamp) {
+    const approvedUntilLabel = formatDate(
+      entry.videoAccessUntil || entry.accessEndDate,
+      "the approved date"
+    );
+    return {
+      canWatch: false,
+      reason: `Payment approval is required for lessons uploaded after ${approvedUntilLabel}.`,
+      status: "payment-required",
+    };
+  }
+
+  return {
+    canWatch: true,
+    reason: "",
+    status: "open",
+  };
 }
 
 function getCourseLessons(courseId) {
@@ -388,8 +678,10 @@ function getTotalResources(lessons) {
   return lessons.reduce((count, lesson) => count + lesson.resources.length, 0);
 }
 
-function getStudentStats(student, courses) {
-  const lessons = courses.flatMap((course) => getCourseLessons(course.id));
+function getStudentStats(student, courseEntries) {
+  const lessons = courseEntries.flatMap((entry) =>
+    getCourseLessons(entry.course.id).filter((lesson) => getLessonAccessState(entry, lesson).canWatch)
+  );
   const completed = lessons.filter((lesson) => student.completedLessonIds.includes(lesson.id)).length;
   return {
     total: lessons.length,
@@ -398,40 +690,192 @@ function getStudentStats(student, courses) {
   };
 }
 
-function formatDate(dateValue) {
+function formatDate(dateValue, fallback = "Date unavailable") {
   if (!dateValue) {
-    return "তারিখ পাওয়া যায়নি";
+    return fallback;
   }
 
   const date = new Date(dateValue);
   if (Number.isNaN(date.getTime())) {
-    return toBanglaNumber(dateValue);
+    return String(dateValue);
   }
 
-  return new Intl.DateTimeFormat("bn-BD-u-nu-beng", {
+  return new Intl.DateTimeFormat("en-US", {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
   }).format(date);
 }
 
+function formatDateRange(startDate, endDate) {
+  if (startDate && endDate) {
+    return `${formatDate(startDate)} - ${formatDate(endDate)}`;
+  }
+
+  if (startDate) {
+    return `From ${formatDate(startDate)}`;
+  }
+
+  if (endDate) {
+    return `Until ${formatDate(endDate)}`;
+  }
+
+  return "Not set";
+}
+
+function getSortedDateItems(values) {
+  return values
+    .map((value) => ({ raw: value, timestamp: parseTimestamp(value) }))
+    .filter((item) => item.timestamp !== null)
+    .sort((left, right) => left.timestamp - right.timestamp);
+}
+
+function getProfileAccessSummary(courseEntries) {
+  const accessStarts = getSortedDateItems(courseEntries.map((entry) => entry.accessStartDate));
+  const accessEnds = getSortedDateItems(courseEntries.map((entry) => entry.accessEndDate));
+
+  if (accessStarts.length || accessEnds.length) {
+    return formatDateRange(
+      accessStarts[0] ? accessStarts[0].raw : "",
+      accessEnds.length ? accessEnds[accessEnds.length - 1].raw : ""
+    );
+  }
+
+  const fallbackStart = courseEntries.find((entry) => entry.accessStartDate)?.accessStartDate || "";
+  const fallbackEnd =
+    [...courseEntries].reverse().find((entry) => entry.accessEndDate)?.accessEndDate || "";
+  return formatDateRange(fallbackStart, fallbackEnd);
+}
+
+function getProfileVideoAccessSummary(courseEntries) {
+  const approvalDates = getSortedDateItems(
+    courseEntries.map((entry) => entry.videoAccessUntil || entry.accessEndDate)
+  );
+
+  if (approvalDates.length) {
+    const selected = approvalDates[approvalDates.length - 1];
+    return formatDate(selected.raw, "Not set");
+  }
+
+  const fallback =
+    [...courseEntries].reverse().find((entry) => entry.videoAccessUntil || entry.accessEndDate)
+      ?.videoAccessUntil ||
+    [...courseEntries].reverse().find((entry) => entry.accessEndDate)?.accessEndDate ||
+    "";
+  return formatDate(fallback, "Not set");
+}
+
+function getProfileLastPaymentSummary(courseEntries) {
+  const paymentDates = getSortedDateItems(courseEntries.map((entry) => entry.lastPaymentDate));
+  if (paymentDates.length) {
+    const selected = paymentDates[paymentDates.length - 1];
+    return formatDate(selected.raw, "Not set");
+  }
+
+  return formatDate(
+    courseEntries.find((entry) => entry.lastPaymentDate)?.lastPaymentDate || "",
+    "Not set"
+  );
+}
+
+function getProfilePaymentSummary(courseEntries) {
+  const paymentDates = getSortedDateItems(courseEntries.map((entry) => entry.paymentDueDate));
+  if (paymentDates.length) {
+    const now = Date.now();
+    const nextDue = paymentDates.find((item) => item.timestamp >= now);
+    const selected = nextDue || paymentDates[paymentDates.length - 1];
+    return formatDate(selected.raw, "Not set");
+  }
+
+  return courseEntries.find((entry) => entry.paymentDueDate)?.paymentDueDate || "Not set";
+}
+
 function formatStatus(status) {
   const normalized = String(status || "").trim().toLowerCase();
 
   if (normalized === "active") {
-    return "সক্রিয়";
+    return "Active";
   }
   if (normalized === "inactive") {
-    return "নিষ্ক্রিয়";
+    return "Inactive";
   }
-  return status || "অজানা";
+  if (normalized === "expired") {
+    return "Expired";
+  }
+  if (normalized === "pending") {
+    return "Pending";
+  }
+  if (normalized === "blocked") {
+    return "Blocked";
+  }
+  if (normalized === "suspended") {
+    return "Suspended";
+  }
+  return status || "Unknown";
 }
 
-function getAvatarLetter(name) {
-  return String(name || "S")
+function getStatusBadgeClass(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+
+  if (normalized === "active") {
+    return "bg-emerald-100 text-emerald-700";
+  }
+  if (normalized === "expired" || normalized === "inactive") {
+    return "bg-red-100 text-red-700";
+  }
+  if (normalized === "pending") {
+    return "bg-amber-100 text-amber-700";
+  }
+  if (normalized === "blocked" || normalized === "suspended") {
+    return "bg-slate-900 text-white";
+  }
+  return "bg-slate-100 text-slate-600";
+}
+
+function getAvatarInitials(name) {
+  const parts = String(name || "Student")
     .trim()
-    .charAt(0)
-    .toUpperCase();
+    .split(/\s+/)
+    .filter(Boolean);
+
+  return (
+    parts
+      .slice(0, 2)
+      .map((part) => part.charAt(0).toUpperCase())
+      .join("") || "S"
+  );
+}
+
+function setAvatarImage(imageUrl, imageElement, fallbackElement, fallbackText) {
+  fallbackElement.textContent = fallbackText;
+
+  if (!imageUrl) {
+    imageElement.removeAttribute("src");
+    imageElement.classList.add("hidden");
+    fallbackElement.classList.remove("hidden");
+    return;
+  }
+
+  imageElement.onerror = () => {
+    imageElement.classList.add("hidden");
+    fallbackElement.classList.remove("hidden");
+  };
+
+  imageElement.onload = () => {
+    imageElement.classList.remove("hidden");
+    fallbackElement.classList.add("hidden");
+  };
+
+  imageElement.src = imageUrl;
+}
+
+function getPasswordResetUrl(student) {
+  return (
+    student.passwordResetUrl ||
+    `mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20${encodeURIComponent(
+      student.id || "student"
+    )}`
+  );
 }
 
 function setFeedback(message, type = "neutral") {
@@ -445,8 +889,22 @@ function setFeedback(message, type = "neutral") {
   dom.feedback.className = classMap[type] || classMap.neutral;
 }
 
+function closeProfileModal() {
+  dom.profileModal.classList.add("hidden");
+  dom.profileModal.classList.remove("flex");
+
+  if (dom.videoModal.classList.contains("hidden")) {
+    dom.body.style.overflow = "";
+  }
+}
+
 function togglePage(page) {
   const isLogin = page === "login";
+
+  if (isLogin) {
+    closeProfileModal();
+  }
+
   dom.loginSection.classList.toggle("hidden", !isLogin);
   dom.dashboardSection.classList.toggle("hidden", isLogin);
   dom.loginBtn.classList.toggle("hidden", !isLogin);
@@ -475,11 +933,11 @@ function showToast(message, type = "success") {
 
 function openVideo(videoId, title) {
   if (!videoId) {
-    showToast("এই লেসনের ভিডিও লিংক পাওয়া যায়নি।", "error");
+    showToast("This lesson does not have a video link yet.", "error");
     return;
   }
 
-  dom.videoTitle.textContent = title || "ক্লাস ভিডিও";
+  dom.videoTitle.textContent = title || "Class Video";
   dom.videoPlayer.src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
   dom.videoModal.classList.remove("hidden");
   dom.videoModal.classList.add("flex");
@@ -490,49 +948,177 @@ function closeVideo() {
   dom.videoPlayer.src = "";
   dom.videoModal.classList.add("hidden");
   dom.videoModal.classList.remove("flex");
-  dom.body.style.overflow = "";
+  if (dom.profileModal.classList.contains("hidden")) {
+    dom.body.style.overflow = "";
+  }
 }
 
 function renderStudentHeader(student, stats) {
+  const avatarInitials = getAvatarInitials(student.name);
+
   dom.navStudentName.textContent = student.name;
-  dom.navStudentId.textContent = `আইডি: ${toBanglaNumber(student.id)}`;
-  dom.navAvatar.textContent = getAvatarLetter(student.name);
+  dom.navStudentId.textContent = `ID: ${student.id}`;
+  setAvatarImage(student.profileImage, dom.navAvatarImage, dom.navAvatarFallback, avatarInitials);
 
   const firstName = student.name.split(" ")[0] || student.name;
   dom.heroStudentName.textContent = firstName;
   dom.heroWelcomeText.textContent =
     student.highlight ||
-    "আপনার আজকের লেসনগুলো নিচে তালিকাভুক্ত করা হয়েছে। নিয়মিত অনুশীলন করুন।";
+    "Your current lessons are listed below. Keep practicing consistently.";
 
-  dom.completedCount.textContent = toBanglaNumber(stats.completed);
-  dom.remainingCount.textContent = toBanglaNumber(stats.remaining);
+  dom.completedCount.textContent = formatNumber(stats.completed);
+  dom.remainingCount.textContent = formatNumber(stats.remaining);
   dom.studentStatus.textContent = formatStatus(student.status);
   dom.studentBatch.textContent = student.batch || "-";
   dom.studentSession.textContent = student.session || "-";
 }
 
-function renderCourseList(student, courses) {
-  if (!courses.length) {
+function renderProfileModal(student, courseEntries) {
+  const avatarInitials = getAvatarInitials(student.name);
+
+  dom.profileStudentName.textContent = student.name;
+  dom.profileStudentEmail.textContent = student.email || "Email not provided";
+  dom.profileStudentId.textContent = student.id || "-";
+  dom.profileStudentBatch.textContent = student.batch || "-";
+  dom.profileStudentSession.textContent = student.session || "-";
+  dom.profileCourseCount.textContent = formatNumber(courseEntries.length);
+  dom.profileAccessWindow.textContent = getProfileAccessSummary(courseEntries);
+  dom.profileVideoAccessUntil.textContent = getProfileVideoAccessSummary(courseEntries);
+  dom.profileLastPaymentDate.textContent = getProfileLastPaymentSummary(courseEntries);
+  dom.profilePaymentDate.textContent = getProfilePaymentSummary(courseEntries);
+  dom.profileResetLink.href = getPasswordResetUrl(student);
+
+  setAvatarImage(student.profileImage, dom.profileImage, dom.profileInitials, avatarInitials);
+
+  dom.profileCourseGrid.innerHTML = courseEntries.length
+    ? courseEntries
+        .map((entry) => {
+          const course = entry.course;
+          return `
+            <article class="rounded-[1.75rem] border border-slate-100 bg-slate-50 p-5">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                    ${course.category}
+                  </p>
+                  <h4 class="mt-2 text-lg font-bold text-blue-950">${course.title}</h4>
+                  <p class="mt-1 text-sm text-slate-500">${course.faculty}</p>
+                </div>
+                <span class="rounded-full px-3 py-1 text-[10px] font-bold ${getStatusBadgeClass(
+                  entry.status
+                )}">
+                  ${formatStatus(entry.status)}
+                </span>
+              </div>
+
+              <div class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div class="rounded-2xl border border-white bg-white p-4">
+                  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                    Access Start
+                  </p>
+                  <p class="mt-2 text-sm font-semibold text-slate-800">
+                    ${formatDate(entry.accessStartDate, "Not set")}
+                  </p>
+                </div>
+                <div class="rounded-2xl border border-white bg-white p-4">
+                  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                    Access End
+                  </p>
+                  <p class="mt-2 text-sm font-semibold text-slate-800">
+                    ${formatDate(entry.accessEndDate, "Not set")}
+                  </p>
+                </div>
+                <div class="rounded-2xl border border-white bg-white p-4">
+                  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                    Videos Unlocked Until
+                  </p>
+                  <p class="mt-2 text-sm font-semibold text-slate-800">
+                    ${formatDate(entry.videoAccessUntil || entry.accessEndDate, "Not set")}
+                  </p>
+                </div>
+                <div class="rounded-2xl border border-white bg-white p-4">
+                  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                    Last Payment
+                  </p>
+                  <p class="mt-2 text-sm font-semibold text-slate-800">
+                    ${formatDate(entry.lastPaymentDate, "Not set")}
+                  </p>
+                </div>
+                <div class="rounded-2xl border border-white bg-white p-4">
+                  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                    Payment Due
+                  </p>
+                  <p class="mt-2 text-sm font-semibold text-slate-800">
+                    ${formatDate(entry.paymentDueDate, "Not set")}
+                  </p>
+                </div>
+                <div class="rounded-2xl border border-white bg-white p-4">
+                  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                    Monthly Fee
+                  </p>
+                  <p class="mt-2 text-sm font-semibold text-slate-800">
+                    ${entry.monthlyFee ? `BDT ${entry.monthlyFee}` : "Not set"}
+                  </p>
+                </div>
+                <div class="rounded-2xl border border-white bg-white p-4">
+                  <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
+                    Schedule
+                  </p>
+                  <p class="mt-2 text-sm font-semibold text-slate-800">${course.schedule}</p>
+                </div>
+              </div>
+            </article>
+          `;
+        })
+        .join("")
+    : `
+      <div class="rounded-[1.75rem] border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500 md:col-span-2">
+        No course access has been assigned to this student yet. Add a row in the Enrollments sheet
+        with this student ID and the target course ID.
+      </div>
+    `;
+}
+
+function openProfileModal() {
+  const student = getActiveStudent();
+  if (!student) {
+    return;
+  }
+
+  renderProfileModal(student, getStudentCourseEntries(student));
+  dom.profileModal.classList.remove("hidden");
+  dom.profileModal.classList.add("flex");
+  dom.body.style.overflow = "hidden";
+}
+
+function renderCourseList(student, courseEntries) {
+  if (!courseEntries.length) {
+    const emptyStateInstruction = state.data.hasEnrollmentSheet
+      ? 'Add a row in the <span class="font-semibold text-slate-700">Enrollments</span> sheet with the student ID and course ID.'
+      : 'Update the <span class="font-semibold text-slate-700">enrolledCourseIds</span> column in Google Sheets.';
+
     dom.courseList.innerHTML = `
       <div class="rounded-[2rem] border border-slate-100 bg-white p-8 text-center shadow-sm">
-        <h3 class="text-2xl font-bold text-blue-950">কোনো কোর্স পাওয়া যায়নি</h3>
-        <p class="mt-3 text-slate-500">
-          এই স্টুডেন্টের জন্য এখনও কোনো কোর্স যুক্ত করা হয়নি। Google Sheet-এর enrolledCourseIds
-          কলাম আপডেট করুন।
-        </p>
+        <h3 class="text-2xl font-bold text-blue-950">No Courses Found</h3>
+        <p class="mt-3 text-slate-500">No courses are assigned to this student yet.</p>
+        <p class="mt-2 text-sm text-slate-500">${emptyStateInstruction}</p>
       </div>
     `;
     return;
   }
 
-  if (!courses.some((course) => course.id === state.openCourseId)) {
-    state.openCourseId = courses[0].id;
+  if (!courseEntries.some((entry) => entry.course.id === state.openCourseId)) {
+    state.openCourseId = courseEntries[0].course.id;
   }
 
-  dom.courseList.innerHTML = courses
-    .map((course, index) => {
+  dom.courseList.innerHTML = courseEntries
+    .map((entry, index) => {
+      const course = entry.course;
       const lessons = getCourseLessons(course.id);
       const resourceCount = getTotalResources(lessons);
+      const unlockedCount = lessons.filter((lesson) => getLessonAccessState(entry, lesson).canWatch)
+        .length;
+      const lockedCount = Math.max(lessons.length - unlockedCount, 0);
       const isOpen = state.openCourseId === course.id;
 
       return `
@@ -546,14 +1132,14 @@ function renderCourseList(student, courses) {
           >
             <div class="flex items-center space-x-5">
               <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-xl font-bold text-blue-900 transition-all duration-300 group-hover:bg-blue-900 group-hover:text-white">
-                ${toBanglaNumber(String(index + 1).padStart(2, "0"))}
+                ${formatNumber(String(index + 1).padStart(2, "0"))}
               </div>
               <div>
                 <h3 class="text-xl font-bold text-blue-950">${course.title}</h3>
                 <p class="text-sm text-slate-500">
-                  ${toBanglaNumber(lessons.length)}টি রেকর্ড করা ক্লাস • ${toBanglaNumber(
+                  ${formatNumber(lessons.length)} recorded classes • ${formatNumber(
                     resourceCount
-                  )}টি রিসোর্স
+                  )} resources
                 </p>
               </div>
             </div>
@@ -583,17 +1169,43 @@ function renderCourseList(student, courses) {
               <div class="rounded-2xl border border-slate-100 bg-white p-4">
                 <div class="flex flex-col gap-3 text-sm text-slate-600 md:flex-row md:items-center md:justify-between">
                   <div>
-                    <p class="text-xs font-bold uppercase tracking-wider text-slate-400">ফ্যাকাল্টি</p>
+                    <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Faculty</p>
                     <p class="mt-1 font-semibold text-slate-800">${course.faculty}</p>
                   </div>
                   <div>
-                    <p class="text-xs font-bold uppercase tracking-wider text-slate-400">রুটিন</p>
+                    <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Schedule</p>
                     <p class="mt-1 font-semibold text-slate-800">${course.schedule}</p>
                   </div>
                   <div>
-                    <p class="text-xs font-bold uppercase tracking-wider text-slate-400">ক্যাটাগরি</p>
+                    <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Category</p>
                     <p class="mt-1 font-semibold text-slate-800">${course.category}</p>
                   </div>
+                </div>
+                <div class="mt-4 flex flex-wrap gap-2">
+                  <span class="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-bold text-blue-700">
+                    Access: ${formatDateRange(entry.accessStartDate, entry.accessEndDate)}
+                  </span>
+                  <span class="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-700">
+                    Approved Until: ${formatDate(entry.videoAccessUntil || entry.accessEndDate, "Not set")}
+                  </span>
+                  <span class="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-bold text-emerald-700">
+                    Unlocked Videos: ${formatNumber(unlockedCount)}
+                  </span>
+                  ${
+                    lockedCount
+                      ? `<span class="rounded-full bg-rose-50 px-3 py-1 text-[10px] font-bold text-rose-700">Locked Videos: ${formatNumber(
+                          lockedCount
+                        )}</span>`
+                      : ""
+                  }
+                  <span class="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-bold text-amber-700">
+                    Payment Due: ${formatDate(entry.paymentDueDate, "Not set")}
+                  </span>
+                  <span class="rounded-full px-3 py-1 text-[10px] font-bold ${getStatusBadgeClass(
+                    entry.status
+                  )}">
+                    ${formatStatus(entry.status)}
+                  </span>
                 </div>
               </div>
 
@@ -602,6 +1214,7 @@ function renderCourseList(student, courses) {
                   ? lessons
                       .map((lesson, lessonIndex) => {
                         const isCompleted = student.completedLessonIds.includes(lesson.id);
+                        const accessState = getLessonAccessState(entry, lesson);
                         return `
                           <div class="card-hover group/item flex flex-col items-start justify-between rounded-2xl border border-slate-100 bg-white p-5 transition-all hover:border-blue-200 sm:flex-row sm:items-center">
                             <div class="flex w-full items-center space-x-4 sm:w-auto">
@@ -617,7 +1230,7 @@ function renderCourseList(student, courses) {
                               </div>
                               <div>
                                 <h4 class="font-bold text-slate-800">
-                                  Class ${toBanglaNumber(String(lessonIndex + 1).padStart(2, "0"))}: ${
+                                  Class ${formatNumber(String(lessonIndex + 1).padStart(2, "0"))}: ${
                                     lesson.title
                                   }
                                 </h4>
@@ -628,9 +1241,15 @@ function renderCourseList(student, courses) {
                                   type="button"
                                   data-video-id="${lesson.youtubeId}"
                                   data-video-title="${lesson.title}"
-                                  class="mt-2 flex items-center text-xs font-bold text-blue-600 transition hover:text-blue-800"
+                                  data-video-locked="${accessState.canWatch ? "false" : "true"}"
+                                  data-lock-reason="${accessState.reason}"
+                                  class="mt-2 flex items-center text-xs font-bold transition ${
+                                    accessState.canWatch
+                                      ? "text-blue-600 hover:text-blue-800"
+                                      : "text-slate-400 hover:text-slate-500"
+                                  }"
                                 >
-                                  <span>ভিডিওটি প্লে করুন</span>
+                                  <span>${accessState.canWatch ? "Play Video" : "Locked Until Payment"}</span>
                                   <svg
                                     xmlns="http://www.w3.org/2000/svg"
                                     class="ml-1 h-3 w-3"
@@ -650,14 +1269,21 @@ function renderCourseList(student, courses) {
                             </div>
                             <div class="mt-4 flex flex-wrap items-center gap-2 sm:mt-0 sm:justify-end">
                               <div class="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-400">
-                                আপডেট: ${formatDate(lesson.releaseDate)}
+                                Updated: ${formatDate(lesson.releaseDate)}
+                              </div>
+                              <div class="rounded-full px-3 py-1 text-[10px] font-bold ${
+                                accessState.canWatch
+                                  ? "bg-blue-50 text-blue-700"
+                                  : "bg-rose-100 text-rose-700"
+                              }">
+                                ${accessState.canWatch ? "Unlocked" : "Payment Lock"}
                               </div>
                               <div class="rounded-full px-3 py-1 text-[10px] font-bold ${
                                 isCompleted
                                   ? "bg-emerald-100 text-emerald-700"
                                   : "bg-amber-100 text-amber-700"
                               }">
-                                ${isCompleted ? "সম্পন্ন" : "নতুন"}
+                                ${isCompleted ? "Completed" : "New"}
                               </div>
                             </div>
                           </div>
@@ -666,7 +1292,7 @@ function renderCourseList(student, courses) {
                       .join("")
                   : `
                     <div class="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-sm text-slate-500">
-                      এই কোর্সের জন্য এখনও কোনো ক্লাস যোগ করা হয়নি।
+                      No classes have been added to this course yet.
                     </div>
                   `
               }
@@ -680,57 +1306,64 @@ function renderCourseList(student, courses) {
   dom.courseList.querySelectorAll("[data-course-id]").forEach((button) => {
     button.addEventListener("click", () => {
       state.openCourseId = state.openCourseId === button.dataset.courseId ? "" : button.dataset.courseId;
-      renderCourseList(student, courses);
+      renderCourseList(student, courseEntries);
     });
   });
 
   dom.courseList.querySelectorAll("[data-video-id]").forEach((button) => {
     button.addEventListener("click", () => {
+      if (button.dataset.videoLocked === "true") {
+        showToast(button.dataset.lockReason || "Payment approval is required to unlock this video.", "info");
+        return;
+      }
+
       openVideo(button.dataset.videoId, button.dataset.videoTitle);
     });
   });
 }
 
 function renderDashboard(student) {
-  const courses = getStudentCourses(student);
-  const stats = getStudentStats(student, courses);
+  const courseEntries = getStudentCourseEntries(student);
+  const stats = getStudentStats(student, courseEntries);
 
   renderStudentHeader(student, stats);
-  renderCourseList(student, courses);
+  renderCourseList(student, courseEntries);
+  renderProfileModal(student, courseEntries);
 }
 
 function logout() {
   closeVideo();
+  closeProfileModal();
   state.activeStudentId = "";
   state.openCourseId = "";
   togglePage("login");
-  setFeedback("আবার লগইন করতে স্টুডেন্ট তথ্য দিন।");
-  showToast("লগআউট হয়েছে।", "info");
+  setFeedback("Enter your student credentials to log in again.");
+  showToast("Logged out successfully.", "info");
 }
 
 function performLogin(query = dom.query.value) {
   const studentQuery = String(query || "").trim();
 
   if (!studentQuery) {
-    setFeedback("স্টুডেন্ট আইডি, ফোন নাম্বার অথবা ইমেইল লিখুন।", "error");
-    showToast("লগইন তথ্য দিন।", "error");
+    setFeedback("Enter a student ID, phone number, or email address.", "error");
+    showToast("Please enter your login information.", "error");
     return;
   }
 
   const student = getStudentByQuery(studentQuery);
   if (!student) {
-    setFeedback("কোনো স্টুডেন্ট খুঁজে পাওয়া যায়নি।", "error");
-    showToast("স্টুডেন্ট তথ্য মেলেনি।", "error");
+    setFeedback("No matching student was found.", "error");
+    showToast("Student record not found.", "error");
     return;
   }
 
   state.activeStudentId = student.id;
-  state.openCourseId = getStudentCourses(student)[0]?.id || "";
+  state.openCourseId = getStudentCourseEntries(student)[0]?.course.id || "";
 
   renderDashboard(student);
   togglePage("profile");
-  setFeedback(`${student.name} সফলভাবে লগইন করেছেন।`, "success");
-  showToast("সাফল্যের সাথে লগইন হয়েছে!");
+  setFeedback(`${student.name} logged in successfully.`, "success");
+  showToast("Logged in successfully!");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
@@ -741,7 +1374,7 @@ async function initialize() {
 
   dom.dataModeBadge.textContent = result.modeLabel;
   dom.query.value = APP_CONFIG.defaultStudentQuery;
-  setFeedback("ডেমো লগইন করতে স্টুডেন্ট আইডি, ফোন বা ইমেইল ব্যবহার করুন।");
+  setFeedback("Use a student ID, phone number, or email for demo login.");
   togglePage("login");
 }
 
@@ -757,7 +1390,7 @@ dom.loginBtn.addEventListener("click", () => {
 
 dom.userProfile.addEventListener("click", () => {
   if (state.activeStudentId) {
-    logout();
+    openProfileModal();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 });
@@ -771,15 +1404,32 @@ document.querySelectorAll("[data-student-pill]").forEach((button) => {
 
 dom.closeVideoBtn.addEventListener("click", closeVideo);
 dom.videoBackdrop.addEventListener("click", closeVideo);
+dom.closeProfileBtn.addEventListener("click", closeProfileModal);
+dom.profileBackdrop.addEventListener("click", closeProfileModal);
+dom.profileBackBtn.addEventListener("click", closeProfileModal);
+dom.profileLogoutBtn.addEventListener("click", () => {
+  logout();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+});
+dom.profileResetLink.addEventListener("click", () => {
+  if (state.activeStudentId) {
+    showToast("Password reset option opened.", "info");
+  }
+});
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
+    if (!dom.profileModal.classList.contains("hidden")) {
+      closeProfileModal();
+      return;
+    }
+
     closeVideo();
   }
 });
 
 initialize().catch((error) => {
   console.error(error);
-  setFeedback("ডাটা লোড করতে সমস্যা হয়েছে।", "error");
-  showToast("ডাটা লোড করা যায়নি।", "error");
+  setFeedback("Failed to load data.", "error");
+  showToast("Could not load data.", "error");
 });
