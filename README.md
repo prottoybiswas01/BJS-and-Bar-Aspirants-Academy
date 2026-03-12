@@ -14,7 +14,7 @@ This is a frontend prototype for a law-focused coaching portal that uses Tailwin
 - One student can access multiple courses at the same time
 - Course lessons are rendered from course-linked YouTube IDs
 - Student profile modal with course access and payment details
-- Payment-based video locking using Google Sheets approval dates
+- Payment-based video locking using monthly paid access or approval dates
 
 ## Admin workflow
 
@@ -83,7 +83,7 @@ id | title | message | publishedOn | status
 ### Enrollments
 
 ```text
-studentId | courseId | accessStartDate | accessEndDate | videoAccessUntil | lastPaymentDate | paymentDueDate | monthlyFee | status
+studentId | courseId | accessStartDate | accessEndDate | videoAccessUntil | lastPaymentDate | paymentDueDate | monthlyFee | status | paidMonths
 ```
 
 Meaning of the important columns:
@@ -97,16 +97,21 @@ Meaning of the important columns:
 - `paymentDueDate`: current paid-through date for monthly lesson access
 - `monthlyFee`: optional display value like `1500`
 - `status`: use `Active`, `Pending`, `Blocked`, `Suspended`, `Expired`
+- `paidMonths`: optional month list like `2026-01|2026-03`; when this field is used, only lessons uploaded in those months unlock
 
 ## Payment-based video locking
 
-This system now works like a monthly utility bill:
+This system supports two locking modes:
 
-- If a student pays for one month, set `paymentDueDate` to the last date of that paid period
+- Month-based access:
+- Write `paidMonths` as a pipe-separated list such as `2026-01|2026-03`
+- A student can watch only the lessons whose `releaseDate` month appears in `paidMonths`
+- If February is missing from `paidMonths`, all February uploads stay locked even if January and March are paid
+- If the student pays on March 15, you still write `2026-03`; that unlocks all March uploads for that course
+- Legacy continuous access:
+- If you prefer the old model, leave `paidMonths` empty and use `paymentDueDate`
 - The student will be able to watch every lesson uploaded on or before that paid-through date
-- Lessons uploaded after that paid-through date will stay locked until the next payment is recorded
-- When the next monthly payment is made, update `lastPaymentDate` and move `paymentDueDate` forward
-- If you want to unlock lessons manually up to a different date, fill `videoAccessUntil`
+- `videoAccessUntil` still works as a manual override
 - If you want to block the whole course manually, set `status=Blocked` or `status=Suspended`
 
 ## Student login approval flow
@@ -133,17 +138,18 @@ Example:
 ```text
 studentId: LAW-2026-014
 courseId: criminal-procedure-mastery
-videoAccessUntil: 2026-03-09
-lastPaymentDate: 2026-03-01
-paymentDueDate: 2026-04-10
+lastPaymentDate: 2026-03-15
+paymentDueDate: 2026-04-15
 monthlyFee: 1500
 status: Active
+paidMonths: 2026-01|2026-03
 ```
 
 With that row:
 
-- The student can watch every lesson in that course with `releaseDate <= 2026-04-10`
-- Lessons uploaded after `2026-04-10` stay locked until the next payment
+- The student can watch January 2026 uploads
+- February 2026 uploads stay locked
+- March 2026 uploads unlock even if payment happened on March 15
 - If you need a manual override, set `videoAccessUntil` to a different approved date
 
 ## Course assignment rules

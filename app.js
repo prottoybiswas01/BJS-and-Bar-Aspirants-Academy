@@ -121,7 +121,7 @@ const demoData = {
       title: "State structure, separation of powers, and court hierarchy",
       duration: "48 min",
       youtubeId: "M7lc1UVf-VE",
-      releaseDate: "2026-03-05",
+      releaseDate: "2026-01-05",
       resources: ["PDF outline", "MCQ drill set"],
       note: "Start here if the student is new to judiciary preparation.",
     },
@@ -132,7 +132,7 @@ const demoData = {
       title: "Natural justice and judicial review essentials",
       duration: "44 min",
       youtubeId: "ysz5S6PUM-U",
-      releaseDate: "2026-03-08",
+      releaseDate: "2026-02-08",
       resources: ["Case digest", "Revision notes"],
       note: "Pairs well with constitutional case memorization.",
     },
@@ -154,7 +154,7 @@ const demoData = {
       title: "From FIR to police report: the criminal process map",
       duration: "41 min",
       youtubeId: "aqz-KE-bpKQ",
-      releaseDate: "2026-03-04",
+      releaseDate: "2026-02-04",
       resources: ["Flowchart", "Section list"],
       note: "Covers the entire process in one class.",
     },
@@ -187,7 +187,7 @@ const demoData = {
       title: "How to draft a plaint with proper heading and cause title",
       duration: "39 min",
       youtubeId: "M7lc1UVf-VE",
-      releaseDate: "2026-03-02",
+      releaseDate: "2026-02-02",
       resources: ["Plaint template", "Checklist"],
       note: "Foundational class for new drafting students.",
     },
@@ -220,7 +220,7 @@ const demoData = {
       title: "Legal ethics and courtroom etiquette drill",
       duration: "28 min",
       youtubeId: "M7lc1UVf-VE",
-      releaseDate: "2026-03-06",
+      releaseDate: "2026-01-06",
       resources: ["Ethics flashcards", "Quick answer sheet"],
       note: "Short warm-up session for viva readiness.",
     },
@@ -231,7 +231,7 @@ const demoData = {
       title: "How to answer direct statutory questions in viva",
       duration: "31 min",
       youtubeId: "ScMzIvxBSi4",
-      releaseDate: "2026-03-12",
+      releaseDate: "2026-02-12",
       resources: ["Question bank", "Voice practice cues"],
       note: "Best used right before mock viva.",
     },
@@ -242,10 +242,11 @@ const demoData = {
       courseId: "judiciary-foundation",
       accessStartDate: "2026-01-01",
       accessEndDate: "2026-07-31",
-      videoAccessUntil: "2026-03-13",
-      lastPaymentDate: "2026-03-05",
-      paymentDueDate: "2026-04-05",
+      videoAccessUntil: "",
+      lastPaymentDate: "2026-03-15",
+      paymentDueDate: "2026-04-15",
       monthlyFee: "1500",
+      paidMonths: ["2026-01", "2026-03"],
       status: "Active",
     },
     {
@@ -253,10 +254,11 @@ const demoData = {
       courseId: "criminal-procedure-mastery",
       accessStartDate: "2026-02-10",
       accessEndDate: "2026-08-10",
-      videoAccessUntil: "2026-03-09",
-      lastPaymentDate: "2026-03-01",
-      paymentDueDate: "2026-04-10",
+      videoAccessUntil: "",
+      lastPaymentDate: "2026-03-15",
+      paymentDueDate: "2026-04-15",
       monthlyFee: "1500",
+      paidMonths: ["2026-03"],
       status: "Active",
     },
     {
@@ -264,10 +266,11 @@ const demoData = {
       courseId: "legal-drafting-lab",
       accessStartDate: "2026-02-20",
       accessEndDate: "2026-06-30",
-      videoAccessUntil: "2026-03-07",
+      videoAccessUntil: "",
       lastPaymentDate: "2026-02-28",
       paymentDueDate: "2026-03-30",
       monthlyFee: "1500",
+      paidMonths: ["2026-02"],
       status: "Active",
     },
     {
@@ -286,10 +289,11 @@ const demoData = {
       courseId: "criminal-procedure-mastery",
       accessStartDate: "2026-02-01",
       accessEndDate: "2026-06-15",
-      videoAccessUntil: "2026-03-12",
+      videoAccessUntil: "",
       lastPaymentDate: "2026-03-02",
       paymentDueDate: "2026-04-02",
       monthlyFee: "1500",
+      paidMonths: ["2026-02", "2026-03"],
       status: "Active",
     },
     {
@@ -387,6 +391,79 @@ function parseList(value) {
     .split(/[|,]/)
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function toMonthKey(year, monthNumber) {
+  const numericMonth = Number(monthNumber);
+  if (!year || numericMonth < 1 || numericMonth > 12) {
+    return "";
+  }
+
+  return `${String(year).padStart(4, "0")}-${String(numericMonth).padStart(2, "0")}`;
+}
+
+function parseMonthValue(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+
+  const isoLikeMatch = text.match(/^(\d{4})[-/](\d{1,2})(?:[-/]\d{1,2})?$/);
+  if (isoLikeMatch) {
+    return toMonthKey(isoLikeMatch[1], isoLikeMatch[2]);
+  }
+
+  const leadingIsoMatch = text.match(/^(\d{4})-(\d{1,2})/);
+  if (leadingIsoMatch) {
+    return toMonthKey(leadingIsoMatch[1], leadingIsoMatch[2]);
+  }
+
+  const parsedDate = new Date(text);
+  if (!Number.isNaN(parsedDate.getTime())) {
+    return toMonthKey(parsedDate.getFullYear(), parsedDate.getMonth() + 1);
+  }
+
+  const monthNameDate = new Date(`1 ${text}`);
+  if (!Number.isNaN(monthNameDate.getTime())) {
+    return toMonthKey(monthNameDate.getFullYear(), monthNameDate.getMonth() + 1);
+  }
+
+  return "";
+}
+
+function parsePaidMonthList(value) {
+  const values = Array.isArray(value)
+    ? value
+    : String(value || "")
+        .split(/[|,\n]/)
+        .map((item) => item.trim())
+        .filter(Boolean);
+
+  return [...new Set(values.map((item) => parseMonthValue(item)).filter(Boolean))].sort();
+}
+
+function formatMonthKey(monthKey, fallback = "Month unavailable") {
+  const normalizedKey = parseMonthValue(monthKey);
+  if (!normalizedKey) {
+    return fallback;
+  }
+
+  const [year, month] = normalizedKey.split("-");
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  return `${monthNames[Number(month) - 1]} ${year}`;
+}
+
+function formatPaidMonthList(monthKeys, fallback = "Not set") {
+  const normalizedKeys = parsePaidMonthList(monthKeys);
+  if (!normalizedKeys.length) {
+    return fallback;
+  }
+
+  return normalizedKeys.map((monthKey) => formatMonthKey(monthKey)).join(", ");
+}
+
+function hasPaidMonthAccess(entry) {
+  return Array.isArray(entry.paidMonths) && entry.paidMonths.length > 0;
 }
 
 function normalizeData(raw) {
@@ -496,6 +573,13 @@ function normalizeData(raw) {
             enrollment.amount ||
             enrollment.monthlyAmount ||
             "",
+          paidMonths: parsePaidMonthList(
+            enrollment.paidMonths ||
+              enrollment.paymentMonths ||
+              enrollment.paidMonthList ||
+              enrollment.allowedMonths ||
+              ""
+          ),
           status: enrollment.status || "Active",
         }))
       );
@@ -655,6 +739,7 @@ function buildFallbackEnrollments(student) {
     accessStartDate: student.joinedOn || "",
     accessEndDate: "",
     paymentDueDate: "",
+    paidMonths: [],
     status: student.status || "Active",
   }));
 }
@@ -717,6 +802,10 @@ function getLatestValidDateValue(values) {
     .sort((left, right) => right.timestamp - left.timestamp)[0] || null;
 }
 
+function getManualVideoAccessTimestamp(entry) {
+  return parseTimestamp(entry.videoAccessUntil);
+}
+
 function getLessonAvailabilityDate(entry) {
   const paidUnlockDate = getLatestValidDateValue([entry.videoAccessUntil, entry.paymentDueDate]);
   const courseEndDate = getLatestValidDateValue([entry.accessEndDate]);
@@ -733,6 +822,14 @@ function getEffectiveVideoAccessTimestamp(entry) {
   const accessUntilTimestamp = parseTimestamp(getLessonAvailabilityDate(entry)) ?? fallbackTimestamp;
 
   return Math.min(accessUntilTimestamp, Date.now());
+}
+
+function getEnrollmentVideoAccessSummary(entry) {
+  if (hasPaidMonthAccess(entry)) {
+    return formatPaidMonthList(entry.paidMonths);
+  }
+
+  return formatDate(getLessonAvailabilityDate(entry), "Not set");
 }
 
 function getLessonAccessState(entry, lesson) {
@@ -762,6 +859,45 @@ function getLessonAccessState(entry, lesson) {
         "the selected date"
       )}.`,
       status: "outside-window",
+    };
+  }
+
+  const accessEndTimestamp = parseTimestamp(entry.accessEndDate);
+  if (accessEndTimestamp !== null && releaseTimestamp > accessEndTimestamp) {
+    return {
+      canWatch: false,
+      reason: `This lesson is outside the approved access window that ends on ${formatDate(
+        entry.accessEndDate,
+        "the selected date"
+      )}.`,
+      status: "outside-window",
+    };
+  }
+
+  const manualVideoAccessTimestamp = getManualVideoAccessTimestamp(entry);
+  if (manualVideoAccessTimestamp !== null && releaseTimestamp <= manualVideoAccessTimestamp) {
+    return {
+      canWatch: true,
+      reason: "",
+      status: "open",
+    };
+  }
+
+  if (hasPaidMonthAccess(entry)) {
+    const lessonMonthKey = parseMonthValue(lesson.releaseDate);
+    if (!lessonMonthKey || entry.paidMonths.includes(lessonMonthKey)) {
+      return {
+        canWatch: true,
+        reason: "",
+        status: "open",
+      };
+    }
+
+    const lessonMonthLabel = formatMonthKey(lessonMonthKey, "this month");
+    return {
+      canWatch: false,
+      reason: `This lesson was uploaded in ${lessonMonthLabel}. That month is not marked as paid for this course.`,
+      status: "payment-required",
     };
   }
 
@@ -862,6 +998,15 @@ function getProfileAccessSummary(courseEntries) {
 }
 
 function getProfileVideoAccessSummary(courseEntries) {
+  if (courseEntries.some((entry) => hasPaidMonthAccess(entry))) {
+    if (!courseEntries.every((entry) => hasPaidMonthAccess(entry))) {
+      return "Varies by course";
+    }
+
+    const paidMonths = [...new Set(courseEntries.flatMap((entry) => entry.paidMonths || []))].sort();
+    return formatPaidMonthList(paidMonths, "Not set");
+  }
+
   const approvalDates = getSortedDateItems(
     courseEntries.map((entry) => getLessonAvailabilityDate(entry))
   );
@@ -1147,10 +1292,10 @@ function renderProfileModal(student, courseEntries) {
                 </div>
                 <div class="min-w-0 rounded-2xl border border-white bg-white p-4">
                   <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                    Videos Available Through
+                    Video Access
                   </p>
                   <p class="mt-2 break-words text-sm font-semibold leading-snug text-slate-800">
-                    ${formatDate(getLessonAvailabilityDate(entry), "Not set")}
+                    ${getEnrollmentVideoAccessSummary(entry)}
                   </p>
                 </div>
                 <div class="min-w-0 rounded-2xl border border-white bg-white p-4">
@@ -1297,7 +1442,7 @@ function renderCourseList(student, courseEntries) {
                     Access: ${formatDateRange(entry.accessStartDate, entry.accessEndDate)}
                   </span>
                   <span class="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-700">
-                    Available Through: ${formatDate(getLessonAvailabilityDate(entry), "Not set")}
+                    Video Access: ${getEnrollmentVideoAccessSummary(entry)}
                   </span>
                   <span class="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-bold text-emerald-700">
                     Unlocked Videos: ${formatNumber(unlockedCount)}
