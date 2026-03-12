@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dada Class | Law Learning Portal</title>
+    <meta
+      name="description"
+      content="A polished law coaching portal designed for Google Sheets-driven student access and YouTube lesson delivery."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              court: {
+                50: "#f6efe5",
+                100: "#eadcc3",
+                200: "#d8be8d",
+                500: "#b88746",
+                700: "#8d6334",
+                900: "#4a3016",
+              },
+              ink: "#0f172a",
+              ember: "#8c4a2f",
+              sage: "#5e6d58",
+              sand: "#f8f2e9",
+              gold: "#d4af68",
+            },
+            fontFamily: {
+              display: ['"Cormorant Garamond"', "serif"],
+              sans: ['"Plus Jakarta Sans"', "sans-serif"],
+            },
+            boxShadow: {
+              velvet: "0 30px 80px rgba(15, 23, 42, 0.14)",
+              docket: "0 16px 42px rgba(74, 48, 22, 0.12)",
+            },
+            backgroundImage: {
+              ledger:
+                "radial-gradient(circle at 1px 1px, rgba(74, 48, 22, 0.1) 1px, transparent 0)",
+            },
+          },
+        },
+      };
+    </script>
+  </head>
+  <body class="min-h-screen bg-court-50 font-sans text-ink antialiased">
+    <div class="fixed inset-0 -z-10 overflow-hidden">
+      <div class="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(212,175,104,0.25),_transparent_36%),linear-gradient(180deg,_rgba(248,242,233,0.96),_rgba(246,239,229,0.98))]"></div>
+      <div class="absolute left-[-8rem] top-24 h-72 w-72 rounded-full bg-amber-300/20 blur-3xl"></div>
+      <div class="absolute right-[-6rem] top-0 h-96 w-96 rounded-full bg-court-500/15 blur-3xl"></div>
+      <div class="absolute bottom-0 left-1/2 h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-slate-900/5 blur-3xl"></div>
+    </div>
+
+    <header class="mx-auto flex max-w-7xl items-center justify-between px-6 py-8 lg:px-10">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-[0.4em] text-court-700">Dada Class</p>
+        <h1 class="mt-2 font-display text-3xl font-bold text-court-900 md:text-4xl">
+          Law Learning, Managed From One Sheet
+        </h1>
+      </div>
+      <nav class="hidden items-center gap-8 text-sm font-medium text-slate-700 md:flex">
+        <a class="transition hover:text-court-900" href="#portal">Student Portal</a>
+        <a class="transition hover:text-court-900" href="#workflow">Workflow</a>
+        <a class="transition hover:text-court-900" href="#blueprint">Sheet Blueprint</a>
+      </nav>
+    </header>
+
+    <main class="mx-auto max-w-7xl space-y-10 px-6 pb-16 lg:px-10">
+      <section class="grid gap-8 xl:grid-cols-[1.2fr_0.8fr]">
+        <div class="rounded-[2rem] border border-white/70 bg-white/75 p-8 shadow-velvet backdrop-blur">
+          <div class="inline-flex items-center gap-3 rounded-full border border-court-200 bg-court-50 px-4 py-2 text-sm font-medium text-court-800">
+            <span class="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
+            Built for judiciary, bar, and legal drafting students
+          </div>
+          <div class="mt-8 max-w-3xl">
+            <h2 class="font-display text-5xl font-bold leading-[0.95] text-court-900 md:text-6xl">
+              A cleaner student portal for your coaching center, with YouTube classes and Google
+              Sheets control.
+            </h2>
+            <p class="mt-6 max-w-2xl text-base leading-8 text-slate-700 md:text-lg">
+              This version is structured so one student can access two, three, or more courses at
+              the same time. You decide the assigned courses in a Google Sheet, and the portal
+              automatically shows only the relevant classes, notices, and schedule.
+            </p>
+          </div>
+
+          <div class="mt-10 flex flex-wrap gap-4">
+            <a
+              href="#access"
+              class="inline-flex items-center rounded-full bg-court-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-court-700"
+              >Open Student Access</a
+            >
+            <a
+              href="#blueprint"
+              class="inline-flex items-center rounded-full border border-court-300 bg-white px-6 py-3 text-sm font-semibold text-court-900 transition hover:border-court-500 hover:text-court-700"
+              >See Google Sheet Structure</a
+            >
+          </div>
+
+          <div class="mt-12 grid gap-4 md:grid-cols-3">
+            <div class="rounded-3xl border border-court-100 bg-sand p-5 shadow-docket">
+              <p class="text-xs font-semibold uppercase tracking-[0.35em] text-court-700">Control</p>
+              <h3 class="mt-3 text-xl font-semibold text-court-900">One workbook for all access</h3>
+              <p class="mt-2 text-sm leading-6 text-slate-700">
+                Students, courses, lessons, and notices stay organized in separate Google Sheet
+                tabs.
+              </p>
+            </div>
+            <div class="rounded-3xl border border-court-100 bg-white p-5 shadow-docket">
+              <p class="text-xs font-semibold uppercase tracking-[0.35em] text-amber-700">Courses</p>
+              <h3 class="mt-3 text-xl font-semibold text-court-900">Multi-course enrollment</h3>
+              <p class="mt-2 text-sm leading-6 text-slate-700">
+                A single student can be enrolled in judiciary prep, criminal law, drafting, or any
+                other track together.
+              </p>
+            </div>
+            <div class="rounded-3xl border border-court-100 bg-white p-5 shadow-docket">
+              <p class="text-xs font-semibold uppercase tracking-[0.35em] text-emerald-700">Delivery</p>
+              <h3 class="mt-3 text-xl font-semibold text-court-900">YouTube lesson pipeline</h3>
+              <p class="mt-2 text-sm leading-6 text-slate-700">
+                Add a lesson title and YouTube ID to the sheet, then the portal renders the video
+                instantly.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div class="rounded-[2rem] border border-court-200 bg-court-900 p-8 text-white shadow-velvet">
+          <div class="flex items-center justify-between">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.35em] text-court-200">
+                Coaching Snapshot
+              </p>
+              <h3 class="mt-3 font-display text-4xl font-bold">Portal at a glance</h3>
+            </div>
+            <div class="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-court-100">
+              Tailwind + JS
+            </div>
+          </div>
+
+          <div class="mt-8 grid gap-4">
+            <div class="rounded-3xl border border-white/10 bg-white/10 p-5">
+              <p class="text-sm text-court-100">Student identity card</p>
+              <p class="mt-2 text-2xl font-semibold">Profile, batch, status, and active courses</p>
+            </div>
+            <div class="rounded-3xl border border-white/10 bg-gradient-to-br from-white/15 to-transparent p-5">
+              <p class="text-sm text-court-100">Course routing</p>
+              <p class="mt-2 text-2xl font-semibold">Separate tabs for each enrolled law program</p>
+            </div>
+            <div class="rounded-3xl border border-white/10 bg-white/5 p-5">
+              <p class="text-sm text-court-100">Operations model</p>
+              <p class="mt-2 text-2xl font-semibold">Google Sheet as source of truth, portal as student-facing layer</p>
+            </div>
+          </div>
+
+          <div class="mt-8 rounded-[1.75rem] border border-court-700 bg-court-800/90 p-6">
+            <p class="text-xs font-semibold uppercase tracking-[0.35em] text-court-200">Live idea</p>
+            <p class="mt-4 text-lg leading-8 text-court-100">
+              Start with Google Sheet control first. If you want, this can later be expanded into a
+              secured admin panel without changing the student-facing layout.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section
+        id="workflow"
+        class="grid gap-4 rounded-[2rem] border border-court-200 bg-white/70 p-6 shadow-docket backdrop-blur lg:grid-cols-3"
+      >
+        <div class="rounded-3xl border border-court-100 bg-sand p-5">
+          <p class="text-sm font-semibold uppercase tracking-[0.3em] text-court-700">Step 01</p>
+          <h3 class="mt-3 text-xl font-semibold text-court-900">Define the student</h3>
+          <p class="mt-2 text-sm leading-7 text-slate-700">
+            Put the student ID, batch, phone, and a pipe-separated list of course IDs inside the
+            Students tab.
+          </p>
+        </div>
+        <div class="rounded-3xl border border-court-100 bg-white p-5">
+          <p class="text-sm font-semibold uppercase tracking-[0.3em] text-court-700">Step 02</p>
+          <h3 class="mt-3 text-xl font-semibold text-court-900">Add course lessons</h3>
+          <p class="mt-2 text-sm leading-7 text-slate-700">
+            Every new YouTube class is linked by courseId, so lessons automatically appear in the
+            correct student dashboard.
+          </p>
+        </div>
+        <div class="rounded-3xl border border-court-100 bg-white p-5">
+          <p class="text-sm font-semibold uppercase tracking-[0.3em] text-court-700">Step 03</p>
+          <h3 class="mt-3 text-xl font-semibold text-court-900">Publish and update</h3>
+          <p class="mt-2 text-sm leading-7 text-slate-700">
+            One Apps Script endpoint exposes the workbook as JSON. The portal fetches it and updates
+            the student experience.
+          </p>
+        </div>
+      </section>
+
+      <section
+        id="access"
+        class="rounded-[2rem] border border-court-200 bg-gradient-to-br from-court-900 to-slate-950 p-8 text-white shadow-velvet"
+      >
+        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p class="text-xs font-semibold uppercase tracking-[0.35em] text-court-200">
+              Student Access
+            </p>
+            <h2 class="mt-3 font-display text-4xl font-bold">Load a student profile</h2>
+            <p class="mt-3 max-w-2xl text-sm leading-7 text-court-100">
+              Search by student ID, phone, or email. In a production setup, this should be replaced
+              with real authentication, but this prototype already proves the multi-course logic and
+              sheet-driven structure.
+            </p>
+          </div>
+          <div class="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-court-100">
+            <span class="font-semibold text-white">Data mode:</span>
+            <span id="data-mode-badge">Demo data</span>
+          </div>
+        </div>
+
+        <form id="lookup-form" class="mt-8 grid gap-4 lg:grid-cols-[1fr_auto]">
+          <label class="rounded-[1.5rem] border border-white/10 bg-white/10 p-2 backdrop-blur">
+            <span class="sr-only">Search student</span>
+            <input
+              id="student-query"
+              type="text"
+              placeholder="Try LAW-2026-014"
+              class="w-full rounded-[1rem] border border-transparent bg-transparent px-5 py-4 text-base text-white outline-none placeholder:text-court-100"
+            />
+          </label>
+          <button
+            type="submit"
+            class="rounded-[1.5rem] bg-white px-7 py-4 text-sm font-semibold text-court-900 transition hover:bg-court-100"
+          >
+            Open portal
+          </button>
+        </form>
+
+        <div class="mt-5 flex flex-wrap gap-3">
+          <button
+            type="button"
+            data-student-pill="LAW-2026-014"
+            class="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-court-100 transition hover:bg-white/15"
+          >
+            LAW-2026-014
+          </button>
+          <button
+            type="button"
+            data-student-pill="BAR-2026-008"
+            class="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-court-100 transition hover:bg-white/15"
+          >
+            BAR-2026-008
+          </button>
+          <button
+            type="button"
+            data-student-pill="LIT-2026-031"
+            class="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-court-100 transition hover:bg-white/15"
+          >
+            LIT-2026-031
+          </button>
+        </div>
+
+        <p id="lookup-feedback" class="mt-4 text-sm text-court-100"></p>
+      </section>
+
+      <section id="portal" class="grid gap-6 xl:grid-cols-12">
+        <aside class="space-y-6 xl:col-span-4">
+          <div id="student-card" class="min-h-[18rem] rounded-[2rem] border border-court-200 bg-white p-6 shadow-docket"></div>
+          <div
+            id="student-progress"
+            class="rounded-[2rem] border border-court-200 bg-white p-6 shadow-docket"
+          ></div>
+          <div
+            id="student-course-stack"
+            class="rounded-[2rem] border border-court-200 bg-white p-6 shadow-docket"
+          ></div>
+        </aside>
+
+        <div class="space-y-6 xl:col-span-8">
+          <div
+            id="course-overview"
+            class="rounded-[2rem] border border-court-200 bg-white p-6 shadow-docket"
+          ></div>
+
+          <div class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+            <div
+              id="player-panel"
+              class="rounded-[2rem] border border-court-200 bg-white p-6 shadow-docket"
+            ></div>
+            <div
+              id="lesson-list"
+              class="rounded-[2rem] border border-court-200 bg-white p-6 shadow-docket"
+            ></div>
+          </div>
+
+          <div class="grid gap-6 lg:grid-cols-2">
+            <div
+              id="notice-list"
+              class="rounded-[2rem] border border-court-200 bg-white p-6 shadow-docket"
+            ></div>
+            <div
+              id="sheet-blueprint"
+              class="rounded-[2rem] border border-court-200 bg-white p-6 shadow-docket"
+            ></div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="border-t border-court-200/80 bg-white/60 backdrop-blur">
+      <div class="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-6 text-sm text-slate-600 lg:flex-row lg:items-center lg:justify-between lg:px-10">
+        <p>Frontend prototype for a law-focused coaching portal using Tailwind CSS and JavaScript.</p>
+        <p>For production: add secure student authentication before publishing publicly.</p>
+      </div>
+    </footer>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
