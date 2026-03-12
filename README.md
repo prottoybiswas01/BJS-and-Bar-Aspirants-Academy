@@ -77,21 +77,19 @@ Rules:
 
 ## Apps Script deployment
 
+The frontend is currently configured to use this deployed Apps Script web app:
+
+- Deployment ID: `AKfycbxdJm41u61WYLFeu9hqzIYiyLxs-k_daoHj8o2gitynv03J5bVzXsOjKWHHKvrWXdukKA`
+- Web app endpoint: `https://script.google.com/macros/s/AKfycbxdJm41u61WYLFeu9hqzIYiyLxs-k_daoHj8o2gitynv03J5bVzXsOjKWHHKvrWXdukKA/exec`
+- Library: `https://script.google.com/macros/library/d/1u2Q2yRUGeRYvTFW66fe_cVcM6-eBz8W4qogdhoh5w1r6WcqfehWjUdHy/1`
+
+If you redeploy later:
+
 1. Open the spreadsheet.
 2. Open Extensions -> Apps Script.
 3. Paste the contents of `google-apps-script.gs`.
 4. Deploy as a Web App with read access.
-5. Copy the deployment URL.
-
-Then open `app.js` and switch:
-
-```js
-const APP_CONFIG = Object.freeze({
-  dataMode: "remote",
-  remoteEndpoint: "YOUR_APPS_SCRIPT_WEB_APP_URL",
-  defaultStudentQuery: "LAW-2026-014",
-});
-```
+5. Replace the deployment ID at the top of `app.js`.
 
 ## Local usage
 

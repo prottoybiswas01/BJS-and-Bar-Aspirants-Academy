@@ -1,6 +1,9 @@
+const APPS_SCRIPT_DEPLOYMENT_ID =
+  "AKfycbxdJm41u61WYLFeu9hqzIYiyLxs-k_daoHj8o2gitynv03J5bVzXsOjKWHHKvrWXdukKA";
+
 const APP_CONFIG = Object.freeze({
-  dataMode: "demo",
-  remoteEndpoint: "",
+  dataMode: "remote",
+  remoteEndpoint: `https://script.google.com/macros/s/${APPS_SCRIPT_DEPLOYMENT_ID}/exec`,
   defaultStudentQuery: "LAW-2026-014",
 });
 
@@ -480,7 +483,8 @@ function getProgress(student, courseId) {
     };
   }
 
-  const completed = lessons.filter((lesson) => student.completedLessonIds.includes(lesson.id)).length;
+  const completed = lessons.filter((lesson) => student.completedLessonIds.includes(lesson.id))
+    .length;
   return {
     completed,
     total: lessons.length,
