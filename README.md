@@ -39,6 +39,8 @@ Create one spreadsheet with these tabs:
 4. `Notices`
 5. `Enrollments`
 
+If you use more than one spreadsheet, this project should read from one main Google Sheet only. If your Apps Script is standalone or you keep switching files, paste the main sheet ID into `SPREADSHEET_ID` inside `google-apps-script.gs`.
+
 Recommended columns:
 
 ### Students
@@ -57,7 +59,7 @@ Important login columns:
 ### Courses
 
 ```text
-courseId | title | shortTitle | faculty | category | schedule | nextLive | description | tone
+id | title | shortTitle | faculty | category | schedule | nextLive | description
 ```
 
 ### Lessons
@@ -155,9 +157,18 @@ With that row:
 
 The frontend is currently configured to use this deployed Apps Script web app:
 
-- Deployment ID: `AKfycbxdJm41u61WYLFeu9hqzIYiyLxs-k_daoHj8o2gitynv03J5bVzXsOjKWHHKvrWXdukKA`
-- Web app endpoint: `https://script.google.com/macros/s/AKfycbxdJm41u61WYLFeu9hqzIYiyLxs-k_daoHj8o2gitynv03J5bVzXsOjKWHHKvrWXdukKA/exec`
-- Library: `https://script.google.com/macros/library/d/1u2Q2yRUGeRYvTFW66fe_cVcM6-eBz8W4qogdhoh5w1r6WcqfehWjUdHy/1`
+- Deployment ID: `AKfycbyi6_FD_KA_Gk_DD8NgtHBQLwf2ncobjdwp-ZSc5XOSXWZd4E80oQXRNzElxitXF-VD`
+- Web app endpoint: `https://script.google.com/macros/s/AKfycbyi6_FD_KA_Gk_DD8NgtHBQLwf2ncobjdwp-ZSc5XOSXWZd4E80oQXRNzElxitXF-VD/exec`
+- Library: `https://script.google.com/macros/library/d/1ncU_s4ZSPtOBR7IYu_D1br4dPE78Zyvi3MSPLVKqFFvmv93OdGnLZtyf/1`
+
+Connection flow:
+
+- `app.js` uses the deployed `/exec` URL as the live data source
+- The deployed Apps Script runs the logic from `google-apps-script.gs`
+- `google-apps-script.gs` reads the `Students`, `Courses`, `Lessons`, `Notices`, and `Enrollments` sheets
+- Student login validation also goes through the same deployed Apps Script via `doPost`
+- `google-apps-script.gs` can be locked to one spreadsheet with `SPREADSHEET_ID`
+- Open `/exec?action=status` to confirm which spreadsheet the deployment is actually reading
 
 If you redeploy later:
 
@@ -167,6 +178,7 @@ If you redeploy later:
 4. Deploy as a Web App with read access.
 5. Replace the deployment ID at the top of `app.js`.
 6. Run `setupLawPortalSheets()` once if you want Apps Script to create the recommended headers automatically.
+7. If data still does not show, set `SPREADSHEET_ID`, redeploy, and check `/exec?action=status`.
 
 ## Local usage
 

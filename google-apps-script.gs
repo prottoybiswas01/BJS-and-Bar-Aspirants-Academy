@@ -6,6 +6,11 @@ const SHEET_NAMES = {
   enrollments: "Enrollments",
 };
 
+// If you use a standalone Apps Script project or manage multiple spreadsheets,
+// paste the target Google Sheet ID here. Leave it blank only when the script is
+// bound directly to the same spreadsheet you want to use.
+const SPREADSHEET_ID = "1QvEuk1IL-yRZAtu8j54sNDIAHLoDUboBbxTZ6Bh4H20";
+
 const SHEET_HEADERS = {
   students: [
     "id",
@@ -53,41 +58,57 @@ const SHEET_HEADERS = {
 const APPROVED_LOGIN_VALUES = ["approved", "yes", "true", "allow", "allowed", "active", "1"];
 const BLOCKED_STATUS_VALUES = ["inactive", "blocked", "suspended", "expired"];
 
-function doGet() {
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  const students = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students));
+function doGet(e) {
+  try {
+    const request = parseRequest_(e);
+    if (String(request.action || "").trim().toLowerCase() === "status") {
+      return jsonOutput_(buildStatusPayload_());
+    }
 
-  const payload = {
-    generatedAt: new Date().toISOString(),
-    students: sanitizeStudents_(students),
-    courses: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses)),
-    lessons: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.lessons)),
-    notices: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.notices)),
-    enrollments: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.enrollments)),
-  };
+    const spreadsheet = getSpreadsheet_();
+    const students = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students));
 
-  return jsonOutput_(payload);
+    return jsonOutput_({
+      ok: true,
+      generatedAt: new Date().toISOString(),
+      spreadsheetId: spreadsheet.getId(),
+      spreadsheetName: spreadsheet.getName(),
+      students: sanitizeStudents_(students),
+      courses: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses)),
+      lessons: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.lessons)),
+      notices: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.notices)),
+      enrollments: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.enrollments)),
+    });
+  } catch (error) {
+    return errorOutput_(error);
+  }
 }
 
 function doPost(e) {
-  const request = parseRequest_(e);
+  try {
+    const request = parseRequest_(e);
 
-  if (request.action === "login") {
-    return handleLogin_(request);
+    if (request.action === "login") {
+      return handleLogin_(request);
+    }
+
+    return jsonOutput_({
+      ok: false,
+      message: "Unsupported request action.",
+    });
+  } catch (error) {
+    return errorOutput_(error);
   }
-
-  return jsonOutput_({
-    ok: false,
-    message: "Unsupported request action.",
-  });
 }
 
 function setupLawPortalSheets() {
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const spreadsheet = getSpreadsheet_();
 
   Object.keys(SHEET_NAMES).forEach((key) => {
     ensureSheetWithHeaders_(spreadsheet, SHEET_NAMES[key], SHEET_HEADERS[key] || []);
   });
+
+  return buildStatusPayload_();
 }
 
 function handleLogin_(request) {
@@ -108,7 +129,7 @@ function handleLogin_(request) {
     });
   }
 
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  const spreadsheet = getSpreadsheet_();
   const students = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students));
   const student = findStudentByQuery_(students, query);
 
@@ -239,6 +260,38 @@ function normalizeValue_(value) {
   return String(value || "").trim().toLowerCase();
 }
 
+function getSpreadsheet_() {
+  if (SPREADSHEET_ID) {
+    return SpreadsheetApp.openById(SPREADSHEET_ID);
+  }
+
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  if (spreadsheet) {
+    return spreadsheet;
+  }
+
+  throw new Error(
+    "No spreadsheet is connected. Bind this Apps Script to a Google Sheet or set SPREADSHEET_ID."
+  );
+}
+
+function buildStatusPayload_() {
+  const spreadsheet = getSpreadsheet_();
+  const sheetNames = spreadsheet.getSheets().map((sheet) => sheet.getName());
+  const requiredSheetNames = Object.keys(SHEET_NAMES).map((key) => SHEET_NAMES[key]);
+
+  return {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    spreadsheetId: spreadsheet.getId(),
+    spreadsheetName: spreadsheet.getName(),
+    spreadsheetUrl: spreadsheet.getUrl(),
+    requiredSheets: requiredSheetNames,
+    availableSheets: sheetNames,
+    missingSheets: requiredSheetNames.filter((sheetName) => sheetNames.indexOf(sheetName) === -1),
+  };
+}
+
 function ensureSheetWithHeaders_(spreadsheet, sheetName, headers) {
   let sheet = spreadsheet.getSheetByName(sheetName);
 
@@ -265,4 +318,11 @@ function jsonOutput_(payload) {
   return ContentService.createTextOutput(JSON.stringify(payload)).setMimeType(
     ContentService.MimeType.JSON
   );
+}
+
+function errorOutput_(error) {
+  return jsonOutput_({
+    ok: false,
+    message: error && error.message ? error.message : "Unknown Apps Script error.",
+  });
 }
