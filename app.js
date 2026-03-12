@@ -711,10 +711,27 @@ function isEnrollmentBlocked(entry) {
   return normalized === "blocked" || normalized === "suspended";
 }
 
+function getLatestValidDateValue(values) {
+  return values
+    .map((value) => ({ raw: value, timestamp: parseTimestamp(value) }))
+    .filter((item) => item.timestamp !== null)
+    .sort((left, right) => right.timestamp - left.timestamp)[0] || null;
+}
+
+function getLessonAvailabilityDate(entry) {
+  const paidUnlockDate = getLatestValidDateValue([entry.videoAccessUntil, entry.paymentDueDate]);
+  const courseEndDate = getLatestValidDateValue([entry.accessEndDate]);
+
+  if (paidUnlockDate && courseEndDate) {
+    return paidUnlockDate.timestamp <= courseEndDate.timestamp ? paidUnlockDate.raw : courseEndDate.raw;
+  }
+
+  return paidUnlockDate?.raw || courseEndDate?.raw || "";
+}
+
 function getEffectiveVideoAccessTimestamp(entry) {
   const fallbackTimestamp = Date.now();
-  const accessUntilTimestamp =
-    parseTimestamp(entry.videoAccessUntil) ?? parseTimestamp(entry.accessEndDate) ?? fallbackTimestamp;
+  const accessUntilTimestamp = parseTimestamp(getLessonAvailabilityDate(entry)) ?? fallbackTimestamp;
 
   return Math.min(accessUntilTimestamp, Date.now());
 }
@@ -751,10 +768,7 @@ function getLessonAccessState(entry, lesson) {
 
   const effectiveAccessTimestamp = getEffectiveVideoAccessTimestamp(entry);
   if (releaseTimestamp > effectiveAccessTimestamp) {
-    const approvedUntilLabel = formatDate(
-      entry.videoAccessUntil || entry.accessEndDate,
-      "the approved date"
-    );
+    const approvedUntilLabel = formatDate(getLessonAvailabilityDate(entry), "the available date");
     return {
       canWatch: false,
       reason: `New lessons after ${approvedUntilLabel} are not available yet.`,
@@ -850,7 +864,7 @@ function getProfileAccessSummary(courseEntries) {
 
 function getProfileVideoAccessSummary(courseEntries) {
   const approvalDates = getSortedDateItems(
-    courseEntries.map((entry) => entry.videoAccessUntil || entry.accessEndDate)
+    courseEntries.map((entry) => getLessonAvailabilityDate(entry))
   );
 
   if (approvalDates.length) {
@@ -858,11 +872,8 @@ function getProfileVideoAccessSummary(courseEntries) {
     return formatDate(selected.raw, "Not set");
   }
 
-  const fallback =
-    [...courseEntries].reverse().find((entry) => entry.videoAccessUntil || entry.accessEndDate)
-      ?.videoAccessUntil ||
-    [...courseEntries].reverse().find((entry) => entry.accessEndDate)?.accessEndDate ||
-    "";
+  const fallbackEntry = [...courseEntries].reverse().find((entry) => getLessonAvailabilityDate(entry));
+  const fallback = fallbackEntry ? getLessonAvailabilityDate(fallbackEntry) : "";
   return formatDate(fallback, "Not set");
 }
 
@@ -1137,10 +1148,10 @@ function renderProfileModal(student, courseEntries) {
                 </div>
                 <div class="min-w-0 rounded-2xl border border-white bg-white p-4">
                   <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-                    Videos Unlocked Until
+                    Videos Available Through
                   </p>
                   <p class="mt-2 break-words text-sm font-semibold leading-snug text-slate-800">
-                    ${formatDate(entry.videoAccessUntil || entry.accessEndDate, "Not set")}
+                    ${formatDate(getLessonAvailabilityDate(entry), "Not set")}
                   </p>
                 </div>
                 <div class="min-w-0 rounded-2xl border border-white bg-white p-4">
@@ -1287,7 +1298,7 @@ function renderCourseList(student, courseEntries) {
                     Access: ${formatDateRange(entry.accessStartDate, entry.accessEndDate)}
                   </span>
                   <span class="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-700">
-                    Approved Until: ${formatDate(entry.videoAccessUntil || entry.accessEndDate, "Not set")}
+                    Available Through: ${formatDate(getLessonAvailabilityDate(entry), "Not set")}
                   </span>
                   <span class="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-bold text-emerald-700">
                     Unlocked Videos: ${formatNumber(unlockedCount)}

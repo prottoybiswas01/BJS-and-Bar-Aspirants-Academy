@@ -92,9 +92,9 @@ Meaning of the important columns:
 - `courseId`: the exact course ID
 - `accessStartDate`: when the student starts using the course
 - `accessEndDate`: overall course access window
-- `videoAccessUntil`: lessons with `releaseDate` after this date stay locked
+- `videoAccessUntil`: optional manual lesson-access date; if you fill it, it can extend availability beyond the default monthly cycle
 - `lastPaymentDate`: latest payment date
-- `paymentDueDate`: next payment deadline
+- `paymentDueDate`: current paid-through date for monthly lesson access
 - `monthlyFee`: optional display value like `1500`
 - `status`: use `Active`, `Pending`, `Blocked`, `Suspended`, `Expired`
 
@@ -102,11 +102,11 @@ Meaning of the important columns:
 
 This system now works like a monthly utility bill:
 
-- If a student has not paid for the new period, keep `videoAccessUntil` at the old approved date
-- The student will still be able to watch videos uploaded on or before that date
-- Videos uploaded after that date will show as locked
-- When payment is made, update `lastPaymentDate` and move `videoAccessUntil` forward
-- If you want the student to watch everything uploaded up to today, set `videoAccessUntil` to today
+- If a student pays for one month, set `paymentDueDate` to the last date of that paid period
+- The student will be able to watch every lesson uploaded on or before that paid-through date
+- Lessons uploaded after that paid-through date will stay locked until the next payment is recorded
+- When the next monthly payment is made, update `lastPaymentDate` and move `paymentDueDate` forward
+- If you want to unlock lessons manually up to a different date, fill `videoAccessUntil`
 - If you want to block the whole course manually, set `status=Blocked` or `status=Suspended`
 
 ## Student login approval flow
@@ -142,9 +142,9 @@ status: Active
 
 With that row:
 
-- The student can watch every lesson in that course with `releaseDate <= 2026-03-09`
-- Lessons uploaded after `2026-03-09` stay locked
-- After payment, change `videoAccessUntil` to the new approved date
+- The student can watch every lesson in that course with `releaseDate <= 2026-04-10`
+- Lessons uploaded after `2026-04-10` stay locked until the next payment
+- If you need a manual override, set `videoAccessUntil` to a different approved date
 
 ## Course assignment rules
 
