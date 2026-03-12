@@ -315,7 +315,7 @@ function handleLogin_(request) {
       ok: false,
       approved: false,
       studentId: getStudentId_(student),
-      message: "Login is pending admin approval.",
+      message: "This account is not ready for access right now.",
     });
   }
 

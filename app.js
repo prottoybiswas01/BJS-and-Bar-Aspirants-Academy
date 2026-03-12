@@ -320,7 +320,7 @@ const demoData = {
 
 const state = {
   data: null,
-  dataModeLabel: "Demo Data",
+  dataModeLabel: "",
   activeStudentId: "",
   openCourseId: "",
 };
@@ -413,7 +413,7 @@ function normalizeData(raw) {
       student.resetPasswordUrl ||
       student.forgotPasswordUrl ||
       "",
-    highlight: student.highlight || "Law student profile loaded from the workbook.",
+    highlight: student.highlight || "Your current lessons and updates are ready.",
     enrolledCourseIds: parseList(
       student.enrolledCourseIds || student.courseIds || student.courses || ""
     ),
@@ -591,7 +591,7 @@ function authenticateLocalStudent(query, password) {
     return {
       ok: false,
       studentId: student.id,
-      message: "Login is pending admin approval.",
+      message: "This account is not ready for access right now.",
     };
   }
 
@@ -757,7 +757,7 @@ function getLessonAccessState(entry, lesson) {
     );
     return {
       canWatch: false,
-      reason: `Payment approval is required for lessons uploaded after ${approvedUntilLabel}.`,
+      reason: `New lessons after ${approvedUntilLabel} are not available yet.`,
       status: "payment-required",
     };
   }
@@ -986,6 +986,12 @@ function setFeedback(message, type = "neutral") {
     neutral: "mt-5 text-sm text-slate-500",
   };
 
+  if (!message) {
+    dom.feedback.textContent = "";
+    dom.feedback.className = "hidden";
+    return;
+  }
+
   dom.feedback.textContent = message;
   dom.feedback.className = classMap[type] || classMap.neutral;
 }
@@ -1174,8 +1180,7 @@ function renderProfileModal(student, courseEntries) {
         .join("")
     : `
       <div class="rounded-[1.75rem] border border-dashed border-slate-200 bg-slate-50 p-6 text-sm text-slate-500 md:col-span-2">
-        No course access has been assigned to this student yet. Add a row in the Enrollments sheet
-        with this student ID and the target course ID.
+        No course details are available for this account yet.
       </div>
     `;
 }
@@ -1194,15 +1199,10 @@ function openProfileModal() {
 
 function renderCourseList(student, courseEntries) {
   if (!courseEntries.length) {
-    const emptyStateInstruction = state.data.hasEnrollmentSheet
-      ? 'Add a row in the <span class="font-semibold text-slate-700">Enrollments</span> sheet with the student ID and course ID.'
-      : 'Update the <span class="font-semibold text-slate-700">enrolledCourseIds</span> column in Google Sheets.';
-
     dom.courseList.innerHTML = `
       <div class="rounded-[2rem] border border-slate-100 bg-white p-8 text-center shadow-sm">
         <h3 class="text-2xl font-bold text-blue-950">No Courses Found</h3>
-        <p class="mt-3 text-slate-500">No courses are assigned to this student yet.</p>
-        <p class="mt-2 text-sm text-slate-500">${emptyStateInstruction}</p>
+        <p class="mt-3 text-slate-500">No courses are available for this account right now.</p>
       </div>
     `;
     return;
@@ -1414,7 +1414,7 @@ function renderCourseList(student, courseEntries) {
   dom.courseList.querySelectorAll("[data-video-id]").forEach((button) => {
     button.addEventListener("click", () => {
       if (button.dataset.videoLocked === "true") {
-        showToast(button.dataset.lockReason || "Payment approval is required to unlock this video.", "info");
+        showToast(button.dataset.lockReason || "This video is not available right now.", "info");
         return;
       }
 
@@ -1499,9 +1499,10 @@ async function initialize() {
   state.data = result.data;
   state.dataModeLabel = result.modeLabel;
 
-  dom.dataModeBadge.textContent = result.modeLabel;
+  dom.dataModeBadge.textContent = result.modeLabel || "";
   dom.query.value = APP_CONFIG.defaultStudentQuery;
-  setFeedback("Use your student ID, phone number, or email with password. Admin approval is required.");
+  dom.password.placeholder = "Enter your password";
+  setFeedback("");
   togglePage("login");
 }
 

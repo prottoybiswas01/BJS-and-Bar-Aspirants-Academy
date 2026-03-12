@@ -183,15 +183,13 @@
             <div>
               <h2 class="mb-2 text-3xl font-bold text-blue-950">Welcome Back!</h2>
               <p class="text-slate-500">
-                Sign in to access your law student portal and course dashboard.
+                Sign in to continue to your student portal.
               </p>
             </div>
             <div
               id="dataModeBadge"
-              class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500"
-            >
-              Loading Data
-            </div>
+              class="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500"
+            ></div>
           </div>
 
           <form id="lookup-form" class="space-y-5">
@@ -217,7 +215,6 @@
                 >
                   Password
                 </label>
-                <span class="text-xs text-blue-600">Password and admin approval are required</span>
               </div>
               <input
                 id="student-password"
@@ -233,35 +230,6 @@
               Enter Portal
             </button>
           </form>
-
-          <div class="mt-6">
-            <p class="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">
-              Demo Login
-            </p>
-            <div class="flex flex-wrap gap-2">
-              <button
-                type="button"
-                data-student-pill="LAW-2026-014"
-                class="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700"
-              >
-                LAW-2026-014
-              </button>
-              <button
-                type="button"
-                data-student-pill="BAR-2026-008"
-                class="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700"
-              >
-                BAR-2026-008
-              </button>
-              <button
-                type="button"
-                data-student-pill="LIT-2026-031"
-                class="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700"
-              >
-                LIT-2026-031
-              </button>
-            </div>
-          </div>
 
           <p id="loginFeedback" class="mt-5 text-sm text-slate-500"></p>
         </div>
@@ -548,9 +516,7 @@
                 <div class="min-w-0">
                   <h3 class="text-2xl font-bold text-blue-950">Course Access Details</h3>
                   <p class="mt-2 max-w-2xl text-sm text-slate-500">
-                    Only the courses assigned to this student ID in the Enrollments sheet will
-                    appear here. Lessons uploaded after the approved access date stay locked until
-                    payment is updated in the sheet.
+                    Your current course access details and lesson availability are shown here.
                   </p>
                 </div>
                 <a
