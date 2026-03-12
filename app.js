@@ -19,6 +19,8 @@ const demoData = {
       joinedOn: "2025-12-15",
       status: "Active",
       profileImage: "https://i.pravatar.cc/240?img=12",
+      password: "law014",
+      loginApproval: "Approved",
       passwordResetUrl:
         "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20LAW-2026-014",
       enrolledCourseIds: [
@@ -39,6 +41,8 @@ const demoData = {
       joinedOn: "2025-11-01",
       status: "Active",
       profileImage: "https://i.pravatar.cc/240?img=32",
+      password: "bar008",
+      loginApproval: "Approved",
       passwordResetUrl:
         "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20BAR-2026-008",
       enrolledCourseIds: ["bar-viva-clinic", "criminal-procedure-mastery"],
@@ -55,6 +59,8 @@ const demoData = {
       joinedOn: "2026-01-18",
       status: "Active",
       profileImage: "https://i.pravatar.cc/240?img=15",
+      password: "lit031",
+      loginApproval: "Pending",
       passwordResetUrl:
         "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20LIT-2026-031",
       enrolledCourseIds: ["legal-drafting-lab", "criminal-procedure-mastery"],
@@ -395,6 +401,13 @@ function normalizeData(raw) {
     joinedOn: student.joinedOn || "",
     status: student.status || "Active",
     profileImage: student.profileImage || student.photo || student.imageUrl || "",
+    password: student.password || student.loginPassword || student.portalPassword || "",
+    loginApproval:
+      student.loginApproval ||
+      student.approval ||
+      student.loginApproved ||
+      student.portalApproval ||
+      "",
     passwordResetUrl:
       student.passwordResetUrl ||
       student.resetPasswordUrl ||
@@ -545,6 +558,94 @@ function getStudentByQuery(query) {
 
 function getActiveStudent() {
   return state.data.students.find((student) => student.id === state.activeStudentId) || null;
+}
+
+function isLoginApprovalGranted(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["approved", "yes", "true", "allow", "allowed", "active", "1"].includes(normalized);
+}
+
+function isStudentLoginBlocked(student) {
+  const normalized = String(student.status || "").trim().toLowerCase();
+  return ["inactive", "blocked", "suspended", "expired"].includes(normalized);
+}
+
+function authenticateLocalStudent(query, password) {
+  const student = getStudentByQuery(query);
+  if (!student) {
+    return {
+      ok: false,
+      message: "No matching student was found.",
+    };
+  }
+
+  if (isStudentLoginBlocked(student)) {
+    return {
+      ok: false,
+      studentId: student.id,
+      message: "This student account is not active.",
+    };
+  }
+
+  if (!isLoginApprovalGranted(student.loginApproval)) {
+    return {
+      ok: false,
+      studentId: student.id,
+      message: "Login is pending admin approval.",
+    };
+  }
+
+  const storedPassword = String(student.password || "").trim();
+  if (!storedPassword) {
+    return {
+      ok: false,
+      studentId: student.id,
+      message: "Password has not been set for this student yet.",
+    };
+  }
+
+  if (storedPassword !== String(password || "").trim()) {
+    return {
+      ok: false,
+      studentId: student.id,
+      message: "Incorrect password.",
+    };
+  }
+
+  return {
+    ok: true,
+    studentId: student.id,
+    message: "Login approved.",
+  };
+}
+
+async function authenticateRemoteStudent(query, password) {
+  const response = await fetch(APP_CONFIG.remoteEndpoint, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+    },
+    body: new URLSearchParams({
+      action: "login",
+      query: String(query || "").trim(),
+      password: String(password || "").trim(),
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error("Remote login validation failed.");
+  }
+
+  return response.json();
+}
+
+async function authenticateStudent(query, password) {
+  if (APP_CONFIG.dataMode === "remote" && APP_CONFIG.remoteEndpoint && state.dataModeLabel === "Live Google Sheet") {
+    return authenticateRemoteStudent(query, password);
+  }
+
+  return authenticateLocalStudent(query, password);
 }
 
 function buildFallbackEnrollments(student) {
@@ -1336,13 +1437,15 @@ function logout() {
   closeProfileModal();
   state.activeStudentId = "";
   state.openCourseId = "";
+  dom.password.value = "";
   togglePage("login");
   setFeedback("Enter your student credentials to log in again.");
   showToast("Logged out successfully.", "info");
 }
 
-function performLogin(query = dom.query.value) {
+async function performLogin(query = dom.query.value) {
   const studentQuery = String(query || "").trim();
+  const password = String(dom.password.value || "").trim();
 
   if (!studentQuery) {
     setFeedback("Enter a student ID, phone number, or email address.", "error");
@@ -1350,10 +1453,33 @@ function performLogin(query = dom.query.value) {
     return;
   }
 
-  const student = getStudentByQuery(studentQuery);
+  if (!password) {
+    setFeedback("Enter your password to continue.", "error");
+    showToast("Password is required.", "error");
+    return;
+  }
+
+  let authResult;
+  try {
+    authResult = await authenticateStudent(studentQuery, password);
+  } catch (error) {
+    console.error(error);
+    setFeedback("Login validation is unavailable right now.", "error");
+    showToast("Could not validate login.", "error");
+    return;
+  }
+
+  if (!authResult || !authResult.ok) {
+    setFeedback(authResult?.message || "Login failed.", "error");
+    showToast(authResult?.message || "Login failed.", "error");
+    return;
+  }
+
+  const student =
+    state.data.students.find((entry) => entry.id === authResult.studentId) || getStudentByQuery(studentQuery);
   if (!student) {
-    setFeedback("No matching student was found.", "error");
-    showToast("Student record not found.", "error");
+    setFeedback("Student data could not be loaded after login.", "error");
+    showToast("Student data missing.", "error");
     return;
   }
 
@@ -1362,6 +1488,7 @@ function performLogin(query = dom.query.value) {
 
   renderDashboard(student);
   togglePage("profile");
+  dom.password.value = "";
   setFeedback(`${student.name} logged in successfully.`, "success");
   showToast("Logged in successfully!");
   window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1374,13 +1501,13 @@ async function initialize() {
 
   dom.dataModeBadge.textContent = result.modeLabel;
   dom.query.value = APP_CONFIG.defaultStudentQuery;
-  setFeedback("Use a student ID, phone number, or email for demo login.");
+  setFeedback("Use your student ID, phone number, or email with password. Admin approval is required.");
   togglePage("login");
 }
 
-dom.form.addEventListener("submit", (event) => {
+dom.form.addEventListener("submit", async (event) => {
   event.preventDefault();
-  performLogin();
+  await performLogin();
 });
 
 dom.loginBtn.addEventListener("click", () => {
@@ -1396,9 +1523,14 @@ dom.userProfile.addEventListener("click", () => {
 });
 
 document.querySelectorAll("[data-student-pill]").forEach((button) => {
-  button.addEventListener("click", () => {
+  button.addEventListener("click", async () => {
     dom.query.value = button.dataset.studentPill;
-    performLogin(button.dataset.studentPill);
+    const student = getStudentByQuery(button.dataset.studentPill);
+    if (student && student.password) {
+      dom.password.value = student.password;
+    }
+
+    await performLogin(button.dataset.studentPill);
   });
 });
 

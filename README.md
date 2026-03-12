@@ -44,8 +44,15 @@ Recommended columns:
 ### Students
 
 ```text
-id | name | phone | email | batch | session | joinedOn | status | profileImage | passwordResetUrl | highlight | enrolledCourseIds | completedLessonIds
+id | name | phone | email | batch | session | joinedOn | status | profileImage | password | loginApproval | passwordResetUrl | highlight | enrolledCourseIds | completedLessonIds
 ```
+
+Important login columns:
+
+- `password`: the student password used for portal login
+- `loginApproval`: write `Approved` when the student is allowed to log in
+- If `loginApproval` is empty, `Pending`, or anything other than an approved value, the student cannot log in
+- If `status` is `Inactive`, `Blocked`, `Suspended`, or `Expired`, the student cannot log in even if the password is correct
 
 ### Courses
 
@@ -99,6 +106,25 @@ This system now works like a monthly utility bill:
 - When payment is made, update `lastPaymentDate` and move `videoAccessUntil` forward
 - If you want the student to watch everything uploaded up to today, set `videoAccessUntil` to today
 - If you want to block the whole course manually, set `status=Blocked` or `status=Suspended`
+
+## Student login approval flow
+
+This is the current sheet-driven login system:
+
+- A student enters `student ID / phone / email` plus `password`
+- The site sends the login request to Apps Script for validation
+- The password is checked against the `Students` sheet
+- The student can log in only when `loginApproval=Approved`
+- If approval is not written by admin, login will fail
+
+Example:
+
+```text
+id: LAW-2026-014
+password: law014
+loginApproval: Approved
+status: Active
+```
 
 Example:
 
