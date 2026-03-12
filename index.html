@@ -1,323 +1,406 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="bn">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Dada Class | Law Learning Portal</title>
-    <meta
-      name="description"
-      content="A polished law coaching portal designed for Google Sheets-driven student access and YouTube lesson delivery."
-    />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <title>আইন পাঠশালা - ল স্টুডেন্ট পোর্টাল</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <link
-      href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Noto+Sans+Bengali:wght@300;400;600;700&display=swap"
       rel="stylesheet"
     />
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      tailwind.config = {
-        theme: {
-          extend: {
-            colors: {
-              court: {
-                50: "#f6efe5",
-                100: "#eadcc3",
-                200: "#d8be8d",
-                500: "#b88746",
-                700: "#8d6334",
-                900: "#4a3016",
-              },
-              ink: "#0f172a",
-              ember: "#8c4a2f",
-              sage: "#5e6d58",
-              sand: "#f8f2e9",
-              gold: "#d4af68",
-            },
-            fontFamily: {
-              display: ['"Cormorant Garamond"', "serif"],
-              sans: ['"Plus Jakarta Sans"', "sans-serif"],
-            },
-            boxShadow: {
-              velvet: "0 30px 80px rgba(15, 23, 42, 0.14)",
-              docket: "0 16px 42px rgba(74, 48, 22, 0.12)",
-            },
-            backgroundImage: {
-              ledger:
-                "radial-gradient(circle at 1px 1px, rgba(74, 48, 22, 0.1) 1px, transparent 0)",
-            },
-          },
-        },
-      };
-    </script>
+    <style>
+      :root {
+        --law-blue: #1a365d;
+        --law-gold: #c5a059;
+      }
+
+      body {
+        font-family: "Noto Sans Bengali", sans-serif;
+        background-color: #f3f4f6;
+        scroll-behavior: smooth;
+      }
+
+      .law-gradient {
+        background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+      }
+
+      .gold-text {
+        color: var(--law-gold);
+      }
+
+      .gold-bg {
+        background-color: var(--law-gold);
+      }
+
+      .accordion-content {
+        max-height: 0;
+        overflow: hidden;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        opacity: 0;
+      }
+
+      .accordion-active .accordion-content {
+        max-height: 2000px;
+        opacity: 1;
+        padding-bottom: 1rem;
+      }
+
+      .glass-nav {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+      }
+
+      .card-hover {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+      }
+
+      .card-hover:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+      }
+
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: #f1f1f1;
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: #1e3a8a;
+        border-radius: 10px;
+      }
+    </style>
   </head>
-  <body class="min-h-screen bg-court-50 font-sans text-ink antialiased">
-    <div class="fixed inset-0 -z-10 overflow-hidden">
-      <div class="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(212,175,104,0.25),_transparent_36%),linear-gradient(180deg,_rgba(248,242,233,0.96),_rgba(246,239,229,0.98))]"></div>
-      <div class="absolute left-[-8rem] top-24 h-72 w-72 rounded-full bg-amber-300/20 blur-3xl"></div>
-      <div class="absolute right-[-6rem] top-0 h-96 w-96 rounded-full bg-court-500/15 blur-3xl"></div>
-      <div class="absolute bottom-0 left-1/2 h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-slate-900/5 blur-3xl"></div>
-    </div>
-
-    <header class="mx-auto flex max-w-7xl items-center justify-between px-6 py-8 lg:px-10">
-      <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.4em] text-court-700">Dada Class</p>
-        <h1 class="mt-2 font-display text-3xl font-bold text-court-900 md:text-4xl">
-          Law Learning, Managed From One Sheet
-        </h1>
-      </div>
-      <nav class="hidden items-center gap-8 text-sm font-medium text-slate-700 md:flex">
-        <a class="transition hover:text-court-900" href="#portal">Student Portal</a>
-        <a class="transition hover:text-court-900" href="#workflow">Workflow</a>
-        <a class="transition hover:text-court-900" href="#blueprint">Sheet Blueprint</a>
-      </nav>
-    </header>
-
-    <main class="mx-auto max-w-7xl space-y-10 px-6 pb-16 lg:px-10">
-      <section class="grid gap-8 xl:grid-cols-[1.2fr_0.8fr]">
-        <div class="rounded-[2rem] border border-white/70 bg-white/75 p-8 shadow-velvet backdrop-blur">
-          <div class="inline-flex items-center gap-3 rounded-full border border-court-200 bg-court-50 px-4 py-2 text-sm font-medium text-court-800">
-            <span class="h-2.5 w-2.5 rounded-full bg-emerald-500"></span>
-            Built for judiciary, bar, and legal drafting students
-          </div>
-          <div class="mt-8 max-w-3xl">
-            <h2 class="font-display text-5xl font-bold leading-[0.95] text-court-900 md:text-6xl">
-              A cleaner student portal for your coaching center, with YouTube classes and Google
-              Sheets control.
-            </h2>
-            <p class="mt-6 max-w-2xl text-base leading-8 text-slate-700 md:text-lg">
-              This version is structured so one student can access two, three, or more courses at
-              the same time. You decide the assigned courses in a Google Sheet, and the portal
-              automatically shows only the relevant classes, notices, and schedule.
-            </p>
-          </div>
-
-          <div class="mt-10 flex flex-wrap gap-4">
-            <a
-              href="#access"
-              class="inline-flex items-center rounded-full bg-court-900 px-6 py-3 text-sm font-semibold text-white transition hover:bg-court-700"
-              >Open Student Access</a
+  <body class="text-slate-900">
+    <nav class="glass-nav sticky top-0 z-50 border-b border-slate-200 px-4 py-3 shadow-sm">
+      <div class="mx-auto flex max-w-7xl items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div
+            class="law-gradient flex h-12 w-12 items-center justify-center rounded-xl text-white shadow-lg shadow-blue-900/20"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-7 w-7"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
             >
-            <a
-              href="#blueprint"
-              class="inline-flex items-center rounded-full border border-court-300 bg-white px-6 py-3 text-sm font-semibold text-court-900 transition hover:border-court-500 hover:text-court-700"
-              >See Google Sheet Structure</a
-            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"
+              />
+            </svg>
           </div>
-
-          <div class="mt-12 grid gap-4 md:grid-cols-3">
-            <div class="rounded-3xl border border-court-100 bg-sand p-5 shadow-docket">
-              <p class="text-xs font-semibold uppercase tracking-[0.35em] text-court-700">Control</p>
-              <h3 class="mt-3 text-xl font-semibold text-court-900">One workbook for all access</h3>
-              <p class="mt-2 text-sm leading-6 text-slate-700">
-                Students, courses, lessons, and notices stay organized in separate Google Sheet
-                tabs.
-              </p>
-            </div>
-            <div class="rounded-3xl border border-court-100 bg-white p-5 shadow-docket">
-              <p class="text-xs font-semibold uppercase tracking-[0.35em] text-amber-700">Courses</p>
-              <h3 class="mt-3 text-xl font-semibold text-court-900">Multi-course enrollment</h3>
-              <p class="mt-2 text-sm leading-6 text-slate-700">
-                A single student can be enrolled in judiciary prep, criminal law, drafting, or any
-                other track together.
-              </p>
-            </div>
-            <div class="rounded-3xl border border-court-100 bg-white p-5 shadow-docket">
-              <p class="text-xs font-semibold uppercase tracking-[0.35em] text-emerald-700">Delivery</p>
-              <h3 class="mt-3 text-xl font-semibold text-court-900">YouTube lesson pipeline</h3>
-              <p class="mt-2 text-sm leading-6 text-slate-700">
-                Add a lesson title and YouTube ID to the sheet, then the portal renders the video
-                instantly.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        <div class="rounded-[2rem] border border-court-200 bg-court-900 p-8 text-white shadow-velvet">
-          <div class="flex items-center justify-between">
-            <div>
-              <p class="text-xs font-semibold uppercase tracking-[0.35em] text-court-200">
-                Coaching Snapshot
-              </p>
-              <h3 class="mt-3 font-display text-4xl font-bold">Portal at a glance</h3>
-            </div>
-            <div class="rounded-full border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-court-100">
-              Tailwind + JS
-            </div>
-          </div>
-
-          <div class="mt-8 grid gap-4">
-            <div class="rounded-3xl border border-white/10 bg-white/10 p-5">
-              <p class="text-sm text-court-100">Student identity card</p>
-              <p class="mt-2 text-2xl font-semibold">Profile, batch, status, and active courses</p>
-            </div>
-            <div class="rounded-3xl border border-white/10 bg-gradient-to-br from-white/15 to-transparent p-5">
-              <p class="text-sm text-court-100">Course routing</p>
-              <p class="mt-2 text-2xl font-semibold">Separate tabs for each enrolled law program</p>
-            </div>
-            <div class="rounded-3xl border border-white/10 bg-white/5 p-5">
-              <p class="text-sm text-court-100">Operations model</p>
-              <p class="mt-2 text-2xl font-semibold">Google Sheet as source of truth, portal as student-facing layer</p>
-            </div>
-          </div>
-
-          <div class="mt-8 rounded-[1.75rem] border border-court-700 bg-court-800/90 p-6">
-            <p class="text-xs font-semibold uppercase tracking-[0.35em] text-court-200">Live idea</p>
-            <p class="mt-4 text-lg leading-8 text-court-100">
-              Start with Google Sheet control first. If you want, this can later be expanded into a
-              secured admin panel without changing the student-facing layout.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      <section
-        id="workflow"
-        class="grid gap-4 rounded-[2rem] border border-court-200 bg-white/70 p-6 shadow-docket backdrop-blur lg:grid-cols-3"
-      >
-        <div class="rounded-3xl border border-court-100 bg-sand p-5">
-          <p class="text-sm font-semibold uppercase tracking-[0.3em] text-court-700">Step 01</p>
-          <h3 class="mt-3 text-xl font-semibold text-court-900">Define the student</h3>
-          <p class="mt-2 text-sm leading-7 text-slate-700">
-            Put the student ID, batch, phone, and a pipe-separated list of course IDs inside the
-            Students tab.
-          </p>
-        </div>
-        <div class="rounded-3xl border border-court-100 bg-white p-5">
-          <p class="text-sm font-semibold uppercase tracking-[0.3em] text-court-700">Step 02</p>
-          <h3 class="mt-3 text-xl font-semibold text-court-900">Add course lessons</h3>
-          <p class="mt-2 text-sm leading-7 text-slate-700">
-            Every new YouTube class is linked by courseId, so lessons automatically appear in the
-            correct student dashboard.
-          </p>
-        </div>
-        <div class="rounded-3xl border border-court-100 bg-white p-5">
-          <p class="text-sm font-semibold uppercase tracking-[0.3em] text-court-700">Step 03</p>
-          <h3 class="mt-3 text-xl font-semibold text-court-900">Publish and update</h3>
-          <p class="mt-2 text-sm leading-7 text-slate-700">
-            One Apps Script endpoint exposes the workbook as JSON. The portal fetches it and updates
-            the student experience.
-          </p>
-        </div>
-      </section>
-
-      <section
-        id="access"
-        class="rounded-[2rem] border border-court-200 bg-gradient-to-br from-court-900 to-slate-950 p-8 text-white shadow-velvet"
-      >
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <p class="text-xs font-semibold uppercase tracking-[0.35em] text-court-200">
-              Student Access
+            <h1 class="leading-none text-xl font-bold text-blue-950">আইন পাঠশালা</h1>
+            <p class="mt-1 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+              Law Students Portal
             </p>
-            <h2 class="mt-3 font-display text-4xl font-bold">Load a student profile</h2>
-            <p class="mt-3 max-w-2xl text-sm leading-7 text-court-100">
-              Search by student ID, phone, or email. In a production setup, this should be replaced
-              with real authentication, but this prototype already proves the multi-course logic and
-              sheet-driven structure.
-            </p>
-          </div>
-          <div class="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 text-sm text-court-100">
-            <span class="font-semibold text-white">Data mode:</span>
-            <span id="data-mode-badge">Demo data</span>
           </div>
         </div>
 
-        <form id="lookup-form" class="mt-8 grid gap-4 lg:grid-cols-[1fr_auto]">
-          <label class="rounded-[1.5rem] border border-white/10 bg-white/10 p-2 backdrop-blur">
-            <span class="sr-only">Search student</span>
+        <div class="flex items-center space-x-4">
+          <div
+            class="hidden items-center rounded-full border border-slate-200 bg-slate-100 px-4 py-1.5 lg:flex"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-4 w-4 text-slate-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+              />
+            </svg>
             <input
-              id="student-query"
               type="text"
-              placeholder="Try LAW-2026-014"
-              class="w-full rounded-[1rem] border border-transparent bg-transparent px-5 py-4 text-base text-white outline-none placeholder:text-court-100"
+              placeholder="সার্চ করুন..."
+              class="ml-2 w-40 border-none bg-transparent text-sm focus:outline-none"
             />
-          </label>
-          <button
-            type="submit"
-            class="rounded-[1.5rem] bg-white px-7 py-4 text-sm font-semibold text-court-900 transition hover:bg-court-100"
-          >
-            Open portal
-          </button>
-        </form>
-
-        <div class="mt-5 flex flex-wrap gap-3">
-          <button
-            type="button"
-            data-student-pill="LAW-2026-014"
-            class="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-court-100 transition hover:bg-white/15"
-          >
-            LAW-2026-014
-          </button>
-          <button
-            type="button"
-            data-student-pill="BAR-2026-008"
-            class="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-court-100 transition hover:bg-white/15"
-          >
-            BAR-2026-008
-          </button>
-          <button
-            type="button"
-            data-student-pill="LIT-2026-031"
-            class="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-medium text-court-100 transition hover:bg-white/15"
-          >
-            LIT-2026-031
-          </button>
-        </div>
-
-        <p id="lookup-feedback" class="mt-4 text-sm text-court-100"></p>
-      </section>
-
-      <section id="portal" class="grid gap-6 xl:grid-cols-12">
-        <aside class="space-y-6 xl:col-span-4">
-          <div id="student-card" class="min-h-[18rem] rounded-[2rem] border border-court-200 bg-white p-6 shadow-docket"></div>
-          <div
-            id="student-progress"
-            class="rounded-[2rem] border border-court-200 bg-white p-6 shadow-docket"
-          ></div>
-          <div
-            id="student-course-stack"
-            class="rounded-[2rem] border border-court-200 bg-white p-6 shadow-docket"
-          ></div>
-        </aside>
-
-        <div class="space-y-6 xl:col-span-8">
-          <div
-            id="course-overview"
-            class="rounded-[2rem] border border-court-200 bg-white p-6 shadow-docket"
-          ></div>
-
-          <div class="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-            <div
-              id="player-panel"
-              class="rounded-[2rem] border border-court-200 bg-white p-6 shadow-docket"
-            ></div>
-            <div
-              id="lesson-list"
-              class="rounded-[2rem] border border-court-200 bg-white p-6 shadow-docket"
-            ></div>
           </div>
-
-          <div class="grid gap-6 lg:grid-cols-2">
+          <button
+            id="loginBtn"
+            type="button"
+            class="rounded-xl bg-blue-900 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-900/20 transition hover:bg-blue-800"
+          >
+            লগইন
+          </button>
+          <div
+            id="userProfile"
+            title="লগআউট করুন"
+            class="group hidden flex cursor-pointer items-center space-x-3"
+          >
+            <div class="hidden text-right sm:block">
+              <p id="navStudentName" class="text-xs font-bold text-slate-800">স্টুডেন্ট নাম</p>
+              <p id="navStudentId" class="text-[10px] text-blue-600">আইডি</p>
+            </div>
             <div
-              id="notice-list"
-              class="rounded-[2rem] border border-court-200 bg-white p-6 shadow-docket"
-            ></div>
-            <div
-              id="sheet-blueprint"
-              class="rounded-[2rem] border border-court-200 bg-white p-6 shadow-docket"
-            ></div>
+              id="navAvatar"
+              class="law-gradient flex h-10 w-10 items-center justify-center rounded-xl border-2 border-white font-bold text-white shadow-md transition group-hover:scale-105"
+            >
+              S
+            </div>
           </div>
         </div>
-      </section>
+      </div>
+    </nav>
+
+    <main class="mx-auto min-h-screen max-w-5xl px-4 py-10">
+      <div
+        id="loginSection"
+        class="relative mx-auto mt-10 max-w-md overflow-hidden rounded-3xl border border-white bg-white p-10 shadow-2xl"
+      >
+        <div class="gold-bg absolute right-0 top-0 h-32 w-32 rounded-bl-full opacity-5"></div>
+        <div class="relative">
+          <div class="mb-6 flex items-center justify-between gap-4">
+            <div>
+              <h2 class="mb-2 text-3xl font-bold text-blue-950">স্বাগতম ফিরেছেন!</h2>
+              <p class="text-slate-500">
+                আইন পাঠশালা স্টুডেন্ট পোর্টালে আপনার তথ্য দিয়ে প্রবেশ করুন।
+              </p>
+            </div>
+            <div
+              id="dataModeBadge"
+              class="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500"
+            >
+              ডাটা লোড হচ্ছে
+            </div>
+          </div>
+
+          <form id="lookup-form" class="space-y-5">
+            <div>
+              <label
+                class="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500"
+                for="student-query"
+              >
+                ফোন নাম্বার / ইমেইল / স্টুডেন্ট আইডি
+              </label>
+              <input
+                id="student-query"
+                type="text"
+                placeholder="LAW-2026-014"
+                class="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+              />
+            </div>
+            <div>
+              <div class="mb-2 flex justify-between">
+                <label
+                  class="block text-xs font-bold uppercase tracking-wider text-slate-500"
+                  for="student-password"
+                >
+                  পাসওয়ার্ড
+                </label>
+                <span class="text-xs text-blue-600">ডেমো মোডে পাসওয়ার্ড যাচাই নেই</span>
+              </div>
+              <input
+                id="student-password"
+                type="password"
+                placeholder="••••••••"
+                class="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+              />
+            </div>
+            <button
+              type="submit"
+              class="law-gradient w-full rounded-2xl py-4 text-lg font-bold text-white shadow-xl transition-all active:scale-[0.98] hover:shadow-blue-900/30"
+            >
+              পোর্টালে প্রবেশ করুন
+            </button>
+          </form>
+
+          <div class="mt-6">
+            <p class="mb-3 text-xs font-bold uppercase tracking-wider text-slate-500">
+              ডেমো লগইন
+            </p>
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                data-student-pill="LAW-2026-014"
+                class="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700"
+              >
+                LAW-2026-014
+              </button>
+              <button
+                type="button"
+                data-student-pill="BAR-2026-008"
+                class="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700"
+              >
+                BAR-2026-008
+              </button>
+              <button
+                type="button"
+                data-student-pill="LIT-2026-031"
+                class="rounded-full border border-slate-200 bg-slate-50 px-4 py-2 text-xs font-bold text-slate-600 transition hover:border-blue-200 hover:text-blue-700"
+              >
+                LIT-2026-031
+              </button>
+            </div>
+          </div>
+
+          <p id="loginFeedback" class="mt-5 text-sm text-slate-500"></p>
+        </div>
+      </div>
+
+      <div id="dashboardSection" class="hidden space-y-8">
+        <div
+          class="law-gradient relative flex flex-col items-center justify-between overflow-hidden rounded-[2.5rem] border border-blue-400/20 p-10 text-white shadow-2xl md:flex-row"
+        >
+          <div class="pointer-events-none absolute bottom-0 right-0 opacity-10">
+            <svg width="300" height="300" viewBox="0 0 24 24" fill="white">
+              <path d="M12 2L1 12h3v9h6v-6h4v6h6v-9h3L12 2z" />
+            </svg>
+          </div>
+          <div class="relative z-10 text-center md:text-left">
+            <span
+              class="mb-4 inline-block rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-widest"
+            >
+              আইন পাঠশালা ড্যাশবোর্ড
+            </span>
+            <h1 class="mb-3 text-3xl font-bold tracking-tight md:text-5xl">
+              আসসালামু আলাইকুম, <span id="heroStudentName" class="gold-text">স্টুডেন্ট</span>!
+            </h1>
+            <p id="heroWelcomeText" class="max-w-md text-lg text-blue-100 opacity-80">
+              আপনার আজকের লেসনগুলো নিচে তালিকাভুক্ত করা হয়েছে। নিয়মিত অনুশীলন করুন।
+            </p>
+          </div>
+          <div class="relative z-10 mt-8 flex space-x-4 md:mt-0">
+            <div
+              class="w-28 rounded-3xl border border-white/10 bg-white/10 p-5 text-center shadow-xl backdrop-blur-md"
+            >
+              <div id="completedCount" class="text-3xl font-bold">০</div>
+              <div class="text-[10px] uppercase tracking-wider opacity-60">পূর্ণ ক্লাস</div>
+            </div>
+            <div
+              class="w-28 rounded-3xl border border-white/10 bg-white/10 p-5 text-center shadow-xl backdrop-blur-md"
+            >
+              <div id="remainingCount" class="text-3xl font-bold">০</div>
+              <div class="text-[10px] uppercase tracking-wider opacity-60">বাকি ক্লাস</div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          id="dashboardMeta"
+          class="grid gap-4 md:grid-cols-3"
+        >
+          <div class="rounded-[2rem] border border-slate-100 bg-white p-6 shadow-sm">
+            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">স্ট্যাটাস</p>
+            <p id="studentStatus" class="mt-3 text-xl font-bold text-blue-950">Active</p>
+          </div>
+          <div class="rounded-[2rem] border border-slate-100 bg-white p-6 shadow-sm">
+            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">ব্যাচ</p>
+            <p id="studentBatch" class="mt-3 text-xl font-bold text-blue-950">-</p>
+          </div>
+          <div class="rounded-[2rem] border border-slate-100 bg-white p-6 shadow-sm">
+            <p class="text-xs font-bold uppercase tracking-wider text-slate-400">সেশন</p>
+            <p id="studentSession" class="mt-3 text-xl font-bold text-blue-950">-</p>
+          </div>
+        </div>
+
+        <div class="grid gap-6" id="courseList"></div>
+      </div>
     </main>
 
-    <footer class="border-t border-court-200/80 bg-white/60 backdrop-blur">
-      <div class="mx-auto flex max-w-7xl flex-col gap-3 px-6 py-6 text-sm text-slate-600 lg:flex-row lg:items-center lg:justify-between lg:px-10">
-        <p>Frontend prototype for a law-focused coaching portal using Tailwind CSS and JavaScript.</p>
-        <p>For production: add secure student authentication before publishing publicly.</p>
+    <footer class="border-t-4 border-amber-500 bg-slate-950 pb-10 pt-20 text-white">
+      <div class="mx-auto max-w-5xl px-6">
+        <div class="grid items-center gap-12 md:grid-cols-2">
+          <div>
+            <h2 class="mb-4 text-3xl font-bold">সাহায্য প্রয়োজন?</h2>
+            <p class="mb-8 text-lg text-slate-400">
+              কোর্স সংক্রান্ত যেকোনো জিজ্ঞাসা বা টেকনিক্যাল সমস্যার জন্য আমাদের সাপোর্ট টিমের
+              সাথে যোগাযোগ করুন। আমরা নিয়মিত সহায়তা দেওয়ার জন্য প্রস্তুত।
+            </p>
+            <div class="flex space-x-4">
+              <a
+                href="#"
+                class="flex items-center space-x-3 rounded-2xl bg-green-600 p-4 shadow-xl shadow-green-900/20 transition hover:bg-green-700"
+              >
+                <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                  <path
+                    d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.417-.003 6.557-5.338 11.892-11.893 11.892-1.997-.001-3.951-.5-5.688-1.448l-6.305 1.652zm6.599-3.835c1.405.836 2.948 1.278 4.531 1.28h.005c5.344 0 9.693-4.349 9.696-9.693.001-2.59-1.011-5.025-2.85-6.864s-4.275-2.852-6.866-2.853c-5.345 0-9.694 4.349-9.697 9.694-.001 1.709.449 3.377 1.303 4.832l-.93 3.395 3.477-.912zm9.852-5.415c-.273-.137-1.62-.8-1.871-.891-.252-.092-.435-.137-.617.137-.183.274-.708.891-.868 1.074-.159.183-.32.206-.593.068-.273-.137-1.154-.425-2.199-1.357-.812-.724-1.36-1.618-1.52-1.891-.159-.274-.017-.422.12-.558.123-.122.273-.32.411-.48.137-.16.183-.274.274-.457.091-.183.046-.343-.023-.48-.068-.137-.617-1.486-.845-2.035-.223-.537-.468-.464-.641-.473l-.548-.007c-.183 0-.48.068-.731.343-.251.274-.959.937-.959 2.285s.982 2.651 1.119 2.834c.137.183 1.933 2.951 4.682 4.141.654.283 1.165.452 1.562.578.657.208 1.255.179 1.728.108.527-.079 1.62-.662 1.848-1.302.228-.641.228-1.188.159-1.302-.07-.115-.251-.183-.524-.32z"
+                  />
+                </svg>
+                <span class="font-bold">হোয়াটসঅ্যাপ</span>
+              </a>
+              <a
+                href="#"
+                class="flex items-center justify-center rounded-2xl bg-blue-700 p-4 shadow-xl shadow-blue-900/20 transition hover:bg-blue-800"
+              >
+                <svg class="h-6 w-6" fill="currentColor" viewBox="0 0 24 24">
+                  <path
+                    d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.469h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.469h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"
+                  />
+                </svg>
+              </a>
+            </div>
+          </div>
+          <div class="text-sm text-slate-500 md:text-right">
+            <p class="mb-2">&copy; ২০২৬ আইন পাঠশালা। সর্বস্বত্ব সংরক্ষিত।</p>
+            <p>ডেভেলপড বাই: আইন পাঠশালা টিম</p>
+            <div class="mt-4 flex space-x-4 md:justify-end">
+              <a href="#" class="transition hover:text-amber-500">প্রাইভেসি পলিসি</a>
+              <a href="#" class="transition hover:text-amber-500">শর্তাবলী</a>
+            </div>
+          </div>
+        </div>
       </div>
     </footer>
+
+    <div
+      id="videoModal"
+      class="fixed inset-0 z-[60] hidden items-center justify-center p-4"
+    >
+      <div
+        id="videoBackdrop"
+        class="absolute inset-0 bg-slate-950/95 backdrop-blur-md"
+      ></div>
+      <div
+        class="relative aspect-video w-full max-w-4xl overflow-hidden rounded-[2rem] border border-white/10 bg-black shadow-2xl"
+      >
+        <button
+          id="closeVideoBtn"
+          type="button"
+          class="absolute right-4 top-4 z-10 rounded-full bg-white/10 p-2 text-white/50 transition hover:bg-red-600 hover:text-white"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-6 w-6"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+        <div class="absolute left-4 top-4 z-10 rounded-full bg-slate-950/60 px-4 py-2 text-xs font-bold text-white">
+          <span id="videoTitle">ক্লাস ভিডিও</span>
+        </div>
+        <iframe
+          id="videoPlayer"
+          class="h-full w-full"
+          src=""
+          title="Class video player"
+          frameborder="0"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowfullscreen
+        ></iframe>
+      </div>
+    </div>
 
     <script src="./app.js"></script>
   </body>

@@ -64,7 +64,6 @@ const demoData = {
       nextLive: "2026-03-14T20:30:00+06:00",
       description:
         "A structured path for constitutional principles, civil-criminal basics, and high-yield MCQ preparation for judiciary examinees.",
-      tone: "gold",
     },
     {
       id: "criminal-procedure-mastery",
@@ -76,7 +75,6 @@ const demoData = {
       nextLive: "2026-03-15T21:00:00+06:00",
       description:
         "Detailed breakdown of CrPC flow, arrest-to-trial sequence, framing of charge, and practical problem-solving for law students.",
-      tone: "ember",
     },
     {
       id: "legal-drafting-lab",
@@ -88,7 +86,6 @@ const demoData = {
       nextLive: "2026-03-13T19:30:00+06:00",
       description:
         "Draft plaints, written statements, bail petitions, affidavits, and legal notices with practical templates and review guidance.",
-      tone: "sage",
     },
     {
       id: "bar-viva-clinic",
@@ -100,7 +97,6 @@ const demoData = {
       nextLive: "2026-03-16T20:00:00+06:00",
       description:
         "Short oral drills, legal ethics, and rapid-fire viva practice to prepare bar candidates for structured questioning.",
-      tone: "ink",
     },
   ],
   lessons: [
@@ -226,88 +222,51 @@ const demoData = {
       note: "Best used right before mock viva.",
     },
   ],
-  notices: [
-    {
-      id: "notice-01",
-      type: "all",
-      targetId: "",
-      date: "2026-03-12",
-      title: "Weekly assignment window is open",
-      body: "Students can now review this week's sheet-controlled assignment list and submit progress in the next live class.",
-    },
-    {
-      id: "notice-02",
-      type: "course",
-      targetId: "criminal-procedure-mastery",
-      date: "2026-03-12",
-      title: "Procedure class live Q&A moved to Friday",
-      body: "The criminal procedure live discussion has been moved so judiciary and bar students can both join the same session.",
-    },
-    {
-      id: "notice-03",
-      type: "student",
-      targetId: "LAW-2026-014",
-      date: "2026-03-11",
-      title: "Drafting review copy ready",
-      body: "Your bail petition draft review note is ready. Open the Drafting course tab and check the latest resources.",
-    },
-  ],
 };
 
-const courseToneMap = {
-  gold: {
-    panel: "from-amber-100 via-white to-white",
-    ring: "ring-amber-200",
-    dot: "bg-amber-500",
-    text: "text-amber-800",
-    soft: "bg-amber-50",
-  },
-  ember: {
-    panel: "from-orange-100 via-white to-white",
-    ring: "ring-orange-200",
-    dot: "bg-orange-500",
-    text: "text-orange-800",
-    soft: "bg-orange-50",
-  },
-  sage: {
-    panel: "from-emerald-100 via-white to-white",
-    ring: "ring-emerald-200",
-    dot: "bg-emerald-500",
-    text: "text-emerald-800",
-    soft: "bg-emerald-50",
-  },
-  ink: {
-    panel: "from-slate-100 via-white to-white",
-    ring: "ring-slate-200",
-    dot: "bg-slate-800",
-    text: "text-slate-800",
-    soft: "bg-slate-100",
-  },
-};
+const BENGALI_DIGITS = ["০", "১", "২", "৩", "৪", "৫", "৬", "৭", "৮", "৯"];
 
 const state = {
   data: null,
+  dataModeLabel: "ডেমো ডাটা",
   activeStudentId: "",
-  activeCourseId: "",
-  activeLessonId: "",
+  openCourseId: "",
 };
 
 const dom = {
+  body: document.body,
+  loginBtn: document.getElementById("loginBtn"),
+  userProfile: document.getElementById("userProfile"),
+  navStudentName: document.getElementById("navStudentName"),
+  navStudentId: document.getElementById("navStudentId"),
+  navAvatar: document.getElementById("navAvatar"),
+  loginSection: document.getElementById("loginSection"),
+  dashboardSection: document.getElementById("dashboardSection"),
   form: document.getElementById("lookup-form"),
   query: document.getElementById("student-query"),
-  feedback: document.getElementById("lookup-feedback"),
-  modeBadge: document.getElementById("data-mode-badge"),
-  studentCard: document.getElementById("student-card"),
-  studentProgress: document.getElementById("student-progress"),
-  studentCourseStack: document.getElementById("student-course-stack"),
-  courseOverview: document.getElementById("course-overview"),
-  playerPanel: document.getElementById("player-panel"),
-  lessonList: document.getElementById("lesson-list"),
-  noticeList: document.getElementById("notice-list"),
-  sheetBlueprint: document.getElementById("sheet-blueprint"),
+  password: document.getElementById("student-password"),
+  feedback: document.getElementById("loginFeedback"),
+  dataModeBadge: document.getElementById("dataModeBadge"),
+  heroStudentName: document.getElementById("heroStudentName"),
+  heroWelcomeText: document.getElementById("heroWelcomeText"),
+  completedCount: document.getElementById("completedCount"),
+  remainingCount: document.getElementById("remainingCount"),
+  studentStatus: document.getElementById("studentStatus"),
+  studentBatch: document.getElementById("studentBatch"),
+  studentSession: document.getElementById("studentSession"),
+  courseList: document.getElementById("courseList"),
+  videoModal: document.getElementById("videoModal"),
+  videoBackdrop: document.getElementById("videoBackdrop"),
+  closeVideoBtn: document.getElementById("closeVideoBtn"),
+  videoPlayer: document.getElementById("videoPlayer"),
+  videoTitle: document.getElementById("videoTitle"),
 };
 
-function parseCourseIds(value) {
+function toBanglaNumber(value) {
+  return String(value).replace(/\d/g, (digit) => BENGALI_DIGITS[Number(digit)]);
+}
+
+function parseList(value) {
   if (Array.isArray(value)) {
     return value.filter(Boolean);
   }
@@ -326,13 +285,13 @@ function normalizeData(raw) {
     email: student.email || "",
     batch: student.batch || "N/A",
     session: student.session || "N/A",
-    joinedOn: student.joinedOn || new Date().toISOString().slice(0, 10),
+    joinedOn: student.joinedOn || "",
     status: student.status || "Active",
     highlight: student.highlight || "Law student profile loaded from the workbook.",
-    enrolledCourseIds: parseCourseIds(
+    enrolledCourseIds: parseList(
       student.enrolledCourseIds || student.courseIds || student.courses || ""
     ),
-    completedLessonIds: parseCourseIds(student.completedLessonIds || student.completed || ""),
+    completedLessonIds: parseList(student.completedLessonIds || student.completed || ""),
   }));
 
   const courses = (raw.courses || []).map((course) => ({
@@ -343,8 +302,7 @@ function normalizeData(raw) {
     category: course.category || "Course",
     schedule: course.schedule || "Schedule pending",
     nextLive: course.nextLive || course.nextClass || "",
-    description: course.description || "No description yet.",
-    tone: course.tone || "gold",
+    description: course.description || "",
   }));
 
   const lessons = (raw.lessons || []).map((lesson) => ({
@@ -354,79 +312,45 @@ function normalizeData(raw) {
     title: lesson.title || lesson.lessonTitle || "Untitled Lesson",
     duration: lesson.duration || "N/A",
     youtubeId: lesson.youtubeId || lesson.videoId || "",
-    releaseDate: lesson.releaseDate || lesson.date || new Date().toISOString().slice(0, 10),
-    resources: Array.isArray(lesson.resources)
-      ? lesson.resources
-      : parseCourseIds(lesson.resources || lesson.resourceList || ""),
+    releaseDate: lesson.releaseDate || lesson.date || "",
+    resources: parseList(lesson.resources || lesson.resourceList || ""),
     note: lesson.note || "Sheet-linked lesson",
-  }));
-
-  const notices = (raw.notices || raw.announcements || []).map((notice) => ({
-    id: notice.id || notice.noticeId || "",
-    type: notice.type || notice.targetType || "all",
-    targetId: notice.targetId || notice.target || "",
-    date: notice.date || new Date().toISOString().slice(0, 10),
-    title: notice.title || "Notice",
-    body: notice.body || notice.message || "",
   }));
 
   return {
     students,
     courses,
     lessons,
-    notices,
     courseMap: new Map(courses.map((course) => [course.id, course])),
-    lessonMap: new Map(lessons.map((lesson) => [lesson.id, lesson])),
   };
 }
 
 async function loadData() {
   if (APP_CONFIG.dataMode === "remote" && APP_CONFIG.remoteEndpoint) {
-    const response = await fetch(APP_CONFIG.remoteEndpoint, {
-      method: "GET",
-      headers: {
-        Accept: "application/json",
-      },
-    });
+    try {
+      const response = await fetch(APP_CONFIG.remoteEndpoint, {
+        method: "GET",
+        headers: { Accept: "application/json" },
+      });
 
-    if (!response.ok) {
-      throw new Error("Unable to load remote sheet data.");
+      if (!response.ok) {
+        throw new Error("Unable to load remote sheet data.");
+      }
+
+      const payload = await response.json();
+      return {
+        data: normalizeData(payload),
+        modeLabel: "লাইভ গুগল শিট",
+      };
+    } catch (error) {
+      console.warn("Falling back to demo data:", error);
     }
-
-    const payload = await response.json();
-    dom.modeBadge.textContent = "Live Google Sheet";
-    return normalizeData(payload);
   }
 
-  dom.modeBadge.textContent = "Demo data";
-  return normalizeData(demoData);
-}
-
-function getInitials(name) {
-  return name
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((part) => part[0].toUpperCase())
-    .join("");
-}
-
-function formatDate(dateValue, withTime = false) {
-  if (!dateValue) {
-    return "Not scheduled";
-  }
-
-  const date = new Date(dateValue);
-  if (Number.isNaN(date.getTime())) {
-    return dateValue;
-  }
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    ...(withTime ? { hour: "numeric", minute: "2-digit" } : {}),
-  }).format(date);
+  return {
+    data: normalizeData(demoData),
+    modeLabel: "ডেমো ডাটা",
+  };
 }
 
 function getStudentByQuery(query) {
@@ -439,9 +363,13 @@ function getStudentByQuery(query) {
     state.data.students.find((student) =>
       [student.id, student.phone, student.email]
         .filter(Boolean)
-        .some((field) => String(field).toLowerCase() === normalizedQuery)
+        .some((field) => String(field).trim().toLowerCase() === normalizedQuery)
     ) || null
   );
+}
+
+function getActiveStudent() {
+  return state.data.students.find((student) => student.id === state.activeStudentId) || null;
 }
 
 function getStudentCourses(student) {
@@ -453,579 +381,405 @@ function getStudentCourses(student) {
 function getCourseLessons(courseId) {
   return state.data.lessons
     .filter((lesson) => lesson.courseId === courseId)
-    .sort((a, b) => new Date(b.releaseDate) - new Date(a.releaseDate));
+    .sort((left, right) => new Date(left.releaseDate) - new Date(right.releaseDate));
 }
 
-function getVisibleNotices(student, courseIds) {
-  return state.data.notices
-    .filter((notice) => {
-      if (notice.type === "all") {
-        return true;
-      }
-      if (notice.type === "student") {
-        return notice.targetId === student.id;
-      }
-      if (notice.type === "course") {
-        return courseIds.includes(notice.targetId);
-      }
-      return false;
-    })
-    .sort((a, b) => new Date(b.date) - new Date(a.date));
+function getTotalResources(lessons) {
+  return lessons.reduce((count, lesson) => count + lesson.resources.length, 0);
 }
 
-function getProgress(student, courseId) {
-  const lessons = getCourseLessons(courseId);
-  if (!lessons.length) {
-    return {
-      completed: 0,
-      total: 0,
-      percent: 0,
-    };
-  }
-
-  const completed = lessons.filter((lesson) => student.completedLessonIds.includes(lesson.id))
-    .length;
+function getStudentStats(student, courses) {
+  const lessons = courses.flatMap((course) => getCourseLessons(course.id));
+  const completed = lessons.filter((lesson) => student.completedLessonIds.includes(lesson.id)).length;
   return {
-    completed,
     total: lessons.length,
-    percent: Math.round((completed / lessons.length) * 100),
+    completed,
+    remaining: Math.max(lessons.length - completed, 0),
   };
 }
 
-function getOverallProgress(student, courses) {
-  const totals = courses.reduce(
-    (accumulator, course) => {
-      const progress = getProgress(student, course.id);
-      return {
-        completed: accumulator.completed + progress.completed,
-        total: accumulator.total + progress.total,
-      };
-    },
-    { completed: 0, total: 0 }
-  );
+function formatDate(dateValue) {
+  if (!dateValue) {
+    return "তারিখ পাওয়া যায়নি";
+  }
 
-  return {
-    ...totals,
-    percent: totals.total ? Math.round((totals.completed / totals.total) * 100) : 0,
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) {
+    return toBanglaNumber(dateValue);
+  }
+
+  return new Intl.DateTimeFormat("bn-BD-u-nu-beng", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+function formatStatus(status) {
+  const normalized = String(status || "").trim().toLowerCase();
+
+  if (normalized === "active") {
+    return "সক্রিয়";
+  }
+  if (normalized === "inactive") {
+    return "নিষ্ক্রিয়";
+  }
+  return status || "অজানা";
+}
+
+function getAvatarLetter(name) {
+  return String(name || "S")
+    .trim()
+    .charAt(0)
+    .toUpperCase();
+}
+
+function setFeedback(message, type = "neutral") {
+  const classMap = {
+    success: "mt-5 text-sm text-emerald-600",
+    error: "mt-5 text-sm text-red-500",
+    neutral: "mt-5 text-sm text-slate-500",
   };
+
+  dom.feedback.textContent = message;
+  dom.feedback.className = classMap[type] || classMap.neutral;
 }
 
-function ensureActiveSelection(student) {
-  const courses = getStudentCourses(student);
-  const courseIds = courses.map((course) => course.id);
-
-  if (!courseIds.includes(state.activeCourseId)) {
-    state.activeCourseId = courseIds[0] || "";
-  }
-
-  const courseLessons = getCourseLessons(state.activeCourseId);
-  const lessonIds = courseLessons.map((lesson) => lesson.id);
-  const firstIncomplete = courseLessons.find(
-    (lesson) => !student.completedLessonIds.includes(lesson.id)
-  );
-
-  if (!lessonIds.includes(state.activeLessonId)) {
-    state.activeLessonId = (firstIncomplete || courseLessons[0] || {}).id || "";
-  }
+function togglePage(page) {
+  const isLogin = page === "login";
+  dom.loginSection.classList.toggle("hidden", !isLogin);
+  dom.dashboardSection.classList.toggle("hidden", isLogin);
+  dom.loginBtn.classList.toggle("hidden", !isLogin);
+  dom.userProfile.classList.toggle("hidden", isLogin);
 }
 
-function selectStudent(student) {
-  state.activeStudentId = student.id;
-  ensureActiveSelection(student);
-  renderPortal();
+function showToast(message, type = "success") {
+  const toast = document.createElement("div");
+  const colorClass =
+    type === "error"
+      ? "bg-red-600"
+      : type === "info"
+      ? "bg-slate-900"
+      : "law-gradient";
+
+  toast.className = `fixed left-1/2 top-6 z-[100] -translate-x-1/2 rounded-2xl px-8 py-4 font-bold text-white shadow-2xl transition-all duration-500 ${colorClass}`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transform = "translate(-50%, -20px)";
+    setTimeout(() => toast.remove(), 500);
+  }, 2500);
 }
 
-function selectCourse(courseId) {
-  state.activeCourseId = courseId;
-  const student = state.data.students.find((item) => item.id === state.activeStudentId);
-  if (!student) {
+function openVideo(videoId, title) {
+  if (!videoId) {
+    showToast("এই লেসনের ভিডিও লিংক পাওয়া যায়নি।", "error");
     return;
   }
 
-  const lessons = getCourseLessons(courseId);
-  const firstIncomplete = lessons.find((lesson) => !student.completedLessonIds.includes(lesson.id));
-  state.activeLessonId = (firstIncomplete || lessons[0] || {}).id || "";
-  renderPortal();
+  dom.videoTitle.textContent = title || "ক্লাস ভিডিও";
+  dom.videoPlayer.src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+  dom.videoModal.classList.remove("hidden");
+  dom.videoModal.classList.add("flex");
+  dom.body.style.overflow = "hidden";
 }
 
-function selectLesson(lessonId) {
-  state.activeLessonId = lessonId;
-  renderPortal();
+function closeVideo() {
+  dom.videoPlayer.src = "";
+  dom.videoModal.classList.add("hidden");
+  dom.videoModal.classList.remove("flex");
+  dom.body.style.overflow = "";
 }
 
-function renderStudentCard(student, courses) {
-  const initials = getInitials(student.name);
-  dom.studentCard.innerHTML = `
-    <div class="flex items-start justify-between gap-4">
-      <div class="flex items-center gap-4">
-        <div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-court-900 text-xl font-bold text-white shadow-lg">${initials}</div>
-        <div>
-          <p class="text-xs font-semibold uppercase tracking-[0.35em] text-court-700">Student Profile</p>
-          <h2 class="mt-2 text-2xl font-semibold text-court-900">${student.name}</h2>
-          <p class="mt-1 text-sm text-slate-600">${student.id} • ${student.batch}</p>
-        </div>
-      </div>
-      <span class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">${student.status}</span>
-    </div>
+function renderStudentHeader(student, stats) {
+  dom.navStudentName.textContent = student.name;
+  dom.navStudentId.textContent = `আইডি: ${toBanglaNumber(student.id)}`;
+  dom.navAvatar.textContent = getAvatarLetter(student.name);
 
-    <p class="mt-6 rounded-2xl bg-sand px-4 py-4 text-sm leading-7 text-slate-700">${student.highlight}</p>
+  const firstName = student.name.split(" ")[0] || student.name;
+  dom.heroStudentName.textContent = firstName;
+  dom.heroWelcomeText.textContent =
+    student.highlight ||
+    "আপনার আজকের লেসনগুলো নিচে তালিকাভুক্ত করা হয়েছে। নিয়মিত অনুশীলন করুন।";
 
-    <div class="mt-6 grid gap-4 sm:grid-cols-2">
-      <div class="rounded-2xl border border-court-100 p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-court-700">Session</p>
-        <p class="mt-2 text-sm font-medium text-slate-800">${student.session}</p>
-      </div>
-      <div class="rounded-2xl border border-court-100 p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-court-700">Joined</p>
-        <p class="mt-2 text-sm font-medium text-slate-800">${formatDate(student.joinedOn)}</p>
-      </div>
-      <div class="rounded-2xl border border-court-100 p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-court-700">Phone</p>
-        <p class="mt-2 text-sm font-medium text-slate-800">${student.phone || "Not set"}</p>
-      </div>
-      <div class="rounded-2xl border border-court-100 p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-court-700">Enrolled</p>
-        <p class="mt-2 text-sm font-medium text-slate-800">${courses.length} active courses</p>
-      </div>
-    </div>
-  `;
+  dom.completedCount.textContent = toBanglaNumber(stats.completed);
+  dom.remainingCount.textContent = toBanglaNumber(stats.remaining);
+  dom.studentStatus.textContent = formatStatus(student.status);
+  dom.studentBatch.textContent = student.batch || "-";
+  dom.studentSession.textContent = student.session || "-";
 }
 
-function renderStudentProgress(student, courses) {
-  const overall = getOverallProgress(student, courses);
-  const strongestCourse = courses
-    .map((course) => ({
-      course,
-      progress: getProgress(student, course.id),
-    }))
-    .sort((left, right) => right.progress.percent - left.progress.percent)[0];
-
-  dom.studentProgress.innerHTML = `
-    <p class="text-xs font-semibold uppercase tracking-[0.35em] text-court-700">Progress Board</p>
-    <div class="mt-5 rounded-[1.75rem] bg-court-900 p-5 text-white">
-      <div class="flex items-end justify-between gap-4">
-        <div>
-          <p class="text-sm text-court-100">Overall completion</p>
-          <p class="mt-2 text-4xl font-semibold">${overall.percent}%</p>
-        </div>
-        <div class="text-right text-sm text-court-100">
-          <p>${overall.completed} lessons completed</p>
-          <p>${overall.total} total lessons visible</p>
-        </div>
-      </div>
-      <div class="mt-4 h-3 rounded-full bg-white/10">
-        <div class="h-3 rounded-full bg-gold" style="width: ${overall.percent}%"></div>
-      </div>
-    </div>
-
-    <div class="mt-5 grid gap-3">
-      ${courses
-        .map((course) => {
-          const progress = getProgress(student, course.id);
-          return `
-            <div class="rounded-2xl border border-court-100 p-4">
-              <div class="flex items-center justify-between gap-4">
-                <div>
-                  <p class="text-sm font-semibold text-slate-900">${course.title}</p>
-                  <p class="mt-1 text-xs uppercase tracking-[0.25em] text-slate-500">${progress.completed}/${progress.total} lessons</p>
-                </div>
-                <span class="text-sm font-semibold text-court-800">${progress.percent}%</span>
-              </div>
-              <div class="mt-3 h-2 rounded-full bg-slate-100">
-                <div class="h-2 rounded-full bg-court-700" style="width: ${progress.percent}%"></div>
-              </div>
-            </div>
-          `;
-        })
-        .join("")}
-    </div>
-
-    <div class="mt-5 rounded-2xl bg-sand p-4 text-sm leading-7 text-slate-700">
-      Strongest course right now:
-      <span class="font-semibold text-slate-900">${
-        strongestCourse ? strongestCourse.course.title : "Not enough lesson data"
-      }</span>
-    </div>
-  `;
-}
-
-function renderStudentCourseStack(student, courses) {
-  dom.studentCourseStack.innerHTML = `
-    <div class="flex items-center justify-between gap-4">
-      <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.35em] text-court-700">Assigned Courses</p>
-        <h3 class="mt-2 text-xl font-semibold text-court-900">Sheet-controlled access</h3>
-      </div>
-      <div class="rounded-full bg-court-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-court-800">${courses.length} visible</div>
-    </div>
-    <div class="mt-5 space-y-3">
-      ${
-        courses.length
-          ? courses
-              .map((course) => {
-                const tone = courseToneMap[course.tone] || courseToneMap.gold;
-                const progress = getProgress(student, course.id);
-                const isActive = course.id === state.activeCourseId;
-                return `
-                  <button
-                    type="button"
-                    data-course-id="${course.id}"
-                    class="w-full rounded-[1.5rem] border p-4 text-left transition ${
-                      isActive
-                        ? `border-transparent bg-gradient-to-br ${tone.panel} ring-1 ${tone.ring}`
-                        : "border-court-100 bg-white hover:border-court-300"
-                    }"
-                  >
-                    <div class="flex items-start justify-between gap-4">
-                      <div>
-                        <div class="flex items-center gap-3">
-                          <span class="h-2.5 w-2.5 rounded-full ${tone.dot}"></span>
-                          <p class="text-sm font-semibold text-slate-900">${course.title}</p>
-                        </div>
-                        <p class="mt-2 text-xs uppercase tracking-[0.3em] text-slate-500">${course.category}</p>
-                      </div>
-                      <span class="rounded-full ${tone.soft} px-3 py-1 text-xs font-semibold ${tone.text}">${progress.percent}%</span>
-                    </div>
-                    <p class="mt-3 text-sm leading-6 text-slate-600">${course.schedule}</p>
-                  </button>
-                `;
-              })
-              .join("")
-          : `<div class="rounded-[1.5rem] border border-dashed border-court-200 bg-sand p-5 text-sm leading-7 text-slate-600">No course is currently assigned to this student in the sheet. Add one or more IDs in <span class="font-semibold text-slate-900">enrolledCourseIds</span>.</div>`
-      }
-    </div>
-  `;
-
-  dom.studentCourseStack.querySelectorAll("[data-course-id]").forEach((button) => {
-    button.addEventListener("click", () => selectCourse(button.dataset.courseId));
-  });
-}
-
-function renderCourseOverview(student, course) {
-  const tone = courseToneMap[course.tone] || courseToneMap.gold;
-  const progress = getProgress(student, course.id);
-  const lessons = getCourseLessons(course.id);
-  dom.courseOverview.innerHTML = `
-    <div class="rounded-[1.8rem] bg-gradient-to-br ${tone.panel} p-6">
-      <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div class="max-w-3xl">
-          <div class="flex flex-wrap items-center gap-3">
-            <span class="rounded-full border border-white/80 bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] text-slate-700">${course.category}</span>
-            <span class="rounded-full ${tone.soft} px-3 py-1 text-xs font-semibold uppercase tracking-[0.3em] ${tone.text}">${course.shortTitle}</span>
-          </div>
-          <h2 class="mt-4 font-display text-4xl font-bold text-court-900">${course.title}</h2>
-          <p class="mt-4 max-w-2xl text-sm leading-7 text-slate-700">${course.description}</p>
-        </div>
-        <div class="rounded-[1.5rem] border border-white/80 bg-white/75 p-5 shadow-sm backdrop-blur">
-          <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Faculty</p>
-          <p class="mt-2 text-lg font-semibold text-slate-900">${course.faculty}</p>
-          <p class="mt-4 text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Next live class</p>
-          <p class="mt-2 text-sm font-medium text-slate-800">${formatDate(course.nextLive, true)}</p>
-        </div>
-      </div>
-
-      <div class="mt-6 grid gap-4 md:grid-cols-3">
-        <div class="rounded-2xl border border-white/70 bg-white/70 p-4">
-          <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Visible lessons</p>
-          <p class="mt-2 text-3xl font-semibold text-court-900">${lessons.length}</p>
-        </div>
-        <div class="rounded-2xl border border-white/70 bg-white/70 p-4">
-          <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Completed</p>
-          <p class="mt-2 text-3xl font-semibold text-court-900">${progress.completed}</p>
-        </div>
-        <div class="rounded-2xl border border-white/70 bg-white/70 p-4">
-          <p class="text-xs font-semibold uppercase tracking-[0.3em] text-slate-500">Student access rule</p>
-          <p class="mt-2 text-sm font-medium leading-6 text-slate-800">
-            ${student.id} can see this course because the course ID is listed in the student's enrolled course column.
-          </p>
-        </div>
-      </div>
-    </div>
-  `;
-}
-
-function renderPlayerPanel(student, lesson) {
-  const isCompleted = student.completedLessonIds.includes(lesson.id);
-  dom.playerPanel.innerHTML = `
-    <div class="flex items-start justify-between gap-4">
-      <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.35em] text-court-700">Featured Lesson</p>
-        <h3 class="mt-2 text-2xl font-semibold text-court-900">${lesson.title}</h3>
-      </div>
-      <span class="rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] ${
-        isCompleted
-          ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-          : "border border-court-200 bg-court-50 text-court-800"
-      }">${isCompleted ? "Completed" : "Next to watch"}</span>
-    </div>
-
-    <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-court-200 bg-slate-950 shadow-lg">
-      <div class="aspect-video">
-        <iframe
-          class="h-full w-full"
-          src="https://www.youtube.com/embed/${lesson.youtubeId}"
-          title="${lesson.title}"
-          loading="lazy"
-          referrerpolicy="strict-origin-when-cross-origin"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-          allowfullscreen
-        ></iframe>
-      </div>
-    </div>
-
-    <div class="mt-5 grid gap-4 md:grid-cols-3">
-      <div class="rounded-2xl border border-court-100 bg-sand p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-court-700">Module</p>
-        <p class="mt-2 text-sm font-medium text-slate-900">${lesson.module}</p>
-      </div>
-      <div class="rounded-2xl border border-court-100 bg-sand p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-court-700">Published</p>
-        <p class="mt-2 text-sm font-medium text-slate-900">${formatDate(lesson.releaseDate)}</p>
-      </div>
-      <div class="rounded-2xl border border-court-100 bg-sand p-4">
-        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-court-700">Duration</p>
-        <p class="mt-2 text-sm font-medium text-slate-900">${lesson.duration}</p>
-      </div>
-    </div>
-
-    <div class="mt-5 rounded-[1.5rem] border border-court-100 p-5">
-      <p class="text-xs font-semibold uppercase tracking-[0.3em] text-court-700">Lesson note</p>
-      <p class="mt-3 text-sm leading-7 text-slate-700">${lesson.note}</p>
-      <div class="mt-4 flex flex-wrap gap-2">
-        ${lesson.resources
-          .map(
-            (resource) =>
-              `<span class="rounded-full border border-court-200 bg-court-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-court-800">${resource}</span>`
-          )
-          .join("")}
-      </div>
-      <p class="mt-4 text-xs text-slate-500">
-        Video source is linked by YouTube ID. Replace with your own uploaded class IDs from the sheet.
-      </p>
-    </div>
-  `;
-}
-
-function renderLessonList(student, course) {
-  const lessons = getCourseLessons(course.id);
-  dom.lessonList.innerHTML = `
-    <div class="flex items-start justify-between gap-4">
-      <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.35em] text-court-700">Lesson Library</p>
-        <h3 class="mt-2 text-2xl font-semibold text-court-900">${course.shortTitle} lessons</h3>
-      </div>
-      <div class="rounded-full bg-court-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-court-800">${lessons.length} items</div>
-    </div>
-
-    <div class="mt-5 space-y-3">
-      ${
-        lessons.length
-          ? lessons
-              .map((lesson) => {
-                const isActive = lesson.id === state.activeLessonId;
-                const isCompleted = student.completedLessonIds.includes(lesson.id);
-                return `
-                  <button
-                    type="button"
-                    data-lesson-id="${lesson.id}"
-                    class="w-full rounded-[1.4rem] border p-4 text-left transition ${
-                      isActive
-                        ? "border-court-900 bg-court-900 text-white shadow-lg"
-                        : "border-court-100 bg-white hover:border-court-300 hover:bg-sand"
-                    }"
-                  >
-                    <div class="flex items-start justify-between gap-4">
-                      <div>
-                        <p class="text-xs font-semibold uppercase tracking-[0.28em] ${
-                          isActive ? "text-court-200" : "text-slate-500"
-                        }">${lesson.module}</p>
-                        <p class="mt-2 text-sm font-semibold leading-6 ${
-                          isActive ? "text-white" : "text-slate-900"
-                        }">${lesson.title}</p>
-                      </div>
-                      <span class="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.25em] ${
-                        isActive
-                          ? "bg-white/10 text-white"
-                          : isCompleted
-                          ? "bg-emerald-50 text-emerald-700"
-                          : "bg-court-50 text-court-800"
-                      }">${isCompleted ? "Done" : "Open"}</span>
-                    </div>
-                    <div class="mt-3 flex items-center justify-between gap-3 text-xs ${
-                      isActive ? "text-court-100" : "text-slate-500"
-                    }">
-                      <span>${lesson.duration}</span>
-                      <span>${formatDate(lesson.releaseDate)}</span>
-                    </div>
-                  </button>
-                `;
-              })
-              .join("")
-          : `<div class="rounded-[1.5rem] border border-dashed border-court-200 bg-sand p-5 text-sm leading-7 text-slate-600">No lessons are linked to this course yet. Add rows in the <span class="font-semibold text-slate-900">Lessons</span> tab with the matching <span class="font-semibold text-slate-900">courseId</span>.</div>`
-      }
-    </div>
-  `;
-
-  dom.lessonList.querySelectorAll("[data-lesson-id]").forEach((button) => {
-    button.addEventListener("click", () => selectLesson(button.dataset.lessonId));
-  });
-}
-
-function renderNoticeList(student, courses) {
-  const notices = getVisibleNotices(
-    student,
-    courses.map((course) => course.id)
-  );
-
-  dom.noticeList.innerHTML = `
-    <div class="flex items-start justify-between gap-4">
-      <div>
-        <p class="text-xs font-semibold uppercase tracking-[0.35em] text-court-700">Notices</p>
-        <h3 class="mt-2 text-2xl font-semibold text-court-900">Student-facing updates</h3>
-      </div>
-      <div class="rounded-full bg-court-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.25em] text-court-800">${notices.length} notices</div>
-    </div>
-
-    <div class="mt-5 space-y-3">
-      ${
-        notices.length
-          ? notices
-              .map(
-                (notice) => `
-                  <article class="rounded-[1.5rem] border border-court-100 p-4">
-                    <div class="flex items-center justify-between gap-4">
-                      <p class="text-sm font-semibold text-slate-900">${notice.title}</p>
-                      <span class="text-xs font-medium uppercase tracking-[0.25em] text-slate-500">${formatDate(
-                        notice.date
-                      )}</span>
-                    </div>
-                    <p class="mt-3 text-sm leading-7 text-slate-700">${notice.body}</p>
-                  </article>
-                `
-              )
-              .join("")
-          : `<div class="rounded-[1.5rem] border border-dashed border-court-200 bg-sand p-5 text-sm leading-7 text-slate-600">No notices are active for this student right now.</div>`
-      }
-    </div>
-  `;
-}
-
-function renderSheetBlueprint(student, courses) {
-  const sampleCourseString = student.enrolledCourseIds.join(" | ");
-  const lesson = getCourseLessons(courses[0]?.id || "")[0];
-  dom.sheetBlueprint.innerHTML = `
-    <div id="blueprint">
-      <p class="text-xs font-semibold uppercase tracking-[0.35em] text-court-700">Sheet Blueprint</p>
-      <h3 class="mt-2 text-2xl font-semibold text-court-900">How the workbook should be structured</h3>
-
-      <div class="mt-5 grid gap-3">
-        <div class="rounded-[1.5rem] border border-court-100 bg-sand p-4">
-          <p class="text-xs font-semibold uppercase tracking-[0.3em] text-court-700">Students tab</p>
-          <p class="mt-3 text-sm font-medium text-slate-900">studentId | name | phone | batch | enrolledCourseIds</p>
-          <p class="mt-3 rounded-xl bg-white px-3 py-3 font-mono text-xs text-slate-700">${student.id} | ${student.name} | ${student.phone} | ${student.batch} | ${sampleCourseString}</p>
-        </div>
-
-        <div class="rounded-[1.5rem] border border-court-100 bg-white p-4">
-          <p class="text-xs font-semibold uppercase tracking-[0.3em] text-court-700">Courses tab</p>
-          <p class="mt-3 text-sm font-medium text-slate-900">courseId | title | faculty | schedule | tone</p>
-          <p class="mt-3 rounded-xl bg-sand px-3 py-3 font-mono text-xs text-slate-700">${courses[0]?.id || "course-id"} | ${courses[0]?.title || "Course title"} | ${courses[0]?.faculty || "Faculty"} | ${courses[0]?.schedule || "Schedule"} | ${courses[0]?.tone || "gold"}</p>
-        </div>
-
-        <div class="rounded-[1.5rem] border border-court-100 bg-white p-4">
-          <p class="text-xs font-semibold uppercase tracking-[0.3em] text-court-700">Lessons tab</p>
-          <p class="mt-3 text-sm font-medium text-slate-900">lessonId | courseId | module | title | youtubeId | releaseDate</p>
-          <p class="mt-3 rounded-xl bg-sand px-3 py-3 font-mono text-xs text-slate-700">${lesson ? `${lesson.id} | ${lesson.courseId} | ${lesson.module} | ${lesson.title} | ${lesson.youtubeId} | ${lesson.releaseDate}` : "No lesson loaded"}</p>
-        </div>
-      </div>
-
-      <div class="mt-5 rounded-[1.5rem] border border-court-100 bg-court-900 p-4 text-white">
-        <p class="text-xs font-semibold uppercase tracking-[0.3em] text-court-200">Assignment rule</p>
-        <p class="mt-3 text-sm leading-7 text-court-100">
-          To give a student 2 or 3 courses, add multiple course IDs in the Students sheet separated
-          by the pipe character. Example: <span class="font-mono text-white">${sampleCourseString}</span>
+function renderCourseList(student, courses) {
+  if (!courses.length) {
+    dom.courseList.innerHTML = `
+      <div class="rounded-[2rem] border border-slate-100 bg-white p-8 text-center shadow-sm">
+        <h3 class="text-2xl font-bold text-blue-950">কোনো কোর্স পাওয়া যায়নি</h3>
+        <p class="mt-3 text-slate-500">
+          এই স্টুডেন্টের জন্য এখনও কোনো কোর্স যুক্ত করা হয়নি। Google Sheet-এর enrolledCourseIds
+          কলাম আপডেট করুন।
         </p>
       </div>
-    </div>
-  `;
-}
-
-function renderPortal() {
-  const student = state.data.students.find((item) => item.id === state.activeStudentId);
-  if (!student) {
+    `;
     return;
   }
 
+  if (!courses.some((course) => course.id === state.openCourseId)) {
+    state.openCourseId = courses[0].id;
+  }
+
+  dom.courseList.innerHTML = courses
+    .map((course, index) => {
+      const lessons = getCourseLessons(course.id);
+      const resourceCount = getTotalResources(lessons);
+      const isOpen = state.openCourseId === course.id;
+
+      return `
+        <div class="group overflow-hidden rounded-[2rem] border border-slate-100 bg-white shadow-sm ${
+          isOpen ? "accordion-active" : ""
+        }">
+          <button
+            type="button"
+            data-course-id="${course.id}"
+            class="flex w-full items-center justify-between px-8 py-7 text-left transition-colors hover:bg-slate-50"
+          >
+            <div class="flex items-center space-x-5">
+              <div class="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-xl font-bold text-blue-900 transition-all duration-300 group-hover:bg-blue-900 group-hover:text-white">
+                ${toBanglaNumber(String(index + 1).padStart(2, "0"))}
+              </div>
+              <div>
+                <h3 class="text-xl font-bold text-blue-950">${course.title}</h3>
+                <p class="text-sm text-slate-500">
+                  ${toBanglaNumber(lessons.length)}টি রেকর্ড করা ক্লাস • ${toBanglaNumber(
+                    resourceCount
+                  )}টি রিসোর্স
+                </p>
+              </div>
+            </div>
+            <div
+              class="arrow-icon rounded-full bg-slate-100 p-2 transition-transform duration-300"
+              style="transform: rotate(${isOpen ? 180 : 0}deg)"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                class="h-6 w-6"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+              >
+                <path
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  stroke-width="3"
+                  d="M19 9l-7 7-7-7"
+                />
+              </svg>
+            </div>
+          </button>
+
+          <div class="accordion-content px-4">
+            <div class="space-y-3 rounded-3xl bg-slate-50 p-4">
+              <div class="rounded-2xl border border-slate-100 bg-white p-4">
+                <div class="flex flex-col gap-3 text-sm text-slate-600 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <p class="text-xs font-bold uppercase tracking-wider text-slate-400">ফ্যাকাল্টি</p>
+                    <p class="mt-1 font-semibold text-slate-800">${course.faculty}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs font-bold uppercase tracking-wider text-slate-400">রুটিন</p>
+                    <p class="mt-1 font-semibold text-slate-800">${course.schedule}</p>
+                  </div>
+                  <div>
+                    <p class="text-xs font-bold uppercase tracking-wider text-slate-400">ক্যাটাগরি</p>
+                    <p class="mt-1 font-semibold text-slate-800">${course.category}</p>
+                  </div>
+                </div>
+              </div>
+
+              ${
+                lessons.length
+                  ? lessons
+                      .map((lesson, lessonIndex) => {
+                        const isCompleted = student.completedLessonIds.includes(lesson.id);
+                        return `
+                          <div class="card-hover group/item flex flex-col items-start justify-between rounded-2xl border border-slate-100 bg-white p-5 transition-all hover:border-blue-200 sm:flex-row sm:items-center">
+                            <div class="flex w-full items-center space-x-4 sm:w-auto">
+                              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-600 transition group-hover/item:bg-blue-600 group-hover/item:text-white">
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  class="h-5 w-5"
+                                  fill="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path d="M8 5v14l11-7z" />
+                                </svg>
+                              </div>
+                              <div>
+                                <h4 class="font-bold text-slate-800">
+                                  Class ${toBanglaNumber(String(lessonIndex + 1).padStart(2, "0"))}: ${
+                                    lesson.title
+                                  }
+                                </h4>
+                                <p class="mt-1 text-xs text-slate-500">${lesson.module} • ${
+                                  lesson.duration
+                                }</p>
+                                <button
+                                  type="button"
+                                  data-video-id="${lesson.youtubeId}"
+                                  data-video-title="${lesson.title}"
+                                  class="mt-2 flex items-center text-xs font-bold text-blue-600 transition hover:text-blue-800"
+                                >
+                                  <span>ভিডিওটি প্লে করুন</span>
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="ml-1 h-3 w-3"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      stroke-linecap="round"
+                                      stroke-linejoin="round"
+                                      stroke-width="2"
+                                      d="M13 7l5 5m0 0l-5 5m5-5H6"
+                                    />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                            <div class="mt-4 flex flex-wrap items-center gap-2 sm:mt-0 sm:justify-end">
+                              <div class="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-400">
+                                আপডেট: ${formatDate(lesson.releaseDate)}
+                              </div>
+                              <div class="rounded-full px-3 py-1 text-[10px] font-bold ${
+                                isCompleted
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-amber-100 text-amber-700"
+                              }">
+                                ${isCompleted ? "সম্পন্ন" : "নতুন"}
+                              </div>
+                            </div>
+                          </div>
+                        `;
+                      })
+                      .join("")
+                  : `
+                    <div class="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-sm text-slate-500">
+                      এই কোর্সের জন্য এখনও কোনো ক্লাস যোগ করা হয়নি।
+                    </div>
+                  `
+              }
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  dom.courseList.querySelectorAll("[data-course-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.openCourseId = state.openCourseId === button.dataset.courseId ? "" : button.dataset.courseId;
+      renderCourseList(student, courses);
+    });
+  });
+
+  dom.courseList.querySelectorAll("[data-video-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openVideo(button.dataset.videoId, button.dataset.videoTitle);
+    });
+  });
+}
+
+function renderDashboard(student) {
   const courses = getStudentCourses(student);
+  const stats = getStudentStats(student, courses);
 
-  renderStudentCard(student, courses);
-  renderStudentProgress(student, courses);
-  renderStudentCourseStack(student, courses);
-  renderNoticeList(student, courses);
-  renderSheetBlueprint(student, courses);
-
-  if (!courses.length) {
-    dom.courseOverview.innerHTML = `<div class="rounded-[1.8rem] border border-dashed border-court-200 bg-sand p-6 text-sm leading-7 text-slate-600">This student record is loaded, but no course has been assigned yet. Add course IDs in the <span class="font-semibold text-slate-900">Students</span> tab to unlock the dashboard.</div>`;
-    dom.playerPanel.innerHTML = `<div class="rounded-[1.5rem] border border-dashed border-court-200 bg-sand p-6 text-sm leading-7 text-slate-600">Once a course is assigned and lessons are linked, the selected YouTube class will appear here.</div>`;
-    dom.lessonList.innerHTML = `<div class="rounded-[1.5rem] border border-dashed border-court-200 bg-sand p-6 text-sm leading-7 text-slate-600">No lesson list yet because the student has no visible course.</div>`;
-    return;
-  }
-
-  const course = state.data.courseMap.get(state.activeCourseId) || courses[0];
-  const lesson = state.data.lessonMap.get(state.activeLessonId) || getCourseLessons(course.id)[0];
-
-  renderCourseOverview(student, course);
-  renderLessonList(student, course);
-
-  if (!lesson) {
-    dom.playerPanel.innerHTML = `<div class="rounded-[1.5rem] border border-dashed border-court-200 bg-sand p-6 text-sm leading-7 text-slate-600">The course is visible, but no YouTube lesson is linked yet. Add a row in the <span class="font-semibold text-slate-900">Lessons</span> tab with this course ID.</div>`;
-    return;
-  }
-
-  renderPlayerPanel(student, lesson);
+  renderStudentHeader(student, stats);
+  renderCourseList(student, courses);
 }
 
-function handleLookup(query) {
-  const student = getStudentByQuery(query);
-  if (!student) {
-    dom.feedback.textContent = "No student matched that ID, phone, or email in the current dataset.";
-    dom.feedback.className = "mt-4 text-sm text-amber-200";
+function logout() {
+  closeVideo();
+  state.activeStudentId = "";
+  state.openCourseId = "";
+  togglePage("login");
+  setFeedback("আবার লগইন করতে স্টুডেন্ট তথ্য দিন।");
+  showToast("লগআউট হয়েছে।", "info");
+}
+
+function performLogin(query = dom.query.value) {
+  const studentQuery = String(query || "").trim();
+
+  if (!studentQuery) {
+    setFeedback("স্টুডেন্ট আইডি, ফোন নাম্বার অথবা ইমেইল লিখুন।", "error");
+    showToast("লগইন তথ্য দিন।", "error");
     return;
   }
 
-  dom.feedback.textContent = `${student.name} loaded with ${student.enrolledCourseIds.length} visible courses.`;
-  dom.feedback.className = "mt-4 text-sm text-emerald-200";
-  selectStudent(student);
+  const student = getStudentByQuery(studentQuery);
+  if (!student) {
+    setFeedback("কোনো স্টুডেন্ট খুঁজে পাওয়া যায়নি।", "error");
+    showToast("স্টুডেন্ট তথ্য মেলেনি।", "error");
+    return;
+  }
+
+  state.activeStudentId = student.id;
+  state.openCourseId = getStudentCourses(student)[0]?.id || "";
+
+  renderDashboard(student);
+  togglePage("profile");
+  setFeedback(`${student.name} সফলভাবে লগইন করেছেন।`, "success");
+  showToast("সাফল্যের সাথে লগইন হয়েছে!");
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 async function initialize() {
-  try {
-    state.data = await loadData();
-    const defaultStudent = getStudentByQuery(APP_CONFIG.defaultStudentQuery) || state.data.students[0];
-    if (!defaultStudent) {
-      throw new Error("No student records were found.");
-    }
+  const result = await loadData();
+  state.data = result.data;
+  state.dataModeLabel = result.modeLabel;
 
-    selectStudent(defaultStudent);
-    dom.feedback.textContent = `${defaultStudent.name} is loaded by default so you can test the multi-course flow immediately.`;
-    dom.feedback.className = "mt-4 text-sm text-court-100";
-    dom.query.value = defaultStudent.id;
-  } catch (error) {
-    dom.feedback.textContent = error.message || "Failed to initialize portal.";
-    dom.feedback.className = "mt-4 text-sm text-amber-200";
-  }
+  dom.dataModeBadge.textContent = result.modeLabel;
+  dom.query.value = APP_CONFIG.defaultStudentQuery;
+  setFeedback("ডেমো লগইন করতে স্টুডেন্ট আইডি, ফোন বা ইমেইল ব্যবহার করুন।");
+  togglePage("login");
 }
 
 dom.form.addEventListener("submit", (event) => {
   event.preventDefault();
-  handleLookup(dom.query.value);
+  performLogin();
+});
+
+dom.loginBtn.addEventListener("click", () => {
+  togglePage("login");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+});
+
+dom.userProfile.addEventListener("click", () => {
+  if (state.activeStudentId) {
+    logout();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 });
 
 document.querySelectorAll("[data-student-pill]").forEach((button) => {
   button.addEventListener("click", () => {
-    const studentId = button.dataset.studentPill;
-    dom.query.value = studentId;
-    handleLookup(studentId);
+    dom.query.value = button.dataset.studentPill;
+    performLogin(button.dataset.studentPill);
   });
 });
 
-initialize();
+dom.closeVideoBtn.addEventListener("click", closeVideo);
+dom.videoBackdrop.addEventListener("click", closeVideo);
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") {
+    closeVideo();
+  }
+});
+
+initialize().catch((error) => {
+  console.error(error);
+  setFeedback("ডাটা লোড করতে সমস্যা হয়েছে।", "error");
+  showToast("ডাটা লোড করা যায়নি।", "error");
+});
