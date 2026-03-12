@@ -4,7 +4,6 @@ const APPS_SCRIPT_DEPLOYMENT_ID =
 const APP_CONFIG = Object.freeze({
   dataMode: "remote",
   remoteEndpoint: `https://script.google.com/macros/s/${APPS_SCRIPT_DEPLOYMENT_ID}/exec`,
-  defaultStudentQuery: "LAW-2026-014",
 });
 
 const demoData = {
@@ -1448,6 +1447,7 @@ function logout() {
   closeProfileModal();
   state.activeStudentId = "";
   state.openCourseId = "";
+  dom.query.value = "";
   dom.password.value = "";
   togglePage("login");
   setFeedback("Enter your student credentials to log in again.");
@@ -1511,7 +1511,7 @@ async function initialize() {
   state.dataModeLabel = result.modeLabel;
 
   dom.dataModeBadge.textContent = result.modeLabel || "";
-  dom.query.value = APP_CONFIG.defaultStudentQuery;
+  dom.query.value = "";
   dom.password.placeholder = "Enter your password";
   setFeedback("");
   togglePage("login");
