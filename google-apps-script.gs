@@ -359,11 +359,30 @@ function parseRequest_(e) {
     try {
       bodyData = JSON.parse(postData);
     } catch (error) {
-      bodyData = {};
+      bodyData = parseFormEncodedBody_(postData);
     }
   }
 
   return Object.assign({}, bodyData, parameterData);
+}
+
+function parseFormEncodedBody_(postData) {
+  return String(postData || "")
+    .split("&")
+    .filter(Boolean)
+    .reduce((result, pair) => {
+      const parts = pair.split("=");
+      const rawKey = parts.shift() || "";
+      const rawValue = parts.join("=");
+      const key = decodeURIComponent(rawKey.replace(/\+/g, " "));
+      const value = decodeURIComponent(rawValue.replace(/\+/g, " "));
+
+      if (key) {
+        result[key] = value;
+      }
+
+      return result;
+    }, {});
 }
 
 function readSheet_(sheet) {
@@ -395,13 +414,22 @@ function sanitizeStudents_(students) {
 
 function findStudentByQuery_(students, query) {
   const normalizedQuery = normalizeValue_(query);
+  const compactQuery = compactLookupValue_(query);
+  const normalizedPhone = normalizePhoneLookupValue_(query);
+
+  if (!normalizedQuery && !compactQuery && !normalizedPhone) {
+    return null;
+  }
 
   return (
-    students.find((student) =>
-      [student.id, student.studentId, student.phone, student.email]
-        .filter(Boolean)
-        .some((field) => normalizeValue_(field) === normalizedQuery)
-    ) || null
+    students.find((student) => {
+      const tokens = getStudentLookupTokens_(student);
+      return (
+        (normalizedQuery && tokens.indexOf(normalizedQuery) !== -1) ||
+        (compactQuery && tokens.indexOf(compactQuery) !== -1) ||
+        (normalizedPhone && tokens.indexOf(normalizedPhone) !== -1)
+      );
+    }) || null
   );
 }
 
@@ -422,6 +450,55 @@ function isLoginApproved_(student) {
 
 function normalizeValue_(value) {
   return String(value || "").trim().toLowerCase();
+}
+
+function compactLookupValue_(value) {
+  return normalizeValue_(value).replace(/[^a-z0-9]+/g, "");
+}
+
+function digitsOnlyValue_(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function normalizePhoneLookupValue_(value) {
+  const digits = digitsOnlyValue_(value);
+  if (!digits) {
+    return "";
+  }
+
+  if (digits.length === 10 && digits.indexOf("1") === 0) {
+    return "0" + digits;
+  }
+
+  if (digits.length === 12 && digits.indexOf("88") === 0) {
+    return "0" + digits.slice(2);
+  }
+
+  if (digits.length === 13 && digits.indexOf("880") === 0) {
+    return "0" + digits.slice(3);
+  }
+
+  return digits;
+}
+
+function getStudentLookupTokens_(student) {
+  const rawStudentId = student.id || student.studentId || "";
+  const tokens = [
+    normalizeValue_(rawStudentId),
+    compactLookupValue_(rawStudentId),
+    normalizeValue_(student.email),
+    compactLookupValue_(student.email),
+    normalizePhoneLookupValue_(student.phone),
+  ];
+
+  const idSegments = String(rawStudentId)
+    .split(/[^a-zA-Z0-9]+/)
+    .map((segment) => normalizeValue_(segment))
+    .filter((segment) => segment.length >= 2);
+
+  return tokens.concat(idSegments).filter(Boolean).filter(function (token, index, list) {
+    return list.indexOf(token) === index;
+  });
 }
 
 function getSpreadsheet_() {

@@ -9,6 +9,8 @@ const APP_CONFIG = Object.freeze({
 const SESSION_STORAGE_KEYS = Object.freeze({
   activeStudentId: "ain-pathshala.activeStudentId",
   openCourseId: "ain-pathshala.openCourseId",
+  loginQuery: "ain-pathshala.loginQuery",
+  loginPassword: "ain-pathshala.loginPassword",
 });
 
 const demoData = {
@@ -407,6 +409,78 @@ function decodeDataValue(value) {
   }
 }
 
+function getNormalizedLookupValue(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getCompactLookupValue(value) {
+  return getNormalizedLookupValue(value).replace(/[^a-z0-9]+/g, "");
+}
+
+function getDigitsOnlyValue(value) {
+  return String(value || "").replace(/\D/g, "");
+}
+
+function normalizePhoneLookupValue(value) {
+  const digits = getDigitsOnlyValue(value);
+  if (!digits) {
+    return "";
+  }
+
+  if (digits.length === 10 && digits.startsWith("1")) {
+    return `0${digits}`;
+  }
+
+  if (digits.length === 12 && digits.startsWith("88")) {
+    return `0${digits.slice(2)}`;
+  }
+
+  if (digits.length === 13 && digits.startsWith("880")) {
+    return `0${digits.slice(3)}`;
+  }
+
+  return digits;
+}
+
+function getStudentLookupTokens(student) {
+  const rawStudentId = student.id || student.studentId || "";
+  const textTokens = [
+    getNormalizedLookupValue(rawStudentId),
+    getCompactLookupValue(rawStudentId),
+    getNormalizedLookupValue(student.email),
+    getCompactLookupValue(student.email),
+    normalizePhoneLookupValue(student.phone),
+  ];
+
+  const idSegments = String(rawStudentId)
+    .split(/[^a-zA-Z0-9]+/)
+    .map((segment) => getNormalizedLookupValue(segment))
+    .filter((segment) => segment.length >= 2);
+
+  return [...new Set([...textTokens, ...idSegments].filter(Boolean))];
+}
+
+function findStudentRecordByQuery(students, query) {
+  const normalizedQuery = getNormalizedLookupValue(query);
+  const compactQuery = getCompactLookupValue(query);
+  const normalizedPhone = normalizePhoneLookupValue(query);
+
+  if (!normalizedQuery && !compactQuery && !normalizedPhone) {
+    return null;
+  }
+
+  return (
+    students.find((student) => {
+      const tokens = getStudentLookupTokens(student);
+      return (
+        (normalizedQuery && tokens.includes(normalizedQuery)) ||
+        (compactQuery && tokens.includes(compactQuery)) ||
+        (normalizedPhone && tokens.includes(normalizedPhone))
+      );
+    }) || null
+  );
+}
+
 function parseList(value) {
   if (Array.isArray(value)) {
     return value.filter(Boolean);
@@ -707,18 +781,7 @@ async function loadData() {
 }
 
 function getStudentByQuery(query) {
-  const normalizedQuery = String(query || "").trim().toLowerCase();
-  if (!normalizedQuery) {
-    return null;
-  }
-
-  return (
-    state.data.students.find((student) =>
-      [student.id, student.phone, student.email]
-        .filter(Boolean)
-        .some((field) => String(field).trim().toLowerCase() === normalizedQuery)
-    ) || null
-  );
+  return findStudentRecordByQuery(state.data.students, query);
 }
 
 function getActiveStudent() {
@@ -739,6 +802,48 @@ function syncPortalSession() {
 
   sessionStore.setItem(SESSION_STORAGE_KEYS.activeStudentId, state.activeStudentId);
   sessionStore.setItem(SESSION_STORAGE_KEYS.openCourseId, state.openCourseId || "");
+}
+
+function syncLoginDraft() {
+  const sessionStore = getSessionStore();
+  if (!sessionStore || state.activeStudentId) {
+    return;
+  }
+
+  const queryValue = String(dom.query?.value || "");
+  const passwordValue = String(dom.password?.value || "");
+
+  if (queryValue) {
+    sessionStore.setItem(SESSION_STORAGE_KEYS.loginQuery, queryValue);
+  } else {
+    sessionStore.removeItem(SESSION_STORAGE_KEYS.loginQuery);
+  }
+
+  if (passwordValue) {
+    sessionStore.setItem(SESSION_STORAGE_KEYS.loginPassword, passwordValue);
+  } else {
+    sessionStore.removeItem(SESSION_STORAGE_KEYS.loginPassword);
+  }
+}
+
+function clearLoginDraft() {
+  const sessionStore = getSessionStore();
+  if (!sessionStore) {
+    return;
+  }
+
+  sessionStore.removeItem(SESSION_STORAGE_KEYS.loginQuery);
+  sessionStore.removeItem(SESSION_STORAGE_KEYS.loginPassword);
+}
+
+function restoreLoginDraft() {
+  const sessionStore = getSessionStore();
+  if (!sessionStore) {
+    return;
+  }
+
+  dom.query.value = String(sessionStore.getItem(SESSION_STORAGE_KEYS.loginQuery) || "");
+  dom.password.value = String(sessionStore.getItem(SESSION_STORAGE_KEYS.loginPassword) || "");
 }
 
 function restorePortalSession() {
@@ -1733,6 +1838,7 @@ function logout() {
   syncPortalSession();
   dom.query.value = "";
   dom.password.value = "";
+  clearLoginDraft();
   togglePage("login");
   setFeedback("Enter your student credentials to log in again.");
   showToast("Logged out successfully.", "info");
@@ -1741,6 +1847,7 @@ function logout() {
 async function performLogin(query = dom.query.value) {
   const studentQuery = String(query || "").trim();
   const password = String(dom.password.value || "").trim();
+  syncLoginDraft();
 
   if (!studentQuery) {
     setFeedback("Enter a student ID, phone number, or email address.", "error");
@@ -1784,6 +1891,7 @@ async function performLogin(query = dom.query.value) {
 
   renderDashboard(student);
   togglePage("profile");
+  clearLoginDraft();
   dom.password.value = "";
   setFeedback(`${student.name} logged in successfully.`, "success");
   showToast("Logged in successfully!");
@@ -1796,11 +1904,11 @@ async function initialize() {
   state.dataModeLabel = result.modeLabel;
 
   dom.dataModeBadge.textContent = result.modeLabel || "";
-  dom.query.value = "";
   dom.password.placeholder = "Enter your password";
   setFeedback("");
 
   if (!restorePortalSession()) {
+    restoreLoginDraft();
     togglePage("login");
   }
 }
@@ -1814,6 +1922,9 @@ dom.loginBtn.addEventListener("click", () => {
   togglePage("login");
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
+
+dom.query.addEventListener("input", syncLoginDraft);
+dom.password.addEventListener("input", syncLoginDraft);
 
 dom.userProfile.addEventListener("click", () => {
   if (state.activeStudentId) {
