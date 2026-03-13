@@ -58,6 +58,28 @@ const SHEET_HEADERS = {
 
 const APPROVED_LOGIN_VALUES = ["approved", "yes", "true", "allow", "allowed", "active", "1"];
 const BLOCKED_STATUS_VALUES = ["inactive", "blocked", "suspended", "expired"];
+const LOOKUP_DIGIT_MAP_ = {
+  "০": "0",
+  "১": "1",
+  "২": "2",
+  "৩": "3",
+  "৪": "4",
+  "৫": "5",
+  "৬": "6",
+  "৭": "7",
+  "৮": "8",
+  "৯": "9",
+  "٠": "0",
+  "١": "1",
+  "٢": "2",
+  "٣": "3",
+  "٤": "4",
+  "٥": "5",
+  "٦": "6",
+  "٧": "7",
+  "٨": "8",
+  "٩": "9",
+};
 
 const SAMPLE_DATA = {
   students: [
@@ -396,10 +418,42 @@ function readSheet_(sheet) {
 
   return rows.map((row) =>
     headers.reduce((record, header, index) => {
-      record[header] = row[index];
+      const value = row[index];
+      getHeaderAliases_(header).forEach(function (alias) {
+        if (!(alias in record)) {
+          record[alias] = value;
+        }
+      });
+
       return record;
     }, {})
   );
+}
+
+function getHeaderAliases_(header) {
+  const aliases = [
+    String(header || "").trim(),
+    normalizeHeaderKey_(header),
+    compactLookupValue_(header),
+  ];
+
+  return aliases.filter(Boolean).filter(function (alias, index, list) {
+    return list.indexOf(alias) === index;
+  });
+}
+
+function normalizeHeaderKey_(header) {
+  const normalized = normalizeValue_(header).replace(/[^a-z0-9]+/g, " ").trim();
+  if (!normalized) {
+    return "";
+  }
+
+  return normalized
+    .split(/\s+/)
+    .map(function (part, index) {
+      return index === 0 ? part : part.charAt(0).toUpperCase() + part.slice(1);
+    })
+    .join("");
 }
 
 function sanitizeStudents_(students) {
@@ -415,9 +469,10 @@ function sanitizeStudents_(students) {
 function findStudentByQuery_(students, query) {
   const normalizedQuery = normalizeValue_(query);
   const compactQuery = compactLookupValue_(query);
+  const canonicalQuery = canonicalLookupValue_(query);
   const normalizedPhone = normalizePhoneLookupValue_(query);
 
-  if (!normalizedQuery && !compactQuery && !normalizedPhone) {
+  if (!normalizedQuery && !compactQuery && !canonicalQuery && !normalizedPhone) {
     return null;
   }
 
@@ -427,6 +482,7 @@ function findStudentByQuery_(students, query) {
       return (
         (normalizedQuery && tokens.indexOf(normalizedQuery) !== -1) ||
         (compactQuery && tokens.indexOf(compactQuery) !== -1) ||
+        (canonicalQuery && tokens.indexOf(canonicalQuery) !== -1) ||
         (normalizedPhone && tokens.indexOf(normalizedPhone) !== -1)
       );
     }) || null
@@ -449,15 +505,43 @@ function isLoginApproved_(student) {
 }
 
 function normalizeValue_(value) {
-  return String(value || "").trim().toLowerCase();
+  return normalizeLookupText_(value).trim().toLowerCase();
+}
+
+function normalizeLookupText_(value) {
+  var text = String(value || "");
+
+  if (typeof text.normalize === "function") {
+    text = text.normalize("NFKC");
+  }
+
+  return text
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[‐‑‒–—−]/g, "-")
+    .replace(/[০-৯٠-٩]/g, function (character) {
+      return LOOKUP_DIGIT_MAP_[character] || character;
+    });
 }
 
 function compactLookupValue_(value) {
   return normalizeValue_(value).replace(/[^a-z0-9]+/g, "");
 }
 
+function canonicalLookupValue_(value) {
+  const segments = normalizeValue_(value).match(/[a-z]+|\d+/g);
+  if (!segments || !segments.length) {
+    return "";
+  }
+
+  return segments
+    .map(function (segment) {
+      return /^\d+$/.test(segment) ? String(Number(segment)) : segment;
+    })
+    .join("");
+}
+
 function digitsOnlyValue_(value) {
-  return String(value || "").replace(/\D/g, "");
+  return normalizeLookupText_(value).replace(/\D/g, "");
 }
 
 function normalizePhoneLookupValue_(value) {
@@ -486,6 +570,7 @@ function getStudentLookupTokens_(student) {
   const tokens = [
     normalizeValue_(rawStudentId),
     compactLookupValue_(rawStudentId),
+    canonicalLookupValue_(rawStudentId),
     normalizeValue_(student.email),
     compactLookupValue_(student.email),
     normalizePhoneLookupValue_(student.phone),

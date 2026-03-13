@@ -13,6 +13,29 @@ const SESSION_STORAGE_KEYS = Object.freeze({
   loginPassword: "ain-pathshala.loginPassword",
 });
 
+const LOOKUP_DIGIT_MAP = Object.freeze({
+  "০": "0",
+  "১": "1",
+  "২": "2",
+  "৩": "3",
+  "৪": "4",
+  "৫": "5",
+  "৬": "6",
+  "৭": "7",
+  "৮": "8",
+  "৯": "9",
+  "٠": "0",
+  "١": "1",
+  "٢": "2",
+  "٣": "3",
+  "٤": "4",
+  "٥": "5",
+  "٦": "6",
+  "٧": "7",
+  "٨": "8",
+  "٩": "9",
+});
+
 const demoData = {
   students: [
     {
@@ -409,8 +432,31 @@ function decodeDataValue(value) {
   }
 }
 
+function normalizeLookupCharacters(value) {
+  let text = String(value || "");
+  if (typeof text.normalize === "function") {
+    text = text.normalize("NFKC");
+  }
+
+  return text
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[‐‑‒–—−]/g, "-")
+    .replace(/[০-৯٠-٩]/g, (character) => LOOKUP_DIGIT_MAP[character] || character);
+}
+
 function getNormalizedLookupValue(value) {
-  return String(value || "").trim().toLowerCase();
+  return normalizeLookupCharacters(value).trim().toLowerCase();
+}
+
+function getCanonicalLookupValue(value) {
+  const segments = getNormalizedLookupValue(value).match(/[a-z]+|\d+/g);
+  if (!segments || !segments.length) {
+    return "";
+  }
+
+  return segments
+    .map((segment) => (/^\d+$/.test(segment) ? String(Number(segment)) : segment))
+    .join("");
 }
 
 function getCompactLookupValue(value) {
@@ -418,7 +464,7 @@ function getCompactLookupValue(value) {
 }
 
 function getDigitsOnlyValue(value) {
-  return String(value || "").replace(/\D/g, "");
+  return normalizeLookupCharacters(value).replace(/\D/g, "");
 }
 
 function normalizePhoneLookupValue(value) {
@@ -447,6 +493,7 @@ function getStudentLookupTokens(student) {
   const textTokens = [
     getNormalizedLookupValue(rawStudentId),
     getCompactLookupValue(rawStudentId),
+    getCanonicalLookupValue(rawStudentId),
     getNormalizedLookupValue(student.email),
     getCompactLookupValue(student.email),
     normalizePhoneLookupValue(student.phone),
@@ -463,9 +510,10 @@ function getStudentLookupTokens(student) {
 function findStudentRecordByQuery(students, query) {
   const normalizedQuery = getNormalizedLookupValue(query);
   const compactQuery = getCompactLookupValue(query);
+  const canonicalQuery = getCanonicalLookupValue(query);
   const normalizedPhone = normalizePhoneLookupValue(query);
 
-  if (!normalizedQuery && !compactQuery && !normalizedPhone) {
+  if (!normalizedQuery && !compactQuery && !canonicalQuery && !normalizedPhone) {
     return null;
   }
 
@@ -475,6 +523,7 @@ function findStudentRecordByQuery(students, query) {
       return (
         (normalizedQuery && tokens.includes(normalizedQuery)) ||
         (compactQuery && tokens.includes(compactQuery)) ||
+        (canonicalQuery && tokens.includes(canonicalQuery)) ||
         (normalizedPhone && tokens.includes(normalizedPhone))
       );
     }) || null
