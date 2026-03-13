@@ -12,7 +12,7 @@ This is a frontend prototype for a law-focused coaching portal that uses Tailwin
 
 - A polished landing and portal interface for law students
 - One student can access multiple courses at the same time
-- Course lessons are rendered from course-linked YouTube IDs
+- Course lessons are rendered from full YouTube links that you can paste directly from YouTube
 - Student profile modal with course access and payment details
 - Payment-based video locking using monthly paid access or approval dates
 
@@ -65,8 +65,14 @@ id | title | shortTitle | faculty | category | schedule | nextLive | description
 ### Lessons
 
 ```text
-id | courseId | module | title | duration | youtubeId | releaseDate | resources | note
+id | courseId | module | title | duration | youtubeUrl | releaseDate | resources | note
 ```
+
+For the `youtubeUrl` column, paste the full YouTube link directly, for example:
+
+- `https://www.youtube.com/watch?v=M7lc1UVf-VE`
+
+Old sheets that still use `youtubeId` will continue to work, but the recommended setup is now `youtubeUrl` with the full link.
 
 For `resources`, use a pipe-separated value if you want multiple tags:
 
@@ -163,8 +169,8 @@ With that row:
 
 The frontend is currently configured to use this deployed Apps Script web app:
 
-- Deployment ID: `AKfycbwTggMJSfIRDC1TGURJwAca38O0ZWErf2sqAW_236WpxaFuge36t30FZXIrmd9d3JnP`
-- Web app endpoint: `https://script.google.com/macros/s/AKfycbwTggMJSfIRDC1TGURJwAca38O0ZWErf2sqAW_236WpxaFuge36t30FZXIrmd9d3JnP/exec`
+- Deployment ID: `AKfycbxdJm41u61WYLFeu9hqzIYiyLxs-k_daoHj8o2gitynv03J5bVzXsOjKWHHKvrWXdukKA`
+- Web app endpoint: `https://script.google.com/macros/s/AKfycbxdJm41u61WYLFeu9hqzIYiyLxs-k_daoHj8o2gitynv03J5bVzXsOjKWHHKvrWXdukKA/exec`
 - Library: not required for frontend runtime; the portal uses the deployed Web App `/exec` URL
 
 Connection flow:

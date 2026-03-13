@@ -1,9 +1,14 @@
 const APPS_SCRIPT_DEPLOYMENT_ID =
-  "AKfycbwTggMJSfIRDC1TGURJwAca38O0ZWErf2sqAW_236WpxaFuge36t30FZXIrmd9d3JnP";
+  "AKfycbxdJm41u61WYLFeu9hqzIYiyLxs-k_daoHj8o2gitynv03J5bVzXsOjKWHHKvrWXdukKA";
 
 const APP_CONFIG = Object.freeze({
   dataMode: "remote",
   remoteEndpoint: `https://script.google.com/macros/s/${APPS_SCRIPT_DEPLOYMENT_ID}/exec`,
+});
+
+const SESSION_STORAGE_KEYS = Object.freeze({
+  activeStudentId: "ain-pathshala.activeStudentId",
+  openCourseId: "ain-pathshala.openCourseId",
 });
 
 const demoData = {
@@ -120,7 +125,7 @@ const demoData = {
       module: "Constitutional Framework",
       title: "State structure, separation of powers, and court hierarchy",
       duration: "48 min",
-      youtubeId: "M7lc1UVf-VE",
+      youtubeUrl: "https://www.youtube.com/watch?v=M7lc1UVf-VE",
       releaseDate: "2026-01-05",
       resources: ["PDF outline", "MCQ drill set"],
       note: "Start here if the student is new to judiciary preparation.",
@@ -131,7 +136,7 @@ const demoData = {
       module: "Core Principles",
       title: "Natural justice and judicial review essentials",
       duration: "44 min",
-      youtubeId: "ysz5S6PUM-U",
+      youtubeUrl: "https://www.youtube.com/watch?v=ysz5S6PUM-U",
       releaseDate: "2026-02-08",
       resources: ["Case digest", "Revision notes"],
       note: "Pairs well with constitutional case memorization.",
@@ -142,7 +147,7 @@ const demoData = {
       module: "MCQ Strategy",
       title: "How to extract high-yield points from past papers",
       duration: "36 min",
-      youtubeId: "ScMzIvxBSi4",
+      youtubeUrl: "https://www.youtube.com/watch?v=ScMzIvxBSi4",
       releaseDate: "2026-03-11",
       resources: ["Past paper map", "Score tracker"],
       note: "Ideal before weekly model tests.",
@@ -153,7 +158,7 @@ const demoData = {
       module: "Investigation Flow",
       title: "From FIR to police report: the criminal process map",
       duration: "41 min",
-      youtubeId: "aqz-KE-bpKQ",
+      youtubeUrl: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
       releaseDate: "2026-02-04",
       resources: ["Flowchart", "Section list"],
       note: "Covers the entire process in one class.",
@@ -164,7 +169,7 @@ const demoData = {
       module: "Trial Mechanics",
       title: "Charge, cognizance, and trial stages simplified",
       duration: "52 min",
-      youtubeId: "dQw4w9WgXcQ",
+      youtubeUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
       releaseDate: "2026-03-09",
       resources: ["Procedure chart", "MCQ bank"],
       note: "Strong revision class for bar and judiciary learners.",
@@ -175,7 +180,7 @@ const demoData = {
       module: "Bail and Appeals",
       title: "Bail grounds, revision, and appellate pathways",
       duration: "46 min",
-      youtubeId: "ysz5S6PUM-U",
+      youtubeUrl: "https://www.youtube.com/watch?v=ysz5S6PUM-U",
       releaseDate: "2026-03-12",
       resources: ["Bail grounds note", "Quick recall sheet"],
       note: "Good companion lesson before live doubt clearing.",
@@ -186,7 +191,7 @@ const demoData = {
       module: "Civil Drafting",
       title: "How to draft a plaint with proper heading and cause title",
       duration: "39 min",
-      youtubeId: "M7lc1UVf-VE",
+      youtubeUrl: "https://www.youtube.com/watch?v=M7lc1UVf-VE",
       releaseDate: "2026-02-02",
       resources: ["Plaint template", "Checklist"],
       note: "Foundational class for new drafting students.",
@@ -197,7 +202,7 @@ const demoData = {
       module: "Criminal Drafting",
       title: "Drafting a bail petition with concise legal grounds",
       duration: "34 min",
-      youtubeId: "ScMzIvxBSi4",
+      youtubeUrl: "https://www.youtube.com/watch?v=ScMzIvxBSi4",
       releaseDate: "2026-03-07",
       resources: ["Petition sample", "Common mistakes"],
       note: "Short but practical session that students revisit often.",
@@ -208,7 +213,7 @@ const demoData = {
       module: "Professional Writing",
       title: "Client notice and affidavit drafting workflow",
       duration: "43 min",
-      youtubeId: "aqz-KE-bpKQ",
+      youtubeUrl: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
       releaseDate: "2026-03-10",
       resources: ["Notice format", "Affidavit guide"],
       note: "Useful for both examination and chamber practice.",
@@ -219,7 +224,7 @@ const demoData = {
       module: "Viva Basics",
       title: "Legal ethics and courtroom etiquette drill",
       duration: "28 min",
-      youtubeId: "M7lc1UVf-VE",
+      youtubeUrl: "https://www.youtube.com/watch?v=M7lc1UVf-VE",
       releaseDate: "2026-01-06",
       resources: ["Ethics flashcards", "Quick answer sheet"],
       note: "Short warm-up session for viva readiness.",
@@ -230,7 +235,7 @@ const demoData = {
       module: "Oral Confidence",
       title: "How to answer direct statutory questions in viva",
       duration: "31 min",
-      youtubeId: "ScMzIvxBSi4",
+      youtubeUrl: "https://www.youtube.com/watch?v=ScMzIvxBSi4",
       releaseDate: "2026-02-12",
       resources: ["Question bank", "Voice practice cues"],
       note: "Best used right before mock viva.",
@@ -382,6 +387,26 @@ function formatNumber(value) {
   return String(value);
 }
 
+function getSessionStore() {
+  try {
+    return window.sessionStorage;
+  } catch (error) {
+    return null;
+  }
+}
+
+function encodeDataValue(value) {
+  return encodeURIComponent(String(value || ""));
+}
+
+function decodeDataValue(value) {
+  try {
+    return decodeURIComponent(String(value || ""));
+  } catch (error) {
+    return String(value || "");
+  }
+}
+
 function parseList(value) {
   if (Array.isArray(value)) {
     return value.filter(Boolean);
@@ -466,6 +491,57 @@ function hasPaidMonthAccess(entry) {
   return Array.isArray(entry.paidMonths) && entry.paidMonths.length > 0;
 }
 
+function extractYouTubeVideoId(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "";
+  }
+
+  if (/^[a-zA-Z0-9_-]{11}$/.test(text)) {
+    return text;
+  }
+
+  const fallbackMatch = text.match(
+    /(?:v=|\/embed\/|\/shorts\/|\/live\/|youtu\.be\/)([a-zA-Z0-9_-]{11})/
+  );
+  if (fallbackMatch) {
+    return fallbackMatch[1];
+  }
+
+  try {
+    const normalizedText = text.startsWith("//") ? `https:${text}` : text;
+    const url = new URL(normalizedText);
+    const hostname = url.hostname.replace(/^www\./, "").toLowerCase();
+
+    if (hostname === "youtu.be") {
+      const shortId = url.pathname.split("/").filter(Boolean)[0] || "";
+      return /^[a-zA-Z0-9_-]{11}$/.test(shortId) ? shortId : "";
+    }
+
+    if (hostname.endsWith("youtube.com")) {
+      const watchId = url.searchParams.get("v");
+      if (watchId && /^[a-zA-Z0-9_-]{11}$/.test(watchId)) {
+        return watchId;
+      }
+
+      const pathParts = url.pathname.split("/").filter(Boolean);
+      if (pathParts.length >= 2 && ["embed", "shorts", "live", "v"].includes(pathParts[0])) {
+        const pathId = pathParts[1];
+        return /^[a-zA-Z0-9_-]{11}$/.test(pathId) ? pathId : "";
+      }
+    }
+  } catch (error) {
+    return "";
+  }
+
+  return "";
+}
+
+function buildYouTubeWatchUrl(value) {
+  const videoId = extractYouTubeVideoId(value);
+  return videoId ? `https://www.youtube.com/watch?v=${videoId}` : "";
+}
+
 function normalizeData(raw) {
   const students = (raw.students || []).map((student) => ({
     id: student.id || student.studentId || "",
@@ -507,17 +583,23 @@ function normalizeData(raw) {
     description: course.description || "",
   }));
 
-  const lessons = (raw.lessons || []).map((lesson) => ({
-    id: lesson.id || lesson.lessonId || "",
-    courseId: lesson.courseId || "",
-    module: lesson.module || lesson.moduleTitle || "Module",
-    title: lesson.title || lesson.lessonTitle || "Untitled Lesson",
-    duration: lesson.duration || "N/A",
-    youtubeId: lesson.youtubeId || lesson.videoId || "",
-    releaseDate: lesson.releaseDate || lesson.date || "",
-    resources: parseList(lesson.resources || lesson.resourceList || ""),
-    note: lesson.note || "Sheet-linked lesson",
-  }));
+  const lessons = (raw.lessons || []).map((lesson) => {
+    const lessonVideoSource =
+      lesson.youtubeUrl || lesson.youtubeLink || lesson.videoUrl || lesson.youtubeId || lesson.videoId || "";
+
+    return {
+      id: lesson.id || lesson.lessonId || "",
+      courseId: lesson.courseId || "",
+      module: lesson.module || lesson.moduleTitle || "Module",
+      title: lesson.title || lesson.lessonTitle || "Untitled Lesson",
+      duration: lesson.duration || "N/A",
+      youtubeId: extractYouTubeVideoId(lessonVideoSource),
+      youtubeUrl: buildYouTubeWatchUrl(lessonVideoSource),
+      releaseDate: lesson.releaseDate || lesson.date || "",
+      resources: parseList(lesson.resources || lesson.resourceList || ""),
+      note: lesson.note || "Sheet-linked lesson",
+    };
+  });
 
   const enrollments = (raw.enrollments || [])
     .flatMap((enrollment, index) => {
@@ -641,6 +723,56 @@ function getStudentByQuery(query) {
 
 function getActiveStudent() {
   return state.data.students.find((student) => student.id === state.activeStudentId) || null;
+}
+
+function syncPortalSession() {
+  const sessionStore = getSessionStore();
+  if (!sessionStore) {
+    return;
+  }
+
+  if (!state.activeStudentId) {
+    sessionStore.removeItem(SESSION_STORAGE_KEYS.activeStudentId);
+    sessionStore.removeItem(SESSION_STORAGE_KEYS.openCourseId);
+    return;
+  }
+
+  sessionStore.setItem(SESSION_STORAGE_KEYS.activeStudentId, state.activeStudentId);
+  sessionStore.setItem(SESSION_STORAGE_KEYS.openCourseId, state.openCourseId || "");
+}
+
+function restorePortalSession() {
+  const sessionStore = getSessionStore();
+  if (!sessionStore) {
+    return false;
+  }
+
+  const storedStudentId = String(sessionStore.getItem(SESSION_STORAGE_KEYS.activeStudentId) || "").trim();
+  if (!storedStudentId) {
+    return false;
+  }
+
+  const student = state.data.students.find((entry) => entry.id === storedStudentId);
+  if (!student || isStudentLoginBlocked(student) || !isLoginApprovalGranted(student.loginApproval)) {
+    state.activeStudentId = "";
+    state.openCourseId = "";
+    syncPortalSession();
+    return false;
+  }
+
+  const courseEntries = getStudentCourseEntries(student);
+  const storedCourseId = String(sessionStore.getItem(SESSION_STORAGE_KEYS.openCourseId) || "").trim();
+
+  state.activeStudentId = student.id;
+  state.openCourseId = courseEntries.some((entry) => entry.course.id === storedCourseId)
+    ? storedCourseId
+    : courseEntries[0]?.course.id || "";
+
+  syncPortalSession();
+  renderDashboard(student);
+  togglePage("profile");
+  setFeedback(`${student.name} session restored after refresh.`, "success");
+  return true;
 }
 
 function isLoginApprovalGranted(value) {
@@ -1194,13 +1326,14 @@ function showToast(message, type = "success") {
 }
 
 function openVideo(videoId, title) {
-  if (!videoId) {
+  const resolvedVideoId = extractYouTubeVideoId(videoId);
+  if (!resolvedVideoId) {
     showToast("This lesson does not have a video link yet.", "error");
     return;
   }
 
   dom.videoTitle.textContent = title || "Class Video";
-  dom.videoPlayer.src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+  dom.videoPlayer.src = `https://www.youtube.com/embed/${resolvedVideoId}?autoplay=1&rel=0`;
   dom.videoModal.classList.remove("hidden");
   dom.videoModal.classList.add("flex");
   dom.body.style.overflow = "hidden";
@@ -1367,6 +1500,8 @@ function renderCourseList(student, courseEntries) {
     state.openCourseId = courseEntries[0].course.id;
   }
 
+  syncPortalSession();
+
   dom.courseList.innerHTML = courseEntries
     .map((entry, index) => {
       const course = entry.course;
@@ -1495,10 +1630,10 @@ function renderCourseList(student, courseEntries) {
                                 }</p>
                                 <button
                                   type="button"
-                                  data-video-id="${lesson.youtubeId}"
-                                  data-video-title="${lesson.title}"
+                                  data-video-src="${encodeDataValue(lesson.youtubeUrl || lesson.youtubeId)}"
+                                  data-video-title="${encodeDataValue(lesson.title)}"
                                   data-video-locked="${accessState.canWatch ? "false" : "true"}"
-                                  data-lock-reason="${accessState.reason}"
+                                  data-lock-reason="${encodeDataValue(accessState.reason)}"
                                   class="mt-2 flex items-center text-xs font-bold transition ${
                                     accessState.canWatch
                                       ? "text-blue-600 hover:text-blue-800"
@@ -1566,14 +1701,17 @@ function renderCourseList(student, courseEntries) {
     });
   });
 
-  dom.courseList.querySelectorAll("[data-video-id]").forEach((button) => {
+  dom.courseList.querySelectorAll("[data-video-src]").forEach((button) => {
     button.addEventListener("click", () => {
       if (button.dataset.videoLocked === "true") {
-        showToast(button.dataset.lockReason || "This video is not available right now.", "info");
+        showToast(
+          decodeDataValue(button.dataset.lockReason) || "This video is not available right now.",
+          "info"
+        );
         return;
       }
 
-      openVideo(button.dataset.videoId, button.dataset.videoTitle);
+      openVideo(decodeDataValue(button.dataset.videoSrc), decodeDataValue(button.dataset.videoTitle));
     });
   });
 }
@@ -1592,6 +1730,7 @@ function logout() {
   closeProfileModal();
   state.activeStudentId = "";
   state.openCourseId = "";
+  syncPortalSession();
   dom.query.value = "";
   dom.password.value = "";
   togglePage("login");
@@ -1641,6 +1780,7 @@ async function performLogin(query = dom.query.value) {
 
   state.activeStudentId = student.id;
   state.openCourseId = getStudentCourseEntries(student)[0]?.course.id || "";
+  syncPortalSession();
 
   renderDashboard(student);
   togglePage("profile");
@@ -1659,7 +1799,10 @@ async function initialize() {
   dom.query.value = "";
   dom.password.placeholder = "Enter your password";
   setFeedback("");
-  togglePage("login");
+
+  if (!restorePortalSession()) {
+    togglePage("login");
+  }
 }
 
 dom.form.addEventListener("submit", async (event) => {
