@@ -514,6 +514,78 @@ function normalizePasswordValue(value) {
   return normalizeLookupCharacters(value).trim();
 }
 
+function getCourseLookupTokens(course) {
+  return [
+    getNormalizedLookupValue(course.id),
+    getCompactLookupValue(course.id),
+    getCanonicalLookupValue(course.id),
+    getNormalizedLookupValue(course.title),
+    getCompactLookupValue(course.title),
+    getCanonicalLookupValue(course.title),
+    getNormalizedLookupValue(course.shortTitle),
+    getCompactLookupValue(course.shortTitle),
+    getCanonicalLookupValue(course.shortTitle),
+    getNormalizedLookupValue(course.category),
+    getCompactLookupValue(course.category),
+  ].filter(Boolean);
+}
+
+function buildCourseReferenceMap(courses) {
+  const referenceMap = new Map();
+
+  courses.forEach((course) => {
+    getCourseLookupTokens(course).forEach((token) => {
+      if (token && !referenceMap.has(token)) {
+        referenceMap.set(token, course.id);
+      }
+    });
+  });
+
+  return referenceMap;
+}
+
+function resolveCourseReference(reference, fallback = "") {
+  const rawReference = String(reference || "").trim();
+  if (!rawReference) {
+    return fallback;
+  }
+
+  const lookupTokens = [
+    getNormalizedLookupValue(rawReference),
+    getCompactLookupValue(rawReference),
+    getCanonicalLookupValue(rawReference),
+  ].filter(Boolean);
+
+  for (const token of lookupTokens) {
+    const resolvedCourseId = state.data?.courseReferenceMap?.get(token);
+    if (resolvedCourseId) {
+      return resolvedCourseId;
+    }
+  }
+
+  return rawReference;
+}
+
+function isSameStudentReference(leftValue, rightValue) {
+  const leftTokens = [
+    getNormalizedLookupValue(leftValue),
+    getCompactLookupValue(leftValue),
+    getCanonicalLookupValue(leftValue),
+    normalizePhoneLookupValue(leftValue),
+  ].filter(Boolean);
+
+  const rightTokens = new Set(
+    [
+      getNormalizedLookupValue(rightValue),
+      getCompactLookupValue(rightValue),
+      getCanonicalLookupValue(rightValue),
+      normalizePhoneLookupValue(rightValue),
+    ].filter(Boolean)
+  );
+
+  return leftTokens.some((token) => rightTokens.has(token));
+}
+
 function normalizePhoneLookupValue(value) {
   const digits = getDigitsOnlyValue(value);
   if (!digits) {
@@ -840,6 +912,7 @@ function normalizeData(raw) {
     enrollments,
     hasEnrollmentSheet: enrollments.length > 0,
     courseMap: new Map(courses.map((course) => [course.id, course])),
+    courseReferenceMap: buildCourseReferenceMap(courses),
   };
 }
 
@@ -1063,7 +1136,7 @@ function buildFallbackEnrollments(student) {
   return student.enrolledCourseIds.map((courseId, index) => ({
     id: `fallback-${student.id}-${index + 1}`,
     studentId: student.id,
-    courseId,
+    courseId: resolveCourseReference(courseId, courseId),
     accessStartDate: student.joinedOn || "",
     accessEndDate: "",
     paymentDueDate: "",
@@ -1083,7 +1156,12 @@ function parseTimestamp(dateValue) {
 
 function getStudentCourseEntries(student) {
   const sourceEnrollments = state.data.hasEnrollmentSheet
-    ? state.data.enrollments.filter((enrollment) => enrollment.studentId === student.id)
+    ? state.data.enrollments
+        .filter((enrollment) => isSameStudentReference(enrollment.studentId, student.id))
+        .map((enrollment) => ({
+          ...enrollment,
+          courseId: resolveCourseReference(enrollment.courseId, enrollment.courseId),
+        }))
     : buildFallbackEnrollments(student);
 
   const seenCourseIds = new Set();
