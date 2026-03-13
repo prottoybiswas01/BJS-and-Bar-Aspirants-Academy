@@ -36,6 +36,24 @@ const LOOKUP_DIGIT_MAP = Object.freeze({
   "٩": "9",
 });
 
+const STUDENT_FIELD_KEYS = Object.freeze({
+  id: ["id", "studentId", "studentID", "userId", "userID", "memberId", "registrationId", "roll", "rollNumber"],
+  name: ["name", "fullName", "studentName", "userName"],
+  phone: ["phone", "phoneNumber", "mobile", "mobileNumber", "contact", "contactNumber", "whatsapp", "whatsappNumber"],
+  email: ["email", "emailAddress", "mail", "gmail"],
+  batch: ["batch", "batchName", "group", "groupName"],
+  session: ["session", "sessionName", "shift"],
+  joinedOn: ["joinedOn", "joinDate", "createdOn", "admittedOn", "admissionDate", "enrolledOn"],
+  status: ["status", "studentStatus", "accountStatus", "activeStatus"],
+  profileImage: ["profileImage", "photo", "imageUrl", "avatar", "profilePhoto"],
+  password: ["password", "loginPassword", "portalPassword", "studentPassword", "passcode", "pin", "loginPin"],
+  loginApproval: ["loginApproval", "approval", "loginApproved", "portalApproval", "approvalStatus", "accessApproval"],
+  passwordResetUrl: ["passwordResetUrl", "resetPasswordUrl", "forgotPasswordUrl", "passwordResetLink"],
+  highlight: ["highlight", "note", "remarks", "message"],
+  enrolledCourseIds: ["enrolledCourseIds", "courseIds", "courses", "assignedCourses", "enrolledCourses"],
+  completedLessonIds: ["completedLessonIds", "completed", "completedLessons"],
+});
+
 const demoData = {
   students: [
     {
@@ -444,6 +462,31 @@ function normalizeLookupCharacters(value) {
     .replace(/[০-৯٠-٩]/g, (character) => LOOKUP_DIGIT_MAP[character] || character);
 }
 
+function getFirstAvailableValue(record, keys, fallback = "") {
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) {
+      continue;
+    }
+
+    const value = record[key];
+    if (value === null || value === undefined) {
+      continue;
+    }
+
+    if (typeof value === "string" && !value.trim()) {
+      continue;
+    }
+
+    if (Array.isArray(value) && !value.length) {
+      continue;
+    }
+
+    return value;
+  }
+
+  return fallback;
+}
+
 function getNormalizedLookupValue(value) {
   return normalizeLookupCharacters(value).trim().toLowerCase();
 }
@@ -465,6 +508,10 @@ function getCompactLookupValue(value) {
 
 function getDigitsOnlyValue(value) {
   return normalizeLookupCharacters(value).replace(/\D/g, "");
+}
+
+function normalizePasswordValue(value) {
+  return normalizeLookupCharacters(value).trim();
 }
 
 function normalizePhoneLookupValue(value) {
@@ -667,32 +714,27 @@ function buildYouTubeWatchUrl(value) {
 
 function normalizeData(raw) {
   const students = (raw.students || []).map((student) => ({
-    id: student.id || student.studentId || "",
-    name: student.name || student.fullName || "Unknown Student",
-    phone: student.phone || "",
-    email: student.email || "",
-    batch: student.batch || "N/A",
-    session: student.session || "N/A",
-    joinedOn: student.joinedOn || "",
-    status: student.status || "Active",
-    profileImage: student.profileImage || student.photo || student.imageUrl || "",
-    password: student.password || student.loginPassword || student.portalPassword || "",
-    loginApproval:
-      student.loginApproval ||
-      student.approval ||
-      student.loginApproved ||
-      student.portalApproval ||
-      "",
-    passwordResetUrl:
-      student.passwordResetUrl ||
-      student.resetPasswordUrl ||
-      student.forgotPasswordUrl ||
-      "",
-    highlight: student.highlight || "Your current lessons and updates are ready.",
-    enrolledCourseIds: parseList(
-      student.enrolledCourseIds || student.courseIds || student.courses || ""
+    id: getFirstAvailableValue(student, STUDENT_FIELD_KEYS.id, ""),
+    name: getFirstAvailableValue(student, STUDENT_FIELD_KEYS.name, "Unknown Student"),
+    phone: getFirstAvailableValue(student, STUDENT_FIELD_KEYS.phone, ""),
+    email: getFirstAvailableValue(student, STUDENT_FIELD_KEYS.email, ""),
+    batch: getFirstAvailableValue(student, STUDENT_FIELD_KEYS.batch, "N/A"),
+    session: getFirstAvailableValue(student, STUDENT_FIELD_KEYS.session, "N/A"),
+    joinedOn: getFirstAvailableValue(student, STUDENT_FIELD_KEYS.joinedOn, ""),
+    status: getFirstAvailableValue(student, STUDENT_FIELD_KEYS.status, "Active"),
+    profileImage: getFirstAvailableValue(student, STUDENT_FIELD_KEYS.profileImage, ""),
+    password: normalizePasswordValue(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.password, "")),
+    loginApproval: getFirstAvailableValue(student, STUDENT_FIELD_KEYS.loginApproval, ""),
+    passwordResetUrl: getFirstAvailableValue(student, STUDENT_FIELD_KEYS.passwordResetUrl, ""),
+    highlight: getFirstAvailableValue(
+      student,
+      STUDENT_FIELD_KEYS.highlight,
+      "Your current lessons and updates are ready."
     ),
-    completedLessonIds: parseList(student.completedLessonIds || student.completed || ""),
+    enrolledCourseIds: parseList(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.enrolledCourseIds, "")),
+    completedLessonIds: parseList(
+      getFirstAvailableValue(student, STUDENT_FIELD_KEYS.completedLessonIds, "")
+    ),
   }));
 
   const courses = (raw.courses || []).map((course) => ({
@@ -973,7 +1015,7 @@ function authenticateLocalStudent(query, password) {
     };
   }
 
-  if (storedPassword !== String(password || "").trim()) {
+  if (storedPassword !== normalizePasswordValue(password)) {
     return {
       ok: false,
       studentId: student.id,

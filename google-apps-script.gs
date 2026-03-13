@@ -80,6 +80,15 @@ const LOOKUP_DIGIT_MAP_ = {
   "٨": "8",
   "٩": "9",
 };
+const STUDENT_FIELD_KEYS_ = {
+  id: ["id", "studentId", "studentID", "userId", "userID", "memberId", "registrationId", "roll", "rollNumber"],
+  name: ["name", "fullName", "studentName", "userName"],
+  phone: ["phone", "phoneNumber", "mobile", "mobileNumber", "contact", "contactNumber", "whatsapp", "whatsappNumber"],
+  email: ["email", "emailAddress", "mail", "gmail"],
+  status: ["status", "studentStatus", "accountStatus", "activeStatus"],
+  password: ["password", "loginPassword", "portalPassword", "studentPassword", "passcode", "pin", "loginPin"],
+  loginApproval: ["loginApproval", "approval", "loginApproved", "portalApproval", "approvalStatus", "accessApproval"],
+};
 
 const SAMPLE_DATA = {
   students: [
@@ -299,7 +308,7 @@ function seedLawPortalDemoData() {
 
 function handleLogin_(request) {
   const query = String(request.query || "").trim();
-  const password = String(request.password || "").trim();
+  const password = normalizePasswordValue_(request.password);
 
   if (!query) {
     return jsonOutput_({
@@ -326,7 +335,7 @@ function handleLogin_(request) {
     });
   }
 
-  const studentStatus = normalizeValue_(student.status);
+  const studentStatus = normalizeValue_(getStudentStatus_(student));
   if (BLOCKED_STATUS_VALUES.indexOf(studentStatus) !== -1) {
     return jsonOutput_({
       ok: false,
@@ -459,9 +468,9 @@ function normalizeHeaderKey_(header) {
 function sanitizeStudents_(students) {
   return students.map((student) => {
     const copy = Object.assign({}, student);
-    delete copy.password;
-    delete copy.loginPassword;
-    delete copy.portalPassword;
+    STUDENT_FIELD_KEYS_.password.forEach(function (key) {
+      delete copy[key];
+    });
     return copy;
   });
 }
@@ -490,17 +499,19 @@ function findStudentByQuery_(students, query) {
 }
 
 function getStudentId_(student) {
-  return String(student.id || student.studentId || "").trim();
+  return String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.id, "")).trim();
 }
 
 function getStudentPassword_(student) {
-  return String(student.password || student.loginPassword || student.portalPassword || "").trim();
+  return normalizePasswordValue_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.password, ""));
+}
+
+function getStudentStatus_(student) {
+  return getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.status, "");
 }
 
 function isLoginApproved_(student) {
-  const approvalValue = normalizeValue_(
-    student.loginApproval || student.approval || student.loginApproved || student.portalApproval || ""
-  );
+  const approvalValue = normalizeValue_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.loginApproval, ""));
   return APPROVED_LOGIN_VALUES.indexOf(approvalValue) !== -1;
 }
 
@@ -525,6 +536,10 @@ function normalizeLookupText_(value) {
 
 function compactLookupValue_(value) {
   return normalizeValue_(value).replace(/[^a-z0-9]+/g, "");
+}
+
+function normalizePasswordValue_(value) {
+  return normalizeLookupText_(value).trim();
 }
 
 function canonicalLookupValue_(value) {
@@ -566,14 +581,16 @@ function normalizePhoneLookupValue_(value) {
 }
 
 function getStudentLookupTokens_(student) {
-  const rawStudentId = student.id || student.studentId || "";
+  const rawStudentId = getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.id, "");
+  const rawEmail = getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.email, "");
+  const rawPhone = getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.phone, "");
   const tokens = [
     normalizeValue_(rawStudentId),
     compactLookupValue_(rawStudentId),
     canonicalLookupValue_(rawStudentId),
-    normalizeValue_(student.email),
-    compactLookupValue_(student.email),
-    normalizePhoneLookupValue_(student.phone),
+    normalizeValue_(rawEmail),
+    compactLookupValue_(rawEmail),
+    normalizePhoneLookupValue_(rawPhone),
   ];
 
   const idSegments = String(rawStudentId)
@@ -584,6 +601,28 @@ function getStudentLookupTokens_(student) {
   return tokens.concat(idSegments).filter(Boolean).filter(function (token, index, list) {
     return list.indexOf(token) === index;
   });
+}
+
+function getFirstAvailableValue_(record, keys, fallback) {
+  for (var i = 0; i < keys.length; i += 1) {
+    var key = keys[i];
+    if (!Object.prototype.hasOwnProperty.call(record, key)) {
+      continue;
+    }
+
+    var value = record[key];
+    if (value === null || value === undefined) {
+      continue;
+    }
+
+    if (typeof value === "string" && !value.trim()) {
+      continue;
+    }
+
+    return value;
+  }
+
+  return fallback || "";
 }
 
 function getSpreadsheet_() {
