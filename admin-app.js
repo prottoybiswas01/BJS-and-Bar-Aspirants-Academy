@@ -55,6 +55,11 @@ const dom = {
   bulkActionSelect: document.getElementById("bulkActionSelect"),
   applyBulkActionBtn: document.getElementById("applyBulkActionBtn"),
   studentTableBody: document.getElementById("studentTableBody"),
+  studentMobileList: document.getElementById("studentMobileList"),
+  studentSelectionBar: document.getElementById("studentSelectionBar"),
+  selectedStudentsSummary: document.getElementById("selectedStudentsSummary"),
+  selectedStudentsMeta: document.getElementById("selectedStudentsMeta"),
+  studentQuickActionBar: document.getElementById("studentQuickActionBar"),
   studentEditorLabel: document.getElementById("studentEditorLabel"),
   studentEditorForm: document.getElementById("studentEditorForm"),
   editorStudentId: document.getElementById("editorStudentId"),
@@ -79,6 +84,9 @@ const dom = {
   bulkEnrollmentStatusInput: document.getElementById("bulkEnrollmentStatusInput"),
   bulkPaidMonthsInput: document.getElementById("bulkPaidMonthsInput"),
   assignCoursesBtn: document.getElementById("assignCoursesBtn"),
+  selectedStudentWorkspace: document.getElementById("selectedStudentWorkspace"),
+  selectedStudentsCountBadge: document.getElementById("selectedStudentsCountBadge"),
+  selectedStudentsWorkspaceMeta: document.getElementById("selectedStudentsWorkspaceMeta"),
   messageTitleInput: document.getElementById("messageTitleInput"),
   messageBodyInput: document.getElementById("messageBodyInput"),
   sendMessageBtn: document.getElementById("sendMessageBtn"),
@@ -270,6 +278,44 @@ function renderPill(value, type = "status") {
   return `<span class="inline-flex rounded-full px-3 py-1 text-xs font-bold ring-1 ${className}">${escapeHtml(label)}</span>`;
 }
 
+function formatSelectedStudentNames(students) {
+  const names = students
+    .slice(0, 2)
+    .map((student) => student.name || student.id)
+    .filter(Boolean);
+
+  if (!names.length) {
+    return "";
+  }
+
+  if (students.length > 2) {
+    return `${names.join(", ")} +${students.length - 2} more`;
+  }
+
+  return names.join(", ");
+}
+
+function setButtonDisabled(button, disabled) {
+  if (!button) {
+    return;
+  }
+
+  button.disabled = !!disabled;
+  button.classList.toggle("opacity-50", !!disabled);
+  button.classList.toggle("cursor-not-allowed", !!disabled);
+}
+
+function scrollSelectedWorkspaceIntoView() {
+  if (!dom.selectedStudentWorkspace) {
+    return;
+  }
+
+  dom.selectedStudentWorkspace.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
+}
+
 function createCourseMap(courses) {
   return new Map(courses.map((course) => [course.id, course]));
 }
@@ -408,6 +454,37 @@ function getSelectedStudents() {
   return getSelectedStudentIds()
     .map((studentId) => getStudentById(studentId))
     .filter(Boolean);
+}
+
+function renderSelectionState() {
+  const selectedStudents = getSelectedStudents();
+  const selectedCount = selectedStudents.length;
+  const hasSelection = selectedCount > 0;
+  const selectedNames = formatSelectedStudentNames(selectedStudents);
+
+  dom.studentSelectionBar.classList.toggle("hidden", !hasSelection);
+  dom.selectedStudentsSummary.textContent = hasSelection
+    ? `${selectedCount} student${selectedCount === 1 ? "" : "s"} selected`
+    : "0 students selected";
+  dom.selectedStudentsMeta.textContent = hasSelection
+    ? `${selectedNames}. Quick actions are ready, or open the full controls section below.`
+    : "Quick actions and full controls are now ready.";
+  dom.selectedStudentsCountBadge.textContent = hasSelection
+    ? `${selectedCount} selected`
+    : "No selection";
+  dom.selectedStudentsWorkspaceMeta.textContent = hasSelection
+    ? `Managing ${selectedNames}. You can update approval, course access, and messages from this block.`
+    : "Select one or more students to update approval, assign courses, and send messages.";
+
+  dom.selectAllStudents.disabled = !state.visibleStudentIds.length;
+  dom.bulkActionSelect.disabled = !hasSelection;
+  setButtonDisabled(dom.applyBulkActionBtn, !hasSelection);
+  setButtonDisabled(dom.assignCoursesBtn, !hasSelection);
+  setButtonDisabled(dom.sendMessageBtn, !hasSelection);
+
+  [...dom.studentQuickActionBar.querySelectorAll("button")].forEach((button) => {
+    setButtonDisabled(button, !hasSelection);
+  });
 }
 
 function buildStudentSearchHaystack(student) {
@@ -692,6 +769,87 @@ function renderBulkCourseSelector() {
   }
 }
 
+function renderStudentMobileList(students) {
+  if (!students.length) {
+    dom.studentMobileList.innerHTML =
+      '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">No students matched this filter.</div>';
+    return;
+  }
+
+  dom.studentMobileList.innerHTML = students
+    .map((student) => {
+      const isSelected = state.selectedStudentIds.has(student.id);
+      const courseIds = getStudentCourseIds(student);
+      const courseSummary = courseIds.length
+        ? courseIds
+            .slice(0, 2)
+            .map((courseId) => state.data.courseMap.get(courseId)?.shortTitle || state.data.courseMap.get(courseId)?.title || courseId)
+            .join(", ")
+        : "No course assigned";
+
+      return `
+        <article class="rounded-[1.5rem] border ${
+          isSelected ? "border-blue-200 bg-blue-50/70" : "border-slate-200 bg-white"
+        } p-4 shadow-sm">
+          <div class="flex items-start justify-between gap-3">
+            <label class="inline-flex items-center gap-3 text-sm font-semibold text-slate-700">
+              <input
+                type="checkbox"
+                value="${escapeHtml(student.id)}"
+                data-student-select="true"
+                class="h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-500"
+                ${isSelected ? "checked" : ""}
+              />
+              <span>Select</span>
+            </label>
+            <div class="flex flex-wrap justify-end gap-2">
+              ${renderPill(student.loginApproval || "Pending", "approval")}
+              ${renderPill(student.status || "Active")}
+            </div>
+          </div>
+          <div class="mt-4">
+            <h5 class="text-lg font-extrabold text-slate-950">${escapeHtml(student.name || "Unnamed Student")}</h5>
+            <p class="mt-1 text-sm text-slate-500">${escapeHtml(student.id)}</p>
+            <p class="mt-2 text-sm text-slate-600">${escapeHtml(student.email || "Email not set")}</p>
+          </div>
+          <div class="mt-4 grid gap-3 rounded-[1.25rem] bg-slate-50 p-4 sm:grid-cols-2">
+            <div>
+              <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Phone</p>
+              <p class="mt-2 text-sm font-semibold text-slate-700">${escapeHtml(student.phone || "-")}</p>
+            </div>
+            <div>
+              <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Batch</p>
+              <p class="mt-2 text-sm font-semibold text-slate-700">${escapeHtml(student.batch || "-")}</p>
+              <p class="mt-1 text-xs text-slate-500">${escapeHtml(student.session || "-")}</p>
+            </div>
+            <div class="sm:col-span-2">
+              <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Courses</p>
+              <p class="mt-2 text-sm font-semibold text-slate-700">${courseIds.length}</p>
+              <p class="mt-1 text-xs text-slate-500">${escapeHtml(courseSummary)}</p>
+            </div>
+          </div>
+          <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+            <button
+              type="button"
+              data-edit-student="${escapeHtml(student.id)}"
+              class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+            >
+              Open Editor
+            </button>
+            <button
+              type="button"
+              data-open-selected-tools="${escapeHtml(student.id)}"
+              class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+            >
+              Open Controls
+            </button>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
 function renderStudentTable() {
   const students = getFilteredStudents();
   state.visibleStudentIds = students.map((student) => student.id);
@@ -699,9 +857,13 @@ function renderStudentTable() {
   if (!students.length) {
     dom.studentTableBody.innerHTML =
       '<tr><td colspan="8" class="px-3 py-8 text-center text-sm text-slate-500">No students matched this filter.</td></tr>';
+    renderStudentMobileList([]);
     dom.selectAllStudents.checked = false;
+    renderSelectionState();
     return;
   }
+
+  renderStudentMobileList(students);
 
   dom.studentTableBody.innerHTML = students
     .map((student) => {
@@ -760,6 +922,7 @@ function renderStudentTable() {
   dom.selectAllStudents.checked =
     state.visibleStudentIds.length > 0 &&
     state.visibleStudentIds.every((studentId) => state.selectedStudentIds.has(studentId));
+  renderSelectionState();
 }
 
 function renderCourseList() {
@@ -1055,9 +1218,8 @@ async function handleStudentSave(event) {
   }
 }
 
-async function handleBulkActionApply() {
+async function applyBulkActionToSelected(bulkAction) {
   const selectedStudentIds = getSelectedStudentIds();
-  const bulkAction = dom.bulkActionSelect.value.trim();
 
   if (!selectedStudentIds.length || !bulkAction) {
     setFeedback(dom.adminTopFeedback, "Select students and a bulk action first.", "error");
@@ -1080,6 +1242,10 @@ async function handleBulkActionApply() {
   } catch (error) {
     setFeedback(dom.adminTopFeedback, error.message || "Unable to apply the bulk action.", "error");
   }
+}
+
+async function handleBulkActionApply() {
+  await applyBulkActionToSelected(dom.bulkActionSelect.value.trim());
 }
 
 async function handleAssignCourses() {
@@ -1232,6 +1398,18 @@ async function handleRegistrationReview(registrationId, action) {
 }
 
 function handleStudentTableClick(event) {
+  const openControlsButton = event.target.closest("[data-open-selected-tools]");
+  if (openControlsButton) {
+    const selectedStudentId = String(openControlsButton.dataset.openSelectedTools || "").trim();
+    if (selectedStudentId && selectedStudentId !== "true") {
+      state.selectedStudentIds = new Set([selectedStudentId]);
+      renderStudentTable();
+      renderBulkCourseSelector();
+    }
+    scrollSelectedWorkspaceIntoView();
+    return;
+  }
+
   const editButton = event.target.closest("[data-edit-student]");
   if (!editButton) {
     return;
@@ -1241,6 +1419,7 @@ function handleStudentTableClick(event) {
 }
 
 function handleStudentTableChange(event) {
+  const previousSelectionCount = getSelectedStudentIds().length;
   const checkbox = event.target.closest("[data-student-select]");
   if (!checkbox) {
     return;
@@ -1259,6 +1438,17 @@ function handleStudentTableChange(event) {
 
   renderStudentTable();
   renderBulkCourseSelector();
+
+  if (
+    previousSelectionCount === 0 &&
+    getSelectedStudentIds().length > 0 &&
+    window.matchMedia("(max-width: 1023px)").matches
+  ) {
+    dom.studentSelectionBar.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+    });
+  }
 }
 
 function handleSelectAllToggle() {
@@ -1274,6 +1464,25 @@ function handleSelectAllToggle() {
 
   renderStudentTable();
   renderBulkCourseSelector();
+}
+
+async function handleStudentQuickActionClick(event) {
+  const quickActionButton = event.target.closest("[data-quick-action]");
+  if (quickActionButton) {
+    const quickAction = String(quickActionButton.dataset.quickAction || "").trim();
+    if (!quickAction) {
+      return;
+    }
+
+    dom.bulkActionSelect.value = quickAction;
+    await applyBulkActionToSelected(quickAction);
+    return;
+  }
+
+  const openControlsButton = event.target.closest("[data-open-selected-tools]");
+  if (openControlsButton) {
+    scrollSelectedWorkspaceIntoView();
+  }
 }
 
 function handleCourseListClick(event) {
@@ -1345,7 +1554,10 @@ dom.newStudentBtn.addEventListener("click", () => {
 dom.studentEditorForm.addEventListener("submit", handleStudentSave);
 dom.studentTableBody.addEventListener("click", handleStudentTableClick);
 dom.studentTableBody.addEventListener("change", handleStudentTableChange);
+dom.studentMobileList.addEventListener("click", handleStudentTableClick);
+dom.studentMobileList.addEventListener("change", handleStudentTableChange);
 dom.selectAllStudents.addEventListener("change", handleSelectAllToggle);
+dom.studentQuickActionBar.addEventListener("click", handleStudentQuickActionClick);
 dom.applyBulkActionBtn.addEventListener("click", handleBulkActionApply);
 dom.assignCoursesBtn.addEventListener("click", handleAssignCourses);
 dom.sendMessageBtn.addEventListener("click", handleSendMessage);
