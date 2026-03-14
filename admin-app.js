@@ -1,0 +1,1673 @@
+const APPS_SCRIPT_DEPLOYMENT_ID =
+  "AKfycbwTggMJSfIRDC1TGURJwAca38O0ZWErf2sqAW_236WpxaFuge36t30FZXIrmd9d3JnP";
+
+const APP_CONFIG = Object.freeze({
+  remoteEndpoint: `https://script.google.com/macros/s/${APPS_SCRIPT_DEPLOYMENT_ID}/exec`,
+});
+
+const STORAGE_KEYS = Object.freeze({
+  adminToken: "ain-pathshala.adminToken",
+});
+
+const LOCALIZED_DIGIT_RANGES = Object.freeze([
+  Object.freeze({ start: 0x09e6, end: 0x09ef }),
+  Object.freeze({ start: 0x0660, end: 0x0669 }),
+  Object.freeze({ start: 0x06f0, end: 0x06f9 }),
+]);
+
+const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  year: "numeric",
+  month: "short",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+const state = {
+  token: "",
+  admin: null,
+  data: createEmptyDashboard(),
+  studentQuery: "",
+  editingStudentId: "",
+  editingCourseId: "",
+  selectedStudentIds: new Set(),
+  visibleStudentIds: [],
+};
+
+const dom = {
+  adminLogoutBtn: document.getElementById("adminLogoutBtn"),
+  adminLoginSection: document.getElementById("adminLoginSection"),
+  adminDashboard: document.getElementById("adminDashboard"),
+  adminLoginForm: document.getElementById("adminLoginForm"),
+  adminUsername: document.getElementById("adminUsername"),
+  adminPassword: document.getElementById("adminPassword"),
+  adminLoginFeedback: document.getElementById("adminLoginFeedback"),
+  adminWelcome: document.getElementById("adminWelcome"),
+  adminTopFeedback: document.getElementById("adminTopFeedback"),
+  refreshDashboardBtn: document.getElementById("refreshDashboardBtn"),
+  summaryStudents: document.getElementById("summaryStudents"),
+  summaryPending: document.getElementById("summaryPending"),
+  summaryCourses: document.getElementById("summaryCourses"),
+  summaryMessages: document.getElementById("summaryMessages"),
+  studentSearchInput: document.getElementById("studentSearchInput"),
+  newStudentBtn: document.getElementById("newStudentBtn"),
+  selectAllStudents: document.getElementById("selectAllStudents"),
+  bulkActionSelect: document.getElementById("bulkActionSelect"),
+  applyBulkActionBtn: document.getElementById("applyBulkActionBtn"),
+  studentTableBody: document.getElementById("studentTableBody"),
+  studentEditorLabel: document.getElementById("studentEditorLabel"),
+  studentEditorForm: document.getElementById("studentEditorForm"),
+  editorStudentId: document.getElementById("editorStudentId"),
+  editorStudentName: document.getElementById("editorStudentName"),
+  editorStudentPhone: document.getElementById("editorStudentPhone"),
+  editorStudentEmail: document.getElementById("editorStudentEmail"),
+  editorStudentBatch: document.getElementById("editorStudentBatch"),
+  editorStudentSession: document.getElementById("editorStudentSession"),
+  editorStudentPassword: document.getElementById("editorStudentPassword"),
+  editorStudentStatus: document.getElementById("editorStudentStatus"),
+  editorStudentApproval: document.getElementById("editorStudentApproval"),
+  editorStudentHighlight: document.getElementById("editorStudentHighlight"),
+  studentCourseSelector: document.getElementById("studentCourseSelector"),
+  studentEditorFeedback: document.getElementById("studentEditorFeedback"),
+  bulkCourseSelector: document.getElementById("bulkCourseSelector"),
+  bulkAccessStartInput: document.getElementById("bulkAccessStartInput"),
+  bulkAccessEndInput: document.getElementById("bulkAccessEndInput"),
+  bulkVideoAccessUntilInput: document.getElementById("bulkVideoAccessUntilInput"),
+  bulkLastPaymentDateInput: document.getElementById("bulkLastPaymentDateInput"),
+  bulkPaymentDueDateInput: document.getElementById("bulkPaymentDueDateInput"),
+  bulkMonthlyFeeInput: document.getElementById("bulkMonthlyFeeInput"),
+  bulkEnrollmentStatusInput: document.getElementById("bulkEnrollmentStatusInput"),
+  bulkPaidMonthsInput: document.getElementById("bulkPaidMonthsInput"),
+  assignCoursesBtn: document.getElementById("assignCoursesBtn"),
+  messageTitleInput: document.getElementById("messageTitleInput"),
+  messageBodyInput: document.getElementById("messageBodyInput"),
+  sendMessageBtn: document.getElementById("sendMessageBtn"),
+  messageFeedback: document.getElementById("messageFeedback"),
+  clearCourseFormBtn: document.getElementById("clearCourseFormBtn"),
+  courseForm: document.getElementById("courseForm"),
+  courseIdInput: document.getElementById("courseIdInput"),
+  courseTitleInput: document.getElementById("courseTitleInput"),
+  courseShortTitleInput: document.getElementById("courseShortTitleInput"),
+  courseFacultyInput: document.getElementById("courseFacultyInput"),
+  courseCategoryInput: document.getElementById("courseCategoryInput"),
+  courseScheduleInput: document.getElementById("courseScheduleInput"),
+  courseNextLiveInput: document.getElementById("courseNextLiveInput"),
+  courseDescriptionInput: document.getElementById("courseDescriptionInput"),
+  courseFeedback: document.getElementById("courseFeedback"),
+  courseListPanel: document.getElementById("courseListPanel"),
+  courseCountBadge: document.getElementById("courseCountBadge"),
+  registrationQueue: document.getElementById("registrationQueue"),
+  messageLogPanel: document.getElementById("messageLogPanel"),
+  studentImportInput: document.getElementById("studentImportInput"),
+  importStudentsBtn: document.getElementById("importStudentsBtn"),
+  importFeedback: document.getElementById("importFeedback"),
+  downloadImportTemplateBtn: document.getElementById("downloadImportTemplateBtn"),
+  exportButtons: [...document.querySelectorAll("[data-export-type]")],
+};
+
+function createEmptyDashboard() {
+  return {
+    generatedAt: "",
+    spreadsheetName: "",
+    students: [],
+    courses: [],
+    lessons: [],
+    notices: [],
+    enrollments: [],
+    registrations: [],
+    messages: [],
+    courseMap: new Map(),
+  };
+}
+
+function getStorage() {
+  try {
+    return window.localStorage;
+  } catch (error) {
+    return null;
+  }
+}
+
+function readStoredValue(key) {
+  const storage = getStorage();
+  if (!storage) {
+    return "";
+  }
+
+  return String(storage.getItem(key) || "");
+}
+
+function writeStoredValue(key, value) {
+  const storage = getStorage();
+  if (!storage) {
+    return;
+  }
+
+  storage.setItem(key, String(value || ""));
+}
+
+function removeStoredValue(key) {
+  const storage = getStorage();
+  if (!storage) {
+    return;
+  }
+
+  storage.removeItem(key);
+}
+
+function normalizeLocalizedDigits(value) {
+  return Array.from(String(value || ""))
+    .map((character) => {
+      const codePoint = character.charCodeAt(0);
+      for (const range of LOCALIZED_DIGIT_RANGES) {
+        if (codePoint >= range.start && codePoint <= range.end) {
+          return String(codePoint - range.start);
+        }
+      }
+
+      return character;
+    })
+    .join("");
+}
+
+function normalizeLookupText(value) {
+  return normalizeLocalizedDigits(value).trim().toLowerCase();
+}
+
+function normalizePhoneValue(value) {
+  return normalizeLocalizedDigits(value).replace(/[^\d+]/g, "");
+}
+
+function normalizePasswordValue(value) {
+  return normalizeLocalizedDigits(value).trim();
+}
+
+function parseList(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+
+  return String(value || "")
+    .split(/[\n,|]/)
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+}
+
+function buildPipeList(values) {
+  return parseList(values).join("|");
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function formatDateTime(value, fallback = "-") {
+  if (!value) {
+    return fallback;
+  }
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return fallback;
+  }
+
+  return DATE_TIME_FORMATTER.format(date);
+}
+
+function normalizeStatus(value) {
+  return normalizeLookupText(value);
+}
+
+function setFeedback(element, message, tone = "neutral") {
+  if (!element) {
+    return;
+  }
+
+  element.textContent = message || "";
+
+  const palette = element.closest(".admin-hero")
+    ? {
+        neutral: "#e2e8f0",
+        success: "#bbf7d0",
+        error: "#fecaca",
+        info: "#bfdbfe",
+      }
+    : {
+        neutral: "#64748b",
+        success: "#047857",
+        error: "#b91c1c",
+        info: "#1d4ed8",
+      };
+
+  element.style.color = palette[tone] || palette.neutral;
+}
+
+function renderPill(value, type = "status") {
+  const label = String(value || "Unknown").trim() || "Unknown";
+  const normalized = normalizeStatus(label);
+
+  const palettes =
+    type === "approval"
+      ? {
+          approved: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+          pending: "bg-amber-50 text-amber-700 ring-amber-100",
+          rejected: "bg-rose-50 text-rose-700 ring-rose-100",
+          default: "bg-slate-100 text-slate-600 ring-slate-200",
+        }
+      : {
+          active: "bg-blue-50 text-blue-700 ring-blue-100",
+          pending: "bg-amber-50 text-amber-700 ring-amber-100",
+          blocked: "bg-rose-50 text-rose-700 ring-rose-100",
+          suspended: "bg-rose-50 text-rose-700 ring-rose-100",
+          expired: "bg-orange-50 text-orange-700 ring-orange-100",
+          inactive: "bg-slate-100 text-slate-600 ring-slate-200",
+          approved: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+          rejected: "bg-rose-50 text-rose-700 ring-rose-100",
+          default: "bg-slate-100 text-slate-600 ring-slate-200",
+        };
+
+  const className = palettes[normalized] || palettes.default;
+  return `<span class="inline-flex rounded-full px-3 py-1 text-xs font-bold ring-1 ${className}">${escapeHtml(label)}</span>`;
+}
+
+function createCourseMap(courses) {
+  return new Map(courses.map((course) => [course.id, course]));
+}
+
+function normalizeDashboard(payload = {}) {
+  const courses = (payload.courses || [])
+    .map((course) => ({
+      id: String(course.id || course.courseId || "").trim(),
+      title: String(course.title || "").trim() || "Untitled Course",
+      shortTitle: String(course.shortTitle || course.title || "").trim() || "Course",
+      faculty: String(course.faculty || "").trim(),
+      category: String(course.category || "").trim(),
+      schedule: String(course.schedule || "").trim(),
+      nextLive: String(course.nextLive || "").trim(),
+      description: String(course.description || "").trim(),
+    }))
+    .filter((course) => course.id)
+    .sort((left, right) => left.title.localeCompare(right.title));
+
+  const courseMap = createCourseMap(courses);
+
+  const students = (payload.students || [])
+    .map((student) => ({
+      id: String(student.id || student.studentId || "").trim(),
+      name: String(student.name || "").trim(),
+      phone: String(student.phone || "").trim(),
+      email: String(student.email || "").trim(),
+      batch: String(student.batch || "").trim(),
+      session: String(student.session || "").trim(),
+      joinedOn: String(student.joinedOn || "").trim(),
+      status: String(student.status || "Active").trim(),
+      password: String(student.password || "").trim(),
+      loginApproval: String(student.loginApproval || "Pending").trim(),
+      highlight: String(student.highlight || "").trim(),
+      enrolledCourseIds: parseList(student.enrolledCourseIds || student.courseIds || student.courses || ""),
+    }))
+    .filter((student) => student.id)
+    .sort((left, right) => left.name.localeCompare(right.name));
+
+  const enrollments = (payload.enrollments || [])
+    .map((enrollment) => ({
+      id: String(enrollment.id || "").trim(),
+      studentId: String(enrollment.studentId || "").trim(),
+      courseId: String(enrollment.courseId || "").trim(),
+      accessStartDate: String(enrollment.accessStartDate || "").trim(),
+      accessEndDate: String(enrollment.accessEndDate || "").trim(),
+      videoAccessUntil: String(enrollment.videoAccessUntil || "").trim(),
+      lastPaymentDate: String(enrollment.lastPaymentDate || "").trim(),
+      paymentDueDate: String(enrollment.paymentDueDate || "").trim(),
+      monthlyFee: String(enrollment.monthlyFee || "").trim(),
+      status: String(enrollment.status || "Active").trim(),
+      paidMonths: parseList(enrollment.paidMonths || ""),
+    }))
+    .filter((enrollment) => enrollment.studentId && enrollment.courseId);
+
+  const registrations = (payload.registrations || [])
+    .map((registration) => ({
+      id: String(registration.id || "").trim(),
+      studentId: String(registration.studentId || "").trim(),
+      name: String(registration.name || "").trim(),
+      phone: String(registration.phone || "").trim(),
+      email: String(registration.email || "").trim(),
+      batch: String(registration.batch || "").trim(),
+      session: String(registration.session || "").trim(),
+      password: String(registration.password || "").trim(),
+      requestedCourseIds: parseList(registration.requestedCourseIds || ""),
+      status: String(registration.status || "Pending").trim(),
+      submittedOn: String(registration.submittedOn || "").trim(),
+      reviewedOn: String(registration.reviewedOn || "").trim(),
+      reviewedBy: String(registration.reviewedBy || "").trim(),
+      reviewNote: String(registration.reviewNote || "").trim(),
+    }))
+    .sort((left, right) => new Date(right.submittedOn || 0) - new Date(left.submittedOn || 0));
+
+  const messages = (payload.messages || [])
+    .map((message) => ({
+      id: String(message.id || "").trim(),
+      studentIds: parseList(message.studentIds || ""),
+      title: String(message.title || "Admin Message").trim(),
+      message: String(message.message || "").trim(),
+      status: String(message.status || "Sent").trim(),
+      createdOn: String(message.createdOn || "").trim(),
+      createdBy: String(message.createdBy || "").trim(),
+    }))
+    .sort((left, right) => new Date(right.createdOn || 0) - new Date(left.createdOn || 0));
+
+  return {
+    generatedAt: String(payload.generatedAt || "").trim(),
+    spreadsheetName: String(payload.spreadsheetName || "").trim(),
+    students,
+    courses,
+    lessons: payload.lessons || [],
+    notices: payload.notices || [],
+    enrollments,
+    registrations,
+    messages,
+    courseMap,
+  };
+}
+
+function getStudentById(studentId) {
+  return state.data.students.find((student) => student.id === studentId) || null;
+}
+
+function getEnrollmentRecordsForStudent(studentId) {
+  return state.data.enrollments.filter((enrollment) => enrollment.studentId === studentId);
+}
+
+function getStudentCourseIds(student) {
+  if (!student) {
+    return [];
+  }
+
+  const seen = new Set();
+  const collected = [];
+
+  [...student.enrolledCourseIds, ...getEnrollmentRecordsForStudent(student.id).map((entry) => entry.courseId)].forEach(
+    (courseId) => {
+      if (!courseId || seen.has(courseId) || !state.data.courseMap.has(courseId)) {
+        return;
+      }
+
+      seen.add(courseId);
+      collected.push(courseId);
+    }
+  );
+
+  return collected;
+}
+
+function getSelectedStudentIds() {
+  return [...state.selectedStudentIds];
+}
+
+function getSelectedStudents() {
+  return getSelectedStudentIds()
+    .map((studentId) => getStudentById(studentId))
+    .filter(Boolean);
+}
+
+function buildStudentSearchHaystack(student) {
+  return [
+    student.id,
+    student.name,
+    student.phone,
+    student.email,
+    student.batch,
+    student.session,
+    student.status,
+    student.loginApproval,
+  ]
+    .map((item) => normalizeLookupText(item))
+    .filter(Boolean);
+}
+
+function getFilteredStudents() {
+  const rawQuery = state.studentQuery.trim();
+  if (!rawQuery) {
+    return state.data.students;
+  }
+
+  const query = normalizeLookupText(rawQuery);
+  const phoneQuery = normalizePhoneValue(rawQuery);
+
+  return state.data.students.filter((student) => {
+    if (phoneQuery && normalizePhoneValue(student.phone).includes(phoneQuery)) {
+      return true;
+    }
+
+    return buildStudentSearchHaystack(student).some((token) => token.includes(query));
+  });
+}
+
+function resetStudentEditor() {
+  state.editingStudentId = "";
+  dom.studentEditorForm.reset();
+  dom.editorStudentId.value = "";
+  dom.editorStudentStatus.value = "Active";
+  dom.editorStudentApproval.value = "Approved";
+  renderStudentEditor();
+  setFeedback(dom.studentEditorFeedback, "");
+}
+
+function setEditingStudent(studentId) {
+  state.editingStudentId = studentId;
+  state.selectedStudentIds = new Set(studentId ? [studentId] : []);
+  renderStudentTable();
+  renderStudentEditor();
+  renderBulkCourseSelector();
+  setFeedback(dom.messageFeedback, studentId ? "One student selected for access control." : "", "info");
+}
+
+function clearCourseForm() {
+  state.editingCourseId = "";
+  dom.courseForm.reset();
+  setFeedback(dom.courseFeedback, "");
+
+  const submitButton = dom.courseForm.querySelector('button[type="submit"]');
+  if (submitButton) {
+    submitButton.textContent = "Save Course";
+  }
+}
+
+function setCourseRuleInputsFromEnrollment(enrollment) {
+  dom.bulkAccessStartInput.value = enrollment?.accessStartDate || "";
+  dom.bulkAccessEndInput.value = enrollment?.accessEndDate || "";
+  dom.bulkVideoAccessUntilInput.value = enrollment?.videoAccessUntil || "";
+  dom.bulkLastPaymentDateInput.value = enrollment?.lastPaymentDate || "";
+  dom.bulkPaymentDueDateInput.value = enrollment?.paymentDueDate || "";
+  dom.bulkMonthlyFeeInput.value = enrollment?.monthlyFee || "";
+  dom.bulkEnrollmentStatusInput.value = enrollment?.status || "";
+  dom.bulkPaidMonthsInput.value = (enrollment?.paidMonths || []).join("|");
+}
+
+function resetCourseRuleInputs() {
+  setCourseRuleInputsFromEnrollment(null);
+}
+
+function toggleAuthView(isLoggedIn) {
+  dom.adminLoginSection.classList.toggle("hidden", isLoggedIn);
+  dom.adminDashboard.classList.toggle("hidden", !isLoggedIn);
+  dom.adminLogoutBtn.classList.toggle("hidden", !isLoggedIn);
+}
+
+function clearAdminSession() {
+  state.token = "";
+  state.admin = null;
+  state.data = createEmptyDashboard();
+  state.selectedStudentIds = new Set();
+  state.visibleStudentIds = [];
+  removeStoredValue(STORAGE_KEYS.adminToken);
+  toggleAuthView(false);
+}
+
+async function requestAction(action, payload = {}) {
+  const response = await fetch(APP_CONFIG.remoteEndpoint, {
+    method: "POST",
+    headers: {
+      Accept: "application/json",
+      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+    },
+    body: new URLSearchParams(
+      Object.entries({
+        action,
+        token: state.token,
+        ...payload,
+      }).reduce((result, [key, value]) => {
+        if (value !== undefined && value !== null) {
+          result[key] = String(value);
+        }
+
+        return result;
+      }, {})
+    ),
+  });
+
+  if (!response.ok) {
+    throw new Error("Unable to complete the request.");
+  }
+
+  const data = await response.json();
+  if (!data.ok && normalizeLookupText(data.message).includes("admin authentication is required")) {
+    clearAdminSession();
+    setFeedback(dom.adminLoginFeedback, "Admin session expired. Log in again.", "error");
+  }
+
+  return data;
+}
+
+async function requestPublicData() {
+  const response = await fetch(APP_CONFIG.remoteEndpoint, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("Unable to load live data.");
+  }
+
+  return response.json();
+}
+
+function applyDashboardPayload(payload, feedbackMessage = "", tone = "success") {
+  state.data = normalizeDashboard(payload);
+  if (payload.admin) {
+    state.admin = payload.admin;
+  }
+
+  const validStudentIds = new Set(state.data.students.map((student) => student.id));
+  state.selectedStudentIds = new Set(getSelectedStudentIds().filter((studentId) => validStudentIds.has(studentId)));
+
+  if (state.editingStudentId && !validStudentIds.has(state.editingStudentId)) {
+    state.editingStudentId = "";
+  }
+
+  const validCourseIds = new Set(state.data.courses.map((course) => course.id));
+  if (state.editingCourseId && !validCourseIds.has(state.editingCourseId)) {
+    state.editingCourseId = "";
+  }
+
+  renderDashboard();
+
+  if (feedbackMessage) {
+    setFeedback(dom.adminTopFeedback, feedbackMessage, tone);
+  } else if (state.data.spreadsheetName) {
+    setFeedback(
+      dom.adminTopFeedback,
+      `${state.data.spreadsheetName} synced at ${formatDateTime(state.data.generatedAt, "just now")}.`,
+      "info"
+    );
+  }
+}
+
+async function loadDashboard(feedbackMessage = "") {
+  const payload = await requestAction("admingetdashboard");
+  if (!payload.ok) {
+    throw new Error(payload.message || "Unable to load admin dashboard.");
+  }
+
+  applyDashboardPayload(payload, feedbackMessage, "success");
+  toggleAuthView(true);
+}
+
+function renderSummaryCards() {
+  const pendingRegistrations = state.data.registrations.filter(
+    (registration) => normalizeStatus(registration.status) === "pending"
+  ).length;
+
+  dom.summaryStudents.textContent = String(state.data.students.length);
+  dom.summaryPending.textContent = String(pendingRegistrations);
+  dom.summaryCourses.textContent = String(state.data.courses.length);
+  dom.summaryMessages.textContent = String(state.data.messages.length);
+
+  const adminName = state.admin?.name || state.admin?.username || "Admin";
+  dom.adminWelcome.textContent = `${adminName} Dashboard`;
+}
+
+function renderCourseCheckboxes(container, selectedCourseIds, checkboxName) {
+  if (!state.data.courses.length) {
+    container.innerHTML =
+      '<p class="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">No courses are available yet.</p>';
+    return;
+  }
+
+  const selected = new Set(selectedCourseIds);
+
+  container.innerHTML = state.data.courses
+    .map(
+      (course) => `
+        <label class="flex items-start gap-3 rounded-2xl border border-white bg-white px-4 py-3 text-sm text-slate-700 transition hover:border-slate-200">
+          <input
+            type="checkbox"
+            value="${escapeHtml(course.id)}"
+            data-course-checkbox="${escapeHtml(checkboxName)}"
+            class="mt-1 h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-500"
+            ${selected.has(course.id) ? "checked" : ""}
+          />
+          <span class="min-w-0">
+            <span class="block truncate font-bold text-slate-900">${escapeHtml(course.title)}</span>
+            <span class="mt-1 block text-xs text-slate-500">${escapeHtml(course.category || "Course")}</span>
+          </span>
+        </label>
+      `
+    )
+    .join("");
+}
+
+function readCheckedCourseIds(container, checkboxName) {
+  return [...container.querySelectorAll(`[data-course-checkbox="${checkboxName}"]:checked`)]
+    .map((input) => String(input.value || "").trim())
+    .filter(Boolean);
+}
+
+function renderStudentEditor() {
+  const student = state.editingStudentId ? getStudentById(state.editingStudentId) : null;
+  const courseIds = getStudentCourseIds(student);
+
+  dom.studentEditorLabel.textContent = student ? student.id : "New Student";
+  dom.editorStudentId.value = student?.id || "";
+  dom.editorStudentName.value = student?.name || "";
+  dom.editorStudentPhone.value = student?.phone || "";
+  dom.editorStudentEmail.value = student?.email || "";
+  dom.editorStudentBatch.value = student?.batch || "";
+  dom.editorStudentSession.value = student?.session || "";
+  dom.editorStudentPassword.value = student?.password || "";
+  dom.editorStudentStatus.value = student?.status || "Active";
+  dom.editorStudentApproval.value = student?.loginApproval || "Approved";
+  dom.editorStudentHighlight.value = student?.highlight || "";
+
+  renderCourseCheckboxes(dom.studentCourseSelector, courseIds, "editor");
+}
+
+function renderBulkCourseSelector() {
+  const selectedStudents = getSelectedStudents();
+  if (!selectedStudents.length) {
+    dom.bulkCourseSelector.innerHTML =
+      '<p class="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">Select one or more students to manage their course access.</p>';
+    resetCourseRuleInputs();
+    return;
+  }
+
+  const selectedCourseIds = state.data.courses
+    .filter((course) =>
+      selectedStudents.every((student) => {
+        return getStudentCourseIds(student).includes(course.id);
+      })
+    )
+    .map((course) => course.id);
+
+  renderCourseCheckboxes(dom.bulkCourseSelector, selectedCourseIds, "bulk");
+
+  if (selectedStudents.length === 1) {
+    const [student] = selectedStudents;
+    const firstEnrollment = getEnrollmentRecordsForStudent(student.id)[0] || null;
+    setCourseRuleInputsFromEnrollment(firstEnrollment);
+  } else {
+    resetCourseRuleInputs();
+  }
+}
+
+function renderStudentTable() {
+  const students = getFilteredStudents();
+  state.visibleStudentIds = students.map((student) => student.id);
+
+  if (!students.length) {
+    dom.studentTableBody.innerHTML =
+      '<tr><td colspan="8" class="px-3 py-8 text-center text-sm text-slate-500">No students matched this filter.</td></tr>';
+    dom.selectAllStudents.checked = false;
+    return;
+  }
+
+  dom.studentTableBody.innerHTML = students
+    .map((student) => {
+      const isSelected = state.selectedStudentIds.has(student.id);
+      const courseIds = getStudentCourseIds(student);
+      const courseSummary = courseIds.length
+        ? courseIds
+            .slice(0, 2)
+            .map((courseId) => state.data.courseMap.get(courseId)?.shortTitle || state.data.courseMap.get(courseId)?.title || courseId)
+            .join(", ")
+        : "No course";
+
+      return `
+        <tr class="${isSelected ? "bg-blue-50/70" : "bg-white"}">
+          <td class="px-3 py-4 align-top">
+            <input
+              type="checkbox"
+              value="${escapeHtml(student.id)}"
+              data-student-select="true"
+              class="mt-1 h-4 w-4 rounded border-slate-300 text-blue-700 focus:ring-blue-500"
+              ${isSelected ? "checked" : ""}
+            />
+          </td>
+          <td class="px-3 py-4 align-top">
+            <div class="min-w-[220px]">
+              <p class="font-bold text-slate-900">${escapeHtml(student.name || "Unnamed Student")}</p>
+              <p class="mt-1 text-xs text-slate-500">${escapeHtml(student.id)}</p>
+              <p class="mt-2 text-xs text-slate-500">${escapeHtml(student.email || "Email not set")}</p>
+            </div>
+          </td>
+          <td class="px-3 py-4 align-top text-slate-600">${escapeHtml(student.phone || "-")}</td>
+          <td class="px-3 py-4 align-top text-slate-600">
+            <p>${escapeHtml(student.batch || "-")}</p>
+            <p class="mt-1 text-xs text-slate-400">${escapeHtml(student.session || "-")}</p>
+          </td>
+          <td class="px-3 py-4 align-top">${renderPill(student.loginApproval || "Pending", "approval")}</td>
+          <td class="px-3 py-4 align-top">${renderPill(student.status || "Active")}</td>
+          <td class="px-3 py-4 align-top">
+            <p class="font-semibold text-slate-800">${courseIds.length}</p>
+            <p class="mt-1 text-xs text-slate-500">${escapeHtml(courseSummary)}</p>
+          </td>
+          <td class="px-3 py-4 align-top">
+            <button
+              type="button"
+              data-edit-student="${escapeHtml(student.id)}"
+              class="rounded-2xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+            >
+              Edit
+            </button>
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  dom.selectAllStudents.checked =
+    state.visibleStudentIds.length > 0 &&
+    state.visibleStudentIds.every((studentId) => state.selectedStudentIds.has(studentId));
+}
+
+function renderCourseList() {
+  dom.courseCountBadge.textContent = String(state.data.courses.length);
+
+  if (!state.data.courses.length) {
+    dom.courseListPanel.innerHTML =
+      '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-white px-5 py-6 text-sm text-slate-500">No course has been created yet.</div>';
+    return;
+  }
+
+  dom.courseListPanel.innerHTML = state.data.courses
+    .map((course) => {
+      const assignedCount = state.data.students.filter((student) => getStudentCourseIds(student).includes(course.id)).length;
+
+      return `
+        <div class="rounded-[1.5rem] border border-white bg-white p-5">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+              <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">${escapeHtml(course.category || "Course")}</p>
+              <h5 class="mt-2 break-words text-lg font-extrabold text-slate-950">${escapeHtml(course.title)}</h5>
+              <p class="mt-1 break-words text-sm text-slate-500">${escapeHtml(course.faculty || "Faculty not set")}</p>
+              <p class="mt-3 text-sm text-slate-600">${escapeHtml(course.schedule || "Schedule pending")}</p>
+              <p class="mt-2 text-xs text-slate-400">ID: ${escapeHtml(course.id)} | Students: ${assignedCount}</p>
+            </div>
+            <div class="flex shrink-0 gap-2">
+              <button
+                type="button"
+                data-course-edit="${escapeHtml(course.id)}"
+                class="rounded-2xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                data-course-delete="${escapeHtml(course.id)}"
+                class="rounded-2xl bg-rose-50 px-4 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderRegistrationQueue() {
+  const pendingRegistrations = state.data.registrations.filter(
+    (registration) => normalizeStatus(registration.status) === "pending"
+  );
+
+  if (!pendingRegistrations.length) {
+    dom.registrationQueue.innerHTML =
+      '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-500">No pending registration is waiting for approval.</div>';
+    return;
+  }
+
+  dom.registrationQueue.innerHTML = pendingRegistrations
+    .map((registration) => {
+      const courseTitles = registration.requestedCourseIds.length
+        ? registration.requestedCourseIds
+            .map((courseId) => state.data.courseMap.get(courseId)?.shortTitle || state.data.courseMap.get(courseId)?.title || courseId)
+            .join(", ")
+        : "No course requested";
+
+      return `
+        <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="min-w-0">
+              <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Pending Registration</p>
+              <h4 class="mt-2 break-words text-lg font-extrabold text-slate-950">${escapeHtml(
+                registration.name || "Unnamed Student"
+              )}</h4>
+              <p class="mt-1 text-sm text-slate-600">${escapeHtml(registration.phone || "-")} | ${escapeHtml(
+                registration.email || "No email"
+              )}</p>
+              <p class="mt-2 text-xs text-slate-400">Student ID: ${escapeHtml(
+                registration.studentId || "Will be generated"
+              )} | Submitted: ${escapeHtml(formatDateTime(registration.submittedOn, "Not recorded"))}</p>
+              <p class="mt-3 text-sm text-slate-600">Batch: ${escapeHtml(registration.batch || "-")} | Session: ${escapeHtml(
+                registration.session || "-"
+              )}</p>
+              <p class="mt-2 text-sm text-slate-600">Requested Courses: ${escapeHtml(courseTitles)}</p>
+            </div>
+            <div class="w-full max-w-sm rounded-[1.25rem] border border-white bg-white p-4">
+              <label class="mb-2 block text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Review Note</label>
+              <textarea
+                rows="3"
+                data-registration-note="${escapeHtml(registration.id)}"
+                class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none"
+                placeholder="Optional note for approval or rejection"
+              ></textarea>
+              <div class="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  data-registration-approve="${escapeHtml(registration.id)}"
+                  class="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-emerald-700"
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  data-registration-reject="${escapeHtml(registration.id)}"
+                  class="rounded-2xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-700"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderMessageLog() {
+  if (!state.data.messages.length) {
+    dom.messageLogPanel.innerHTML =
+      '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-500">No internal message has been saved yet.</div>';
+    return;
+  }
+
+  dom.messageLogPanel.innerHTML = state.data.messages
+    .slice(0, 8)
+    .map(
+      (message) => `
+        <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h4 class="text-sm font-extrabold text-slate-950">${escapeHtml(message.title)}</h4>
+            ${renderPill(message.status)}
+          </div>
+          <p class="mt-3 text-sm leading-6 text-slate-600">${escapeHtml(message.message)}</p>
+          <p class="mt-3 text-xs text-slate-400">
+            Students: ${message.studentIds.length} | By: ${escapeHtml(message.createdBy || "-")} | ${escapeHtml(
+              formatDateTime(message.createdOn, "Not recorded")
+            )}
+          </p>
+        </div>
+      `
+    )
+    .join("");
+}
+
+function renderDashboard() {
+  renderSummaryCards();
+  renderStudentTable();
+  renderStudentEditor();
+  renderBulkCourseSelector();
+  renderCourseList();
+  renderRegistrationQueue();
+  renderMessageLog();
+
+  if (state.editingCourseId) {
+    const course = state.data.courses.find((entry) => entry.id === state.editingCourseId) || null;
+    if (course) {
+      populateCourseForm(course);
+    }
+  }
+}
+
+function populateCourseForm(course) {
+  state.editingCourseId = course.id;
+  dom.courseIdInput.value = course.id || "";
+  dom.courseTitleInput.value = course.title || "";
+  dom.courseShortTitleInput.value = course.shortTitle || "";
+  dom.courseFacultyInput.value = course.faculty || "";
+  dom.courseCategoryInput.value = course.category || "";
+  dom.courseScheduleInput.value = course.schedule || "";
+  dom.courseNextLiveInput.value = course.nextLive || "";
+  dom.courseDescriptionInput.value = course.description || "";
+
+  const submitButton = dom.courseForm.querySelector('button[type="submit"]');
+  if (submitButton) {
+    submitButton.textContent = "Update Course";
+  }
+}
+
+function getCourseRulePayload() {
+  return {
+    accessStartDate: dom.bulkAccessStartInput.value.trim(),
+    accessEndDate: dom.bulkAccessEndInput.value.trim(),
+    videoAccessUntil: dom.bulkVideoAccessUntilInput.value.trim(),
+    lastPaymentDate: dom.bulkLastPaymentDateInput.value.trim(),
+    paymentDueDate: dom.bulkPaymentDueDateInput.value.trim(),
+    monthlyFee: dom.bulkMonthlyFeeInput.value.trim(),
+    status: dom.bulkEnrollmentStatusInput.value.trim(),
+    paidMonths: buildPipeList(dom.bulkPaidMonthsInput.value),
+  };
+}
+
+function hasCourseRuleOverride(payload) {
+  return Object.values(payload).some((value) => String(value || "").trim() !== "");
+}
+
+async function handleAdminLoginSubmit(event) {
+  event.preventDefault();
+
+  const username = dom.adminUsername.value.trim();
+  const password = normalizePasswordValue(dom.adminPassword.value);
+
+  if (!username || !password) {
+    setFeedback(dom.adminLoginFeedback, "Enter admin username and password first.", "error");
+    return;
+  }
+
+  setFeedback(dom.adminLoginFeedback, "Checking admin credentials...", "info");
+
+  try {
+    const payload = await requestAction("adminlogin", {
+      token: "",
+      username,
+      password,
+    });
+
+    if (!payload.ok || !payload.token) {
+      throw new Error(payload.message || "Admin login failed.");
+    }
+
+    state.token = payload.token;
+    state.admin = payload.admin || null;
+    writeStoredValue(STORAGE_KEYS.adminToken, state.token);
+
+    await loadDashboard("Admin panel connected to the live sheet.");
+    setFeedback(dom.adminLoginFeedback, "Admin login approved.", "success");
+    dom.adminPassword.value = "";
+  } catch (error) {
+    clearAdminSession();
+    setFeedback(dom.adminLoginFeedback, error.message || "Admin login failed.", "error");
+  }
+}
+
+async function handleRefreshDashboard() {
+  try {
+    setFeedback(dom.adminTopFeedback, "Refreshing live data...", "info");
+    await loadDashboard("Dashboard refreshed.");
+  } catch (error) {
+    setFeedback(dom.adminTopFeedback, error.message || "Unable to refresh data.", "error");
+  }
+}
+
+async function handleStudentSave(event) {
+  event.preventDefault();
+
+  const courseIds = readCheckedCourseIds(dom.studentCourseSelector, "editor");
+  const payload = {
+    id: dom.editorStudentId.value.trim(),
+    name: dom.editorStudentName.value.trim(),
+    phone: normalizePhoneValue(dom.editorStudentPhone.value),
+    email: dom.editorStudentEmail.value.trim(),
+    batch: dom.editorStudentBatch.value.trim(),
+    session: dom.editorStudentSession.value.trim(),
+    password: normalizePasswordValue(dom.editorStudentPassword.value),
+    status: dom.editorStudentStatus.value.trim(),
+    loginApproval: dom.editorStudentApproval.value.trim(),
+    highlight: dom.editorStudentHighlight.value.trim(),
+    courseIds: buildPipeList(courseIds),
+  };
+
+  if (!payload.name || !payload.phone || !payload.password) {
+    setFeedback(dom.studentEditorFeedback, "Name, phone, and password are required.", "error");
+    return;
+  }
+
+  try {
+    setFeedback(dom.studentEditorFeedback, "Saving student profile...", "info");
+    const response = await requestAction("adminupdatestudent", {
+      student: JSON.stringify(payload),
+      courseIds: payload.courseIds,
+      replaceExisting: "false",
+    });
+
+    if (!response.ok) {
+      throw new Error(response.message || "Unable to save the student.");
+    }
+
+    const savedStudent =
+      (response.students || []).find((student) => normalizePhoneValue(student.phone || "") === payload.phone) || null;
+
+    state.editingStudentId = savedStudent?.id || payload.id || "";
+    applyDashboardPayload(response, "Student profile saved.");
+    setFeedback(dom.studentEditorFeedback, "Student profile saved.", "success");
+
+    if (state.editingStudentId) {
+      state.selectedStudentIds = new Set([state.editingStudentId]);
+      renderStudentTable();
+      renderBulkCourseSelector();
+    }
+  } catch (error) {
+    setFeedback(dom.studentEditorFeedback, error.message || "Unable to save the student.", "error");
+  }
+}
+
+async function handleBulkActionApply() {
+  const selectedStudentIds = getSelectedStudentIds();
+  const bulkAction = dom.bulkActionSelect.value.trim();
+
+  if (!selectedStudentIds.length || !bulkAction) {
+    setFeedback(dom.adminTopFeedback, "Select students and a bulk action first.", "error");
+    return;
+  }
+
+  try {
+    setFeedback(dom.adminTopFeedback, "Applying bulk action...", "info");
+    const response = await requestAction("adminbulkstudentaction", {
+      studentIds: buildPipeList(selectedStudentIds),
+      bulkAction,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.message || "Unable to apply the bulk action.");
+    }
+
+    applyDashboardPayload(response, "Bulk student action saved.");
+    dom.bulkActionSelect.value = "";
+  } catch (error) {
+    setFeedback(dom.adminTopFeedback, error.message || "Unable to apply the bulk action.", "error");
+  }
+}
+
+async function handleAssignCourses() {
+  const selectedStudentIds = getSelectedStudentIds();
+  const courseIds = readCheckedCourseIds(dom.bulkCourseSelector, "bulk");
+
+  if (!selectedStudentIds.length) {
+    setFeedback(dom.messageFeedback, "Select students first.", "error");
+    return;
+  }
+
+  const accessPayload = getCourseRulePayload();
+
+  try {
+    setFeedback(dom.messageFeedback, "Saving course access...", "info");
+    const response = await requestAction("adminassigncourses", {
+      studentIds: buildPipeList(selectedStudentIds),
+      courseIds: buildPipeList(courseIds),
+      replaceExisting: hasCourseRuleOverride(accessPayload) ? "true" : "false",
+      ...accessPayload,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.message || "Unable to save course access.");
+    }
+
+    applyDashboardPayload(response, "Course access updated.");
+    setFeedback(dom.messageFeedback, "Course access updated.", "success");
+  } catch (error) {
+    setFeedback(dom.messageFeedback, error.message || "Unable to save course access.", "error");
+  }
+}
+
+async function handleSendMessage() {
+  const selectedStudentIds = getSelectedStudentIds();
+  const title = dom.messageTitleInput.value.trim();
+  const message = dom.messageBodyInput.value.trim();
+
+  if (!selectedStudentIds.length || !message) {
+    setFeedback(dom.messageFeedback, "Select students and write a message first.", "error");
+    return;
+  }
+
+  try {
+    setFeedback(dom.messageFeedback, "Saving message log...", "info");
+    const response = await requestAction("adminsendmessage", {
+      studentIds: buildPipeList(selectedStudentIds),
+      title,
+      message,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.message || "Unable to save the message.");
+    }
+
+    applyDashboardPayload(response, "Message log saved.");
+    dom.messageTitleInput.value = "";
+    dom.messageBodyInput.value = "";
+    setFeedback(dom.messageFeedback, "Message log saved.", "success");
+  } catch (error) {
+    setFeedback(dom.messageFeedback, error.message || "Unable to save the message.", "error");
+  }
+}
+
+async function handleCourseSave(event) {
+  event.preventDefault();
+
+  const payload = {
+    id: (state.editingCourseId || dom.courseIdInput.value).trim(),
+    title: dom.courseTitleInput.value.trim(),
+    shortTitle: dom.courseShortTitleInput.value.trim(),
+    faculty: dom.courseFacultyInput.value.trim(),
+    category: dom.courseCategoryInput.value.trim(),
+    schedule: dom.courseScheduleInput.value.trim(),
+    nextLive: dom.courseNextLiveInput.value.trim(),
+    description: dom.courseDescriptionInput.value.trim(),
+  };
+
+  if (!payload.title) {
+    setFeedback(dom.courseFeedback, "Course title is required.", "error");
+    return;
+  }
+
+  try {
+    setFeedback(dom.courseFeedback, "Saving course...", "info");
+    const response = await requestAction("admincreatecourse", {
+      course: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(response.message || "Unable to save the course.");
+    }
+
+    applyDashboardPayload(response, "Course saved.");
+    clearCourseForm();
+    setFeedback(dom.courseFeedback, "Course saved.", "success");
+  } catch (error) {
+    setFeedback(dom.courseFeedback, error.message || "Unable to save the course.", "error");
+  }
+}
+
+async function handleCourseDelete(courseId) {
+  const course = state.data.courseMap.get(courseId);
+  const confirmed = window.confirm(
+    `Delete "${course?.title || courseId}"? This will also remove related lesson and enrollment entries.`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    setFeedback(dom.courseFeedback, "Deleting course...", "info");
+    const response = await requestAction("admindeletecourse", {
+      courseId,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.message || "Unable to delete the course.");
+    }
+
+    applyDashboardPayload(response, "Course deleted.");
+    clearCourseForm();
+    setFeedback(dom.courseFeedback, "Course deleted.", "success");
+  } catch (error) {
+    setFeedback(dom.courseFeedback, error.message || "Unable to delete the course.", "error");
+  }
+}
+
+async function handleRegistrationReview(registrationId, action) {
+  const noteField = dom.registrationQueue.querySelector(`[data-registration-note="${registrationId}"]`);
+  const reviewNote = noteField?.value.trim() || "";
+  const endpointAction = action === "approve" ? "adminapproveregistration" : "adminrejectregistration";
+
+  try {
+    setFeedback(dom.adminTopFeedback, `${action === "approve" ? "Approving" : "Rejecting"} registration...`, "info");
+    const response = await requestAction(endpointAction, {
+      registrationId,
+      reviewNote,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.message || "Unable to update the registration.");
+    }
+
+    applyDashboardPayload(response, `Registration ${action === "approve" ? "approved" : "rejected"}.`);
+  } catch (error) {
+    setFeedback(dom.adminTopFeedback, error.message || "Unable to update the registration.", "error");
+  }
+}
+
+function getExportRows(type) {
+  if (type === "students") {
+    return state.data.students.map((student) => ({
+      id: student.id,
+      name: student.name,
+      phone: student.phone,
+      email: student.email,
+      batch: student.batch,
+      session: student.session,
+      joinedOn: student.joinedOn,
+      status: student.status,
+      loginApproval: student.loginApproval,
+      password: student.password,
+      highlight: student.highlight,
+      courseIds: buildPipeList(getStudentCourseIds(student)),
+    }));
+  }
+
+  if (type === "courses") {
+    return state.data.courses.map((course) => ({
+      id: course.id,
+      title: course.title,
+      shortTitle: course.shortTitle,
+      faculty: course.faculty,
+      category: course.category,
+      schedule: course.schedule,
+      nextLive: course.nextLive,
+      description: course.description,
+    }));
+  }
+
+  if (type === "enrollments") {
+    return state.data.enrollments.map((enrollment) => ({
+      studentId: enrollment.studentId,
+      courseId: enrollment.courseId,
+      accessStartDate: enrollment.accessStartDate,
+      accessEndDate: enrollment.accessEndDate,
+      videoAccessUntil: enrollment.videoAccessUntil,
+      lastPaymentDate: enrollment.lastPaymentDate,
+      paymentDueDate: enrollment.paymentDueDate,
+      monthlyFee: enrollment.monthlyFee,
+      status: enrollment.status,
+      paidMonths: buildPipeList(enrollment.paidMonths),
+    }));
+  }
+
+  if (type === "registrations") {
+    return state.data.registrations.map((registration) => ({
+      id: registration.id,
+      studentId: registration.studentId,
+      name: registration.name,
+      phone: registration.phone,
+      email: registration.email,
+      batch: registration.batch,
+      session: registration.session,
+      password: registration.password,
+      requestedCourseIds: buildPipeList(registration.requestedCourseIds),
+      status: registration.status,
+      submittedOn: registration.submittedOn,
+      reviewedOn: registration.reviewedOn,
+      reviewedBy: registration.reviewedBy,
+      reviewNote: registration.reviewNote,
+    }));
+  }
+
+  if (type === "messages") {
+    return state.data.messages.map((message) => ({
+      id: message.id,
+      studentIds: buildPipeList(message.studentIds),
+      title: message.title,
+      message: message.message,
+      status: message.status,
+      createdOn: message.createdOn,
+      createdBy: message.createdBy,
+    }));
+  }
+
+  return [];
+}
+
+function exportSheet(type) {
+  if (typeof XLSX === "undefined") {
+    setFeedback(dom.adminTopFeedback, "XLSX library is not available for export.", "error");
+    return;
+  }
+
+  const rows = getExportRows(type);
+  if (!rows.length) {
+    setFeedback(dom.adminTopFeedback, "No rows are available to export.", "error");
+    return;
+  }
+
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  XLSX.utils.book_append_sheet(workbook, worksheet, type);
+  XLSX.writeFile(workbook, `ain-pathshala-${type}-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  setFeedback(dom.adminTopFeedback, `${type} export downloaded.`, "success");
+}
+
+function downloadImportTemplate() {
+  if (typeof XLSX === "undefined") {
+    setFeedback(dom.importFeedback, "XLSX library is not available for template download.", "error");
+    return;
+  }
+
+  const workbook = XLSX.utils.book_new();
+  const worksheet = XLSX.utils.json_to_sheet([
+    {
+      id: "",
+      name: "Student Name",
+      phone: "01710000000",
+      email: "student@example.com",
+      batch: "Judiciary 2026",
+      session: "Weekend Batch",
+      password: "demo123",
+      status: "Active",
+      loginApproval: "Approved",
+      courseIds: "judiciary-foundation|criminal-procedure-mastery",
+      accessStartDate: "",
+      accessEndDate: "",
+      videoAccessUntil: "",
+      lastPaymentDate: "",
+      paymentDueDate: "",
+      monthlyFee: "",
+      enrollmentStatus: "",
+      paidMonths: "",
+      highlight: "Imported from Excel",
+    },
+  ]);
+
+  XLSX.utils.book_append_sheet(workbook, worksheet, "students");
+  XLSX.writeFile(workbook, "ain-pathshala-student-import-template.xlsx");
+  setFeedback(dom.importFeedback, "Import template downloaded.", "success");
+}
+
+function normalizeImportHeader(value) {
+  return normalizeLookupText(value).replace(/[^a-z0-9]/g, "");
+}
+
+function buildImportLookup(row) {
+  return Object.entries(row || {}).reduce((result, [key, value]) => {
+    result[normalizeImportHeader(key)] = value;
+    return result;
+  }, {});
+}
+
+function pickImportValue(lookup, aliases) {
+  for (const alias of aliases) {
+    const value = lookup[normalizeImportHeader(alias)];
+    if (value !== undefined) {
+      return value;
+    }
+  }
+
+  return "";
+}
+
+function parseImportedRows(rows) {
+  return rows
+    .map((row) => {
+      const lookup = buildImportLookup(row);
+      const hasCourseIdsField = [
+        "courseIds",
+        "courses",
+        "requestedCourseIds",
+        "allowedCourses",
+        "enrolledCourseIds",
+      ].some((alias) => lookup[normalizeImportHeader(alias)] !== undefined);
+
+      const entry = {
+        id: String(pickImportValue(lookup, ["id", "studentId"])).trim(),
+        name: String(pickImportValue(lookup, ["name", "studentName", "fullName"])).trim(),
+        phone: normalizePhoneValue(pickImportValue(lookup, ["phone", "mobile", "contact"])),
+        email: String(pickImportValue(lookup, ["email", "emailAddress"])).trim(),
+        batch: String(pickImportValue(lookup, ["batch", "batchName", "group"])).trim(),
+        session: String(pickImportValue(lookup, ["session", "sessionName", "shift"])).trim(),
+        password: normalizePasswordValue(pickImportValue(lookup, ["password", "loginPassword", "pin"])),
+        status: String(pickImportValue(lookup, ["status", "studentStatus"])).trim(),
+        loginApproval: String(pickImportValue(lookup, ["loginApproval", "approval", "portalApproval"])).trim(),
+        highlight: String(pickImportValue(lookup, ["highlight", "note", "remarks"])).trim(),
+        courseIds: parseList(
+          pickImportValue(lookup, ["courseIds", "courses", "requestedCourseIds", "allowedCourses", "enrolledCourseIds"])
+        ),
+        accessStartDate: String(pickImportValue(lookup, ["accessStartDate"])).trim(),
+        accessEndDate: String(pickImportValue(lookup, ["accessEndDate"])).trim(),
+        videoAccessUntil: String(pickImportValue(lookup, ["videoAccessUntil"])).trim(),
+        lastPaymentDate: String(pickImportValue(lookup, ["lastPaymentDate"])).trim(),
+        paymentDueDate: String(pickImportValue(lookup, ["paymentDueDate"])).trim(),
+        monthlyFee: String(pickImportValue(lookup, ["monthlyFee"])).trim(),
+        enrollmentStatus: String(pickImportValue(lookup, ["enrollmentStatus", "courseStatus"])).trim(),
+        paidMonths: buildPipeList(pickImportValue(lookup, ["paidMonths", "paymentMonths"])),
+        hasCourseIdsField,
+      };
+
+      const hasAnyValue = Object.values(entry).some((value) => {
+        if (Array.isArray(value)) {
+          return value.length > 0;
+        }
+
+        if (typeof value === "boolean") {
+          return value;
+        }
+
+        return String(value || "").trim() !== "";
+      });
+
+      return hasAnyValue ? entry : null;
+    })
+    .filter(Boolean);
+}
+
+function buildImportedStudentPayload(entry) {
+  const payload = {};
+
+  [
+    "id",
+    "name",
+    "phone",
+    "email",
+    "batch",
+    "session",
+    "password",
+    "status",
+    "loginApproval",
+    "highlight",
+  ].forEach((field) => {
+    if (String(entry[field] || "").trim() !== "") {
+      payload[field] = entry[field];
+    }
+  });
+
+  return payload;
+}
+
+async function handleImportStudents() {
+  const file = dom.studentImportInput.files?.[0];
+  if (!file) {
+    setFeedback(dom.importFeedback, "Choose an Excel or CSV file first.", "error");
+    return;
+  }
+
+  if (typeof XLSX === "undefined") {
+    setFeedback(dom.importFeedback, "XLSX library is not available for import.", "error");
+    return;
+  }
+
+  try {
+    setFeedback(dom.importFeedback, "Reading Excel file...", "info");
+    const arrayBuffer = await file.arrayBuffer();
+    const workbook = XLSX.read(arrayBuffer, { type: "array" });
+    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: "" });
+    const importedRows = parseImportedRows(rows);
+
+    if (!importedRows.length) {
+      throw new Error("No valid student row was found in the selected file.");
+    }
+
+    let successCount = 0;
+    let skippedCount = 0;
+
+    for (const entry of importedRows) {
+      const studentPayload = buildImportedStudentPayload(entry);
+      if (!Object.keys(studentPayload).length) {
+        skippedCount += 1;
+        continue;
+      }
+
+      const accessPayload = {
+        accessStartDate: entry.accessStartDate,
+        accessEndDate: entry.accessEndDate,
+        videoAccessUntil: entry.videoAccessUntil,
+        lastPaymentDate: entry.lastPaymentDate,
+        paymentDueDate: entry.paymentDueDate,
+        monthlyFee: entry.monthlyFee,
+        status: entry.enrollmentStatus,
+        paidMonths: entry.paidMonths,
+      };
+
+      const response = await requestAction("adminupdatestudent", {
+        student: JSON.stringify(studentPayload),
+        syncCourses: entry.hasCourseIdsField ? "true" : "false",
+        courseIds: buildPipeList(entry.courseIds),
+        replaceExisting: hasCourseRuleOverride(accessPayload) ? "true" : "false",
+        ...accessPayload,
+      });
+
+      if (!response.ok) {
+        throw new Error(response.message || `Import failed for ${entry.name || entry.phone || entry.id || "a row"}.`);
+      }
+
+      successCount += 1;
+      applyDashboardPayload(response);
+    }
+
+    setFeedback(
+      dom.importFeedback,
+      `Import finished. ${successCount} row(s) saved${skippedCount ? `, ${skippedCount} skipped` : ""}.`,
+      "success"
+    );
+    dom.studentImportInput.value = "";
+  } catch (error) {
+    setFeedback(dom.importFeedback, error.message || "Unable to import students.", "error");
+  }
+}
+
+function handleStudentTableClick(event) {
+  const editButton = event.target.closest("[data-edit-student]");
+  if (!editButton) {
+    return;
+  }
+
+  setEditingStudent(editButton.dataset.editStudent);
+}
+
+function handleStudentTableChange(event) {
+  const checkbox = event.target.closest("[data-student-select]");
+  if (!checkbox) {
+    return;
+  }
+
+  const studentId = String(checkbox.value || "").trim();
+  if (!studentId) {
+    return;
+  }
+
+  if (checkbox.checked) {
+    state.selectedStudentIds.add(studentId);
+  } else {
+    state.selectedStudentIds.delete(studentId);
+  }
+
+  renderStudentTable();
+  renderBulkCourseSelector();
+}
+
+function handleSelectAllToggle() {
+  if (!state.visibleStudentIds.length) {
+    return;
+  }
+
+  if (dom.selectAllStudents.checked) {
+    state.visibleStudentIds.forEach((studentId) => state.selectedStudentIds.add(studentId));
+  } else {
+    state.visibleStudentIds.forEach((studentId) => state.selectedStudentIds.delete(studentId));
+  }
+
+  renderStudentTable();
+  renderBulkCourseSelector();
+}
+
+function handleCourseListClick(event) {
+  const editButton = event.target.closest("[data-course-edit]");
+  if (editButton) {
+    const course = state.data.courseMap.get(editButton.dataset.courseEdit) || null;
+    if (course) {
+      populateCourseForm(course);
+      setFeedback(dom.courseFeedback, "Editing existing course.", "info");
+    }
+    return;
+  }
+
+  const deleteButton = event.target.closest("[data-course-delete]");
+  if (deleteButton) {
+    handleCourseDelete(deleteButton.dataset.courseDelete);
+  }
+}
+
+function handleRegistrationQueueClick(event) {
+  const approveButton = event.target.closest("[data-registration-approve]");
+  if (approveButton) {
+    handleRegistrationReview(approveButton.dataset.registrationApprove, "approve");
+    return;
+  }
+
+  const rejectButton = event.target.closest("[data-registration-reject]");
+  if (rejectButton) {
+    handleRegistrationReview(rejectButton.dataset.registrationReject, "reject");
+  }
+}
+
+async function bootstrap() {
+  resetStudentEditor();
+  clearCourseForm();
+
+  state.token = readStoredValue(STORAGE_KEYS.adminToken).trim();
+
+  if (!state.token) {
+    toggleAuthView(false);
+    return;
+  }
+
+  try {
+    setFeedback(dom.adminLoginFeedback, "Restoring admin session...", "info");
+    await loadDashboard("Admin session restored.");
+  } catch (error) {
+    clearAdminSession();
+    setFeedback(dom.adminLoginFeedback, error.message || "Admin session could not be restored.", "error");
+  }
+}
+
+dom.adminLoginForm.addEventListener("submit", handleAdminLoginSubmit);
+dom.refreshDashboardBtn.addEventListener("click", handleRefreshDashboard);
+dom.adminLogoutBtn.addEventListener("click", () => {
+  clearAdminSession();
+  setFeedback(dom.adminLoginFeedback, "Admin session closed.", "info");
+});
+dom.studentSearchInput.addEventListener("input", () => {
+  state.studentQuery = dom.studentSearchInput.value || "";
+  renderStudentTable();
+});
+dom.newStudentBtn.addEventListener("click", () => {
+  resetStudentEditor();
+  state.selectedStudentIds = new Set();
+  renderStudentTable();
+  renderBulkCourseSelector();
+});
+dom.studentEditorForm.addEventListener("submit", handleStudentSave);
+dom.studentTableBody.addEventListener("click", handleStudentTableClick);
+dom.studentTableBody.addEventListener("change", handleStudentTableChange);
+dom.selectAllStudents.addEventListener("change", handleSelectAllToggle);
+dom.applyBulkActionBtn.addEventListener("click", handleBulkActionApply);
+dom.assignCoursesBtn.addEventListener("click", handleAssignCourses);
+dom.sendMessageBtn.addEventListener("click", handleSendMessage);
+dom.courseForm.addEventListener("submit", handleCourseSave);
+dom.clearCourseFormBtn.addEventListener("click", clearCourseForm);
+dom.courseListPanel.addEventListener("click", handleCourseListClick);
+dom.registrationQueue.addEventListener("click", handleRegistrationQueueClick);
+dom.exportButtons.forEach((button) => {
+  button.addEventListener("click", () => exportSheet(button.dataset.exportType));
+});
+dom.downloadImportTemplateBtn.addEventListener("click", downloadImportTemplate);
+dom.importStudentsBtn.addEventListener("click", handleImportStudents);
+
+bootstrap();

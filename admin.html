@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ain Pathshala Admin Panel</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"rel="stylesheet"
+    />
+    <style>
+      :root {
+        --admin-deep: #102542;
+        --admin-accent: #d97706;
+      }
+
+      body {
+        font-family: "Plus Jakarta Sans", sans-serif;
+        background:
+          radial-gradient(circle at top right, rgba(217, 119, 6, 0.12), transparent 28%),
+          linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+      }
+
+      .admin-hero {
+        background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 55%, #0f766e 100%);
+      }
+
+      .panel-card {
+        box-shadow: 0 22px 60px -30px rgba(15, 23, 42, 0.35);
+      }
+
+      .soft-grid {
+        background-image:
+          linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px);
+        background-size: 22px 22px;
+      }
+
+      .scroll-slim::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+      }
+
+      .scroll-slim::-webkit-scrollbar-thumb {
+        background: rgba(30, 64, 175, 0.35);
+        border-radius: 999px;
+      }
+    </style>
+  </head>
+  <body class="min-h-screen text-slate-900">
+    <header class="admin-hero border-b border-white/10 text-white">
+      <div class="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-5">
+        <div>
+          <p class="text-xs font-bold uppercase tracking-[0.35em] text-white/60">Ain Pathshala</p>
+          <h1 class="mt-2 text-2xl font-extrabold md:text-3xl">Admin Control Panel</h1>
+        </div>
+        <div class="flex items-center gap-3">
+          <a
+            href="./index.html"
+            class="rounded-2xl border border-white/20 px-4 py-2 text-sm font-semibold text-white/90 transition hover:bg-white/10"
+          >
+            Student Portal
+          </a>
+          <button
+            id="adminLogoutBtn"
+            type="button"
+            class="hidden rounded-2xl bg-white px-4 py-2 text-sm font-bold text-slate-900 transition hover:bg-slate-100"
+          >
+            Logout
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-7xl px-4 py-8">
+      <section
+        id="adminLoginSection"
+        class="panel-card mx-auto max-w-lg overflow-hidden rounded-[2rem] border border-white/70 bg-white/90"
+      >
+        <div class="admin-hero p-8 text-white">
+          <p class="text-xs font-bold uppercase tracking-[0.35em] text-white/60">Secure Entry</p>
+          <h2 class="mt-3 text-3xl font-extrabold">Admin Login</h2>
+          <p class="mt-3 text-sm leading-6 text-white/70">
+            Use the admin account stored in the Google Sheet. Default demo account is
+            <span class="font-bold text-white">admin / admin123</span>.
+          </p>
+        </div>
+        <form id="adminLoginForm" class="space-y-5 p-8">
+          <div>
+            <label class="mb-2 block text-xs font-bold uppercase tracking-[0.28em] text-slate-500" for="adminUsername">
+              Username or Email
+            </label>
+            <input
+              id="adminUsername"
+              type="text"
+              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 outline-none transition focus:border-blue-400 focus:bg-white"
+              placeholder="Enter admin username"
+            />
+          </div>
+          <div>
+            <label class="mb-2 block text-xs font-bold uppercase tracking-[0.28em] text-slate-500" for="adminPassword">
+              Password
+            </label>
+            <input
+              id="adminPassword"
+              type="password"
+              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 outline-none transition focus:border-blue-400 focus:bg-white"
+              placeholder="Enter admin password"
+            />
+          </div>
+          <button
+            type="submit"
+            class="w-full rounded-2xl bg-slate-950 px-5 py-4 text-sm font-bold text-white transition hover:bg-slate-800"
+          >
+            Open Admin Panel
+          </button>
+          <p id="adminLoginFeedback" class="text-sm text-slate-500"></p>
+        </form>
+      </section>
+
+      <section id="adminDashboard" class="hidden space-y-8">
+        <div class="panel-card overflow-hidden rounded-[2rem] border border-white/60 bg-white">
+          <div class="admin-hero soft-grid px-6 py-8 text-white md:px-8">
+            <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+              <div>
+                <p class="text-xs font-bold uppercase tracking-[0.35em] text-white/60">Live Sheet Control</p>
+                <h2 class="mt-3 text-3xl font-extrabold" id="adminWelcome">Admin Dashboard</h2>
+                <p class="mt-3 max-w-3xl text-sm leading-6 text-white/70">
+                  Student access, course assignment, approval queue, message log, and course launch controls all run from the same sheet-connected panel.
+                </p>
+                <p id="adminTopFeedback" class="mt-4 text-sm text-white/80"></p>
+              </div>
+              <div class="flex flex-wrap gap-3">
+                <button
+                  id="refreshDashboardBtn"
+                  type="button"
+                  class="rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/15"
+                >
+                  Refresh Data
+                </button>
+                <a
+                  href="./register.html"
+                  class="rounded-2xl bg-white px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-slate-100"
+                >
+                  Open Registration Page
+                </a>
+              </div>
+            </div>
+          </div>
+          <div class="grid gap-4 px-6 py-6 md:grid-cols-2 xl:grid-cols-4">
+            <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+              <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Students</p>
+              <p id="summaryStudents" class="mt-3 text-3xl font-extrabold text-slate-950">0</p>
+            </div>
+            <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+              <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Pending Approvals</p>
+              <p id="summaryPending" class="mt-3 text-3xl font-extrabold text-amber-600">0</p>
+            </div>
+            <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+              <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Active Courses</p>
+              <p id="summaryCourses" class="mt-3 text-3xl font-extrabold text-blue-700">0</p>
+            </div>
+            <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+              <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Message Logs</p>
+              <p id="summaryMessages" class="mt-3 text-3xl font-extrabold text-emerald-700">0</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid gap-8 xl:grid-cols-[minmax(0,1.35fr),minmax(360px,0.9fr)]">
+          <section class="space-y-8">
+            <article class="panel-card rounded-[2rem] border border-white/70 bg-white p-6">
+              <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <p class="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Student Control</p>
+                  <h3 class="mt-2 text-2xl font-extrabold text-slate-950">Student Access Manager</h3>
+                </div>
+                <div class="flex w-full max-w-sm items-center gap-3">
+                  <input
+                    id="studentSearchInput"
+                    type="search"
+                    placeholder="Search by name, phone, ID, email"
+                    class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:bg-white"
+                  />
+                  <button
+                    id="newStudentBtn"
+                    type="button"
+                    class="shrink-0 rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+                  >
+                    New
+                  </button>
+                </div>
+              </div>
+
+              <div class="mt-6 flex flex-col gap-4 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4">
+                <div class="flex flex-wrap items-center gap-3">
+                  <label class="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <input id="selectAllStudents" type="checkbox" class="h-4 w-4 rounded border-slate-300" />
+                    Select All
+                  </label>
+                  <select
+                    id="bulkActionSelect"
+                    class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                  >
+                    <option value="">Bulk Action</option>
+                    <option value="approve">Approve Login</option>
+                    <option value="activate">Activate System</option>
+                    <option value="block">Block System</option>
+                    <option value="pending">Mark Pending</option>
+                    <option value="reject">Reject Access</option>
+                  </select>
+                  <button
+                    id="applyBulkActionBtn"
+                    type="button"
+                    class="rounded-2xl bg-blue-700 px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-800"
+                  >
+                    Apply
+                  </button>
+                </div>
+                <div class="scroll-slim overflow-x-auto">
+                  <table class="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead>
+                      <tr class="text-left text-[11px] font-bold uppercase tracking-[0.28em] text-slate-400">
+                        <th class="px-3 py-3">Select</th>
+                        <th class="px-3 py-3">Student</th>
+                        <th class="px-3 py-3">Phone</th>
+                        <th class="px-3 py-3">Batch</th>
+                        <th class="px-3 py-3">Approval</th>
+                        <th class="px-3 py-3">Status</th>
+                        <th class="px-3 py-3">Courses</th>
+                        <th class="px-3 py-3">Edit</th>
+                      </tr>
+                    </thead>
+                    <tbody id="studentTableBody" class="divide-y divide-slate-100"></tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div class="mt-6 grid gap-6 lg:grid-cols-2">
+                <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Editor</p>
+                      <h4 class="mt-2 text-xl font-extrabold text-slate-950">Student Profile Form</h4>
+                    </div>
+                    <span id="studentEditorLabel" class="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-500">
+                      New Student
+                    </span>
+                  </div>
+                  <form id="studentEditorForm" class="mt-5 grid gap-3">
+                    <input id="editorStudentId" type="hidden" />
+                    <input id="editorStudentName" type="text" placeholder="Student name" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                    <input id="editorStudentPhone" type="text" placeholder="Phone number" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                    <input id="editorStudentEmail" type="email" placeholder="Email address" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                    <input id="editorStudentBatch" type="text" placeholder="Batch" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                    <input id="editorStudentSession" type="text" placeholder="Session" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                    <input id="editorStudentPassword" type="text" placeholder="Password" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                    <div class="grid gap-3 sm:grid-cols-2">
+                      <select id="editorStudentStatus" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none">
+                        <option value="Active">Active</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Blocked">Blocked</option>
+                        <option value="Inactive">Inactive</option>
+                      </select>
+                      <select id="editorStudentApproval" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none">
+                        <option value="Approved">Approved</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Rejected">Rejected</option>
+                      </select>
+                    </div>
+                    <textarea
+                      id="editorStudentHighlight"
+                      rows="3"
+                      placeholder="Highlight or note"
+                      class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"
+                    ></textarea>
+                    <div>
+                      <p class="mb-3 text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Allowed Courses</p>
+                      <div id="studentCourseSelector" class="grid gap-2 sm:grid-cols-2"></div>
+                    </div>
+                    <button
+                      type="submit"
+                      class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+                    >
+                      Save Student
+                    </button>
+                    <p id="studentEditorFeedback" class="text-sm text-slate-500"></p>
+                  </form>
+                </div>
+
+                <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+                  <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Selected Students</p>
+                  <h4 class="mt-2 text-xl font-extrabold text-slate-950">Course Assignment + Messaging</h4>
+
+                  <div class="mt-5 space-y-5">
+                    <div>
+                      <p class="mb-3 text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Assign Courses</p>
+                      <div id="bulkCourseSelector" class="grid gap-2 sm:grid-cols-2"></div>
+                      <div class="mt-4 rounded-[1.25rem] border border-white bg-white p-4">
+                        <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Course Access Rules</p>
+                        <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                          <input id="bulkAccessStartInput" type="date" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none" />
+                          <input id="bulkAccessEndInput" type="date" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none" />
+                          <input id="bulkVideoAccessUntilInput" type="date" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none" />
+                          <input id="bulkLastPaymentDateInput" type="date" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none" />
+                          <input id="bulkPaymentDueDateInput" type="date" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none" />
+                          <input id="bulkMonthlyFeeInput" type="text" placeholder="Monthly fee" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none" />
+                          <select id="bulkEnrollmentStatusInput" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none">
+                            <option value="">Keep Current Status</option>
+                            <option value="Active">Active</option>
+                            <option value="Pending">Pending</option>
+                            <option value="Blocked">Blocked</option>
+                            <option value="Suspended">Suspended</option>
+                            <option value="Expired">Expired</option>
+                          </select>
+                          <input id="bulkPaidMonthsInput" type="text" placeholder="Paid months: 2026-01|2026-03" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none" />
+                        </div>
+                        <p class="mt-3 text-xs leading-5 text-slate-500">
+                          Leave fields blank to keep current values. This section controls course access and payment windows, not lesson upload.
+                        </p>
+                      </div>
+                      <button
+                        id="assignCoursesBtn"
+                        type="button"
+                        class="mt-4 rounded-2xl bg-blue-700 px-4 py-3 text-sm font-bold text-white transition hover:bg-blue-800"
+                      >
+                        Save Course Access
+                      </button>
+                    </div>
+
+                    <div class="rounded-[1.25rem] border border-white bg-white p-4">
+                      <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Send Internal Message</p>
+                      <input
+                        id="messageTitleInput"
+                        type="text"
+                        placeholder="Message title"
+                        class="mt-3 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none"
+                      />
+                      <textarea
+                        id="messageBodyInput"
+                        rows="4"
+                        placeholder="Write a message for the selected students"
+                        class="mt-3 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none"
+                      ></textarea>
+                      <button
+                        id="sendMessageBtn"
+                        type="button"
+                        class="mt-4 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-emerald-700"
+                      >
+                        Save Message Log
+                      </button>
+                      <p id="messageFeedback" class="mt-3 text-sm text-slate-500"></p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <article class="panel-card rounded-[2rem] border border-white/70 bg-white p-6">
+              <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <p class="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Course Control</p>
+                  <h3 class="mt-2 text-2xl font-extrabold text-slate-950">Course Launch Manager</h3>
+                </div>
+                <button
+                  id="clearCourseFormBtn"
+                  type="button"
+                  class="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+                >
+                  Clear Form
+                </button>
+              </div>
+
+              <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,380px),minmax(0,1fr)]">
+                <form id="courseForm" class="grid gap-3 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+                  <input id="courseIdInput" type="text" placeholder="Course ID (optional)" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                  <input id="courseTitleInput" type="text" placeholder="Course title" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                  <input id="courseShortTitleInput" type="text" placeholder="Short title" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                  <input id="courseFacultyInput" type="text" placeholder="Faculty" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                  <input id="courseCategoryInput" type="text" placeholder="Category" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                  <input id="courseScheduleInput" type="text" placeholder="Schedule" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                  <input id="courseNextLiveInput" type="text" placeholder="Next live date/time" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                  <textarea id="courseDescriptionInput" rows="4" placeholder="Description" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"></textarea>
+                  <button type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800">
+                    Save Course
+                  </button>
+                  <p id="courseFeedback" class="text-sm text-slate-500"></p>
+                </form>
+
+                <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+                  <div class="flex items-center justify-between gap-3">
+                    <div>
+                      <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Live Courses</p>
+                      <h4 class="mt-2 text-xl font-extrabold text-slate-950">Existing Course List</h4>
+                    </div>
+                    <span id="courseCountBadge" class="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-500">0</span>
+                  </div>
+                  <div id="courseListPanel" class="mt-5 grid gap-3"></div>
+                </div>
+              </div>
+            </article>
+          </section>
+
+          <section class="space-y-8">
+            <article class="panel-card rounded-[2rem] border border-white/70 bg-white p-6">
+              <p class="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Registration Queue</p>
+              <h3 class="mt-2 text-2xl font-extrabold text-slate-950">Pending Approval Requests</h3>
+              <div id="registrationQueue" class="mt-5 grid gap-4"></div>
+            </article>
+
+            <article class="panel-card rounded-[2rem] border border-white/70 bg-white p-6">
+              <p class="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Export</p>
+              <h3 class="mt-2 text-2xl font-extrabold text-slate-950">Download Excel Snapshots</h3>
+              <div class="mt-5 grid gap-3">
+                <button data-export-type="students" type="button" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-bold text-slate-800 transition hover:bg-slate-100">
+                  Export Students Excel
+                </button>
+                <button data-export-type="courses" type="button" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-bold text-slate-800 transition hover:bg-slate-100">
+                  Export Courses Excel
+                </button>
+                <button data-export-type="enrollments" type="button" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-bold text-slate-800 transition hover:bg-slate-100">
+                  Export Course Access Excel
+                </button>
+                <button data-export-type="registrations" type="button" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-bold text-slate-800 transition hover:bg-slate-100">
+                  Export Registrations Excel
+                </button>
+                <button data-export-type="messages" type="button" class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-sm font-bold text-slate-800 transition hover:bg-slate-100">
+                  Export Messages Excel
+                </button>
+              </div>
+            </article>
+
+            <article class="panel-card rounded-[2rem] border border-white/70 bg-white p-6">
+              <p class="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Bulk Import</p>
+              <h3 class="mt-2 text-2xl font-extrabold text-slate-950">Excel Student Import</h3>
+              <div class="mt-5 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+                <p class="text-sm leading-6 text-slate-600">
+                  Upload `.xlsx`, `.xls`, or `.csv` with fields like `name`, `phone`, `email`, `batch`,
+                  `session`, `password`, `status`, `loginApproval`, and `courseIds`.
+                </p>
+                <input
+                  id="studentImportInput"
+                  type="file"
+                  accept=".xlsx,.xls,.csv"
+                  class="mt-4 block w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700"
+                />
+                <div class="mt-4 flex flex-wrap gap-3">
+                  <button
+                    id="downloadImportTemplateBtn"
+                    type="button"
+                    class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-800 transition hover:bg-slate-100"
+                  >
+                    Download Template
+                  </button>
+                  <button
+                    id="importStudentsBtn"
+                    type="button"
+                    class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+                  >
+                    Import Students
+                  </button>
+                </div>
+                <p id="importFeedback" class="mt-4 text-sm text-slate-500"></p>
+              </div>
+            </article>
+
+            <article class="panel-card rounded-[2rem] border border-white/70 bg-white p-6">
+              <p class="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Message Log</p>
+              <h3 class="mt-2 text-2xl font-extrabold text-slate-950">Recent Internal Messages</h3>
+              <div id="messageLogPanel" class="mt-5 grid gap-3"></div>
+            </article>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="./admin-app.js"></script>
+  </body>
+</html>
