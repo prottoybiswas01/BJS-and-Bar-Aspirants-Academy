@@ -6,6 +6,10 @@ This is a frontend prototype for a law-focused coaching portal that uses Tailwin
 
 - `index.html`: the main student-facing interface
 - `app.js`: demo data, multi-course student logic, and Google Sheets loader
+- `admin.html`: the admin control panel UI
+- `admin-app.js`: admin panel logic for login, dashboard, and sheet actions
+- `register.html`: the student registration page
+- `register-app.js`: registration form logic
 - `google-apps-script.gs`: Apps Script endpoint to expose workbook tabs as JSON
 
 ## What is already implemented
@@ -18,16 +22,18 @@ This is a frontend prototype for a law-focused coaching portal that uses Tailwin
 
 ## Admin workflow
 
-There is no separate secure admin panel in this static build. The recommended workflow is to let your two admins manage the same Google Sheet as editors.
+This project now includes a separate `admin.html` control panel connected to the same Apps Script backend.
 
-This is the safer and more practical setup for the current project:
+The admin panel can:
 
-- Admin 1 and Admin 2 both get edit access to the spreadsheet
-- Course assignment is controlled from the `Enrollments` tab
-- Payment approval is controlled from the same `Enrollments` tab
-- Students only see the courses that have a matching `studentId + courseId` row
+- log in using the `Admins` sheet
+- approve student registrations
+- create and delete courses
+- assign course access and payment rules
+- send internal admin messages
+- update student approval, password, and status
 
-The old `Students.enrolledCourseIds` field is still supported as a fallback when the `Enrollments` sheet is empty, but the current system is designed to run from `Enrollments`.
+The sheet is still the source of truth. `Enrollments` remains the main course-access table, and `Students.enrolledCourseIds` is only a fallback.
 
 ## Google Sheets setup
 
@@ -38,8 +44,18 @@ Create one spreadsheet with these tabs:
 3. `Lessons`
 4. `Notices`
 5. `Enrollments`
+6. `Admins`
+7. `Registrations`
+8. `Messages`
 
 If you use more than one spreadsheet, this project should read from one main Google Sheet only. If your Apps Script is standalone or you keep switching files, paste the main sheet ID into `SPREADSHEET_ID` inside `google-apps-script.gs`.
+
+The current Apps Script also auto-creates these tabs with headers on the first live request. If the `Admins` tab is empty, it bootstraps the default admin account once:
+
+```text
+username: admin
+password: admin123
+```
 
 Recommended columns:
 
@@ -178,6 +194,7 @@ Connection flow:
 - `app.js` uses the deployed `/exec` URL as the live data source
 - The deployed Apps Script runs the logic from `google-apps-script.gs`
 - `google-apps-script.gs` reads the `Students`, `Courses`, `Lessons`, `Notices`, and `Enrollments` sheets
+- Admin login and admin dashboard requests also use the same Apps Script deployment
 - Student login validation also goes through the same deployed Apps Script via `doPost`
 - `google-apps-script.gs` can be locked to one spreadsheet with `SPREADSHEET_ID`
 - Open `/exec?action=status` to confirm which spreadsheet the deployment is actually reading
@@ -188,9 +205,10 @@ If you redeploy later:
 2. Open Extensions -> Apps Script.
 3. Paste the contents of `google-apps-script.gs`.
 4. Deploy as a Web App with read access.
-5. Replace the deployment ID at the top of `app.js`.
-6. Run `setupLawPortalSheets()` once if you want Apps Script to create the recommended headers automatically.
-7. If data still does not show, set `SPREADSHEET_ID`, redeploy, and check `/exec?action=status`.
+5. Replace the deployment ID at the top of `app.js`, `admin-app.js`, and `register-app.js`.
+6. Optional: run `setupLawPortalSheets()` once from the Apps Script editor if you want to create every tab immediately.
+7. Optional: run `seedLawPortalDemoData()` if you want demo rows for testing.
+8. If data still does not show, set `SPREADSHEET_ID`, redeploy, and check `/exec?action=status`.
 
 ## Local usage
 

@@ -268,12 +268,12 @@ function doGet(e) {
   try {
     const request = parseRequest_(e);
     const action = normalizeValue_(request.action);
+    const spreadsheet = ensurePortalSheets_(getSpreadsheet_());
 
     if (action === "status") {
-      return jsonOutput_(buildStatusPayload_());
+      return jsonOutput_(buildStatusPayload_(spreadsheet));
     }
 
-    const spreadsheet = getSpreadsheet_();
     const students = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students));
 
     return jsonOutput_({
@@ -296,6 +296,7 @@ function doPost(e) {
   try {
     const request = parseRequest_(e);
     const action = normalizeValue_(request.action);
+    ensurePortalSheets_(getSpreadsheet_());
 
     if (action === "login") return handleLogin_(request);
     if (action === "adminlogin") return handleAdminLogin_(request);
@@ -320,13 +321,9 @@ function doPost(e) {
 }
 
 function setupLawPortalSheets() {
-  const spreadsheet = getSpreadsheet_();
+  const spreadsheet = ensurePortalSheets_(getSpreadsheet_());
 
-  Object.keys(SHEET_NAMES).forEach(function (key) {
-    ensureSheetWithHeaders_(spreadsheet, SHEET_NAMES[key], SHEET_HEADERS[key] || []);
-  });
-
-  return buildStatusPayload_();
+  return buildStatusPayload_(spreadsheet);
 }
 
 function seedLawPortalDemoData() {
@@ -422,7 +419,8 @@ function handleAdminLogin_(request) {
   }
 
   const spreadsheet = getSpreadsheet_();
-  const admins = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.admins));
+  const adminsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.admins);
+  const admins = ensureDefaultAdminIfMissing_(adminsData);
   const admin = getAdminByQuery_(admins, query);
 
   if (!admin) {
@@ -1484,8 +1482,38 @@ function getSpreadsheet_() {
   );
 }
 
-function buildStatusPayload_() {
-  const spreadsheet = getSpreadsheet_();
+function ensurePortalSheets_(spreadsheet) {
+  Object.keys(SHEET_NAMES).forEach(function (key) {
+    ensureSheetWithHeaders_(spreadsheet, SHEET_NAMES[key], SHEET_HEADERS[key] || []);
+  });
+
+  return spreadsheet;
+}
+
+function ensureDefaultAdminIfMissing_(adminsData) {
+  if (adminsData.records.length) {
+    return adminsData.records;
+  }
+
+  const defaultAdmin = Object.assign(
+    {
+      id: "admin-01",
+      username: "admin",
+      name: "Portal Admin",
+      email: "support@ainpathshala.com",
+      password: "admin123",
+      status: "Active",
+      role: "Super Admin",
+    },
+    (SAMPLE_DATA.admins && SAMPLE_DATA.admins[0]) || {}
+  );
+
+  writeSheetEntries_(adminsData.sheet, adminsData.headers, [defaultAdmin]);
+  return [defaultAdmin];
+}
+
+function buildStatusPayload_(spreadsheet) {
+  spreadsheet = spreadsheet || getSpreadsheet_();
   const sheetNames = spreadsheet.getSheets().map(function (sheet) {
     return sheet.getName();
   });
