@@ -36,6 +36,12 @@ const LOOKUP_DIGIT_MAP = Object.freeze({
   "٩": "9",
 });
 
+const LOCALIZED_DIGIT_RANGES = Object.freeze([
+  Object.freeze({ start: 0x09e6, end: 0x09ef }),
+  Object.freeze({ start: 0x0660, end: 0x0669 }),
+  Object.freeze({ start: 0x06f0, end: 0x06f9 }),
+]);
+
 const STUDENT_FIELD_KEYS = Object.freeze({
   id: ["id", "studentId", "studentID", "userId", "userID", "memberId", "registrationId", "roll", "rollNumber"],
   name: ["name", "fullName", "studentName", "userName"],
@@ -438,6 +444,61 @@ function getSessionStore() {
   }
 }
 
+function getLocalStore() {
+  try {
+    return window.localStorage;
+  } catch (error) {
+    return null;
+  }
+}
+
+function getUniqueStores(stores) {
+  return stores.filter((store, index, list) => store && list.indexOf(store) === index);
+}
+
+function getPortalStores() {
+  return getUniqueStores([getLocalStore(), getSessionStore()]);
+}
+
+function getDraftStore() {
+  return getSessionStore() || getLocalStore();
+}
+
+function readStoredPortalValue(key) {
+  for (const store of getPortalStores()) {
+    const value = store.getItem(key);
+    if (value !== null) {
+      return String(value);
+    }
+  }
+
+  return "";
+}
+
+function writeStoredPortalValue(key, value) {
+  getPortalStores().forEach((store) => {
+    store.setItem(key, String(value));
+  });
+}
+
+function removeStoredPortalValue(key) {
+  getPortalStores().forEach((store) => {
+    store.removeItem(key);
+  });
+}
+
+function normalizeLocalizedDigit(character) {
+  const charCode = character.charCodeAt(0);
+
+  for (const range of LOCALIZED_DIGIT_RANGES) {
+    if (charCode >= range.start && charCode <= range.end) {
+      return String(charCode - range.start);
+    }
+  }
+
+  return character;
+}
+
 function encodeDataValue(value) {
   return encodeURIComponent(String(value || ""));
 }
@@ -460,6 +521,30 @@ function normalizeLookupCharacters(value) {
     .replace(/[\u200B-\u200D\uFEFF]/g, "")
     .replace(/[‐‑‒–—−]/g, "-")
     .replace(/[০-৯٠-٩]/g, (character) => LOOKUP_DIGIT_MAP[character] || character);
+}
+
+function normalizeLookupCharacters(value) {
+  let text = String(value || "");
+  if (typeof text.normalize === "function") {
+    text = text.normalize("NFKC");
+  }
+
+  return text
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[â€â€‘â€’â€“â€”âˆ’]/g, "-")
+    .replace(/[\u09E6-\u09EF\u0660-\u0669\u06F0-\u06F9]/g, normalizeLocalizedDigit);
+}
+
+function normalizeLookupCharacters(value) {
+  let text = String(value || "");
+  if (typeof text.normalize === "function") {
+    text = text.normalize("NFKC");
+  }
+
+  return text
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/[\u09E6-\u09EF\u0660-\u0669\u06F0-\u06F9]/g, normalizeLocalizedDigit);
 }
 
 function getFirstAvailableValue(record, keys, fallback = "") {
@@ -511,7 +596,7 @@ function getDigitsOnlyValue(value) {
 }
 
 function normalizePasswordValue(value) {
-  return normalizeLookupCharacters(value).trim();
+  return normalizeLookupCharacters(value).replace(/\s+/g, " ").trim();
 }
 
 function getCourseLookupTokens(course) {
@@ -651,11 +736,11 @@ function findStudentRecordByQuery(students, query) {
 
 function parseList(value) {
   if (Array.isArray(value)) {
-    return value.filter(Boolean);
+    return value.flatMap((item) => parseList(item));
   }
 
   return String(value || "")
-    .split(/[|,]/)
+    .split(/[\r\n|,;]+/)
     .map((item) => item.trim())
     .filter(Boolean);
 }
@@ -670,7 +755,7 @@ function toMonthKey(year, monthNumber) {
 }
 
 function parseMonthValue(value) {
-  const text = String(value || "").trim();
+  const text = normalizeLookupCharacters(value).trim();
   if (!text) {
     return "";
   }
@@ -702,7 +787,7 @@ function parsePaidMonthList(value) {
   const values = Array.isArray(value)
     ? value
     : String(value || "")
-        .split(/[|,\n]/)
+        .split(/[\r\n|,;]+/)
         .map((item) => item.trim())
         .filter(Boolean);
 
@@ -953,24 +1038,24 @@ function getActiveStudent() {
 }
 
 function syncPortalSession() {
-  const sessionStore = getSessionStore();
-  if (!sessionStore) {
+  const portalStores = getPortalStores();
+  if (!portalStores.length) {
     return;
   }
 
   if (!state.activeStudentId) {
-    sessionStore.removeItem(SESSION_STORAGE_KEYS.activeStudentId);
-    sessionStore.removeItem(SESSION_STORAGE_KEYS.openCourseId);
+    removeStoredPortalValue(SESSION_STORAGE_KEYS.activeStudentId);
+    removeStoredPortalValue(SESSION_STORAGE_KEYS.openCourseId);
     return;
   }
 
-  sessionStore.setItem(SESSION_STORAGE_KEYS.activeStudentId, state.activeStudentId);
-  sessionStore.setItem(SESSION_STORAGE_KEYS.openCourseId, state.openCourseId || "");
+  writeStoredPortalValue(SESSION_STORAGE_KEYS.activeStudentId, state.activeStudentId);
+  writeStoredPortalValue(SESSION_STORAGE_KEYS.openCourseId, state.openCourseId || "");
 }
 
 function syncLoginDraft() {
-  const sessionStore = getSessionStore();
-  if (!sessionStore || state.activeStudentId) {
+  const draftStore = getDraftStore();
+  if (!draftStore || state.activeStudentId) {
     return;
   }
 
@@ -978,45 +1063,44 @@ function syncLoginDraft() {
   const passwordValue = String(dom.password?.value || "");
 
   if (queryValue) {
-    sessionStore.setItem(SESSION_STORAGE_KEYS.loginQuery, queryValue);
+    draftStore.setItem(SESSION_STORAGE_KEYS.loginQuery, queryValue);
   } else {
-    sessionStore.removeItem(SESSION_STORAGE_KEYS.loginQuery);
+    draftStore.removeItem(SESSION_STORAGE_KEYS.loginQuery);
   }
 
   if (passwordValue) {
-    sessionStore.setItem(SESSION_STORAGE_KEYS.loginPassword, passwordValue);
+    draftStore.setItem(SESSION_STORAGE_KEYS.loginPassword, passwordValue);
   } else {
-    sessionStore.removeItem(SESSION_STORAGE_KEYS.loginPassword);
+    draftStore.removeItem(SESSION_STORAGE_KEYS.loginPassword);
   }
 }
 
 function clearLoginDraft() {
-  const sessionStore = getSessionStore();
-  if (!sessionStore) {
+  const draftStore = getDraftStore();
+  if (!draftStore) {
     return;
   }
 
-  sessionStore.removeItem(SESSION_STORAGE_KEYS.loginQuery);
-  sessionStore.removeItem(SESSION_STORAGE_KEYS.loginPassword);
+  draftStore.removeItem(SESSION_STORAGE_KEYS.loginQuery);
+  draftStore.removeItem(SESSION_STORAGE_KEYS.loginPassword);
 }
 
 function restoreLoginDraft() {
-  const sessionStore = getSessionStore();
-  if (!sessionStore) {
+  const draftStore = getDraftStore();
+  if (!draftStore) {
     return;
   }
 
-  dom.query.value = String(sessionStore.getItem(SESSION_STORAGE_KEYS.loginQuery) || "");
-  dom.password.value = String(sessionStore.getItem(SESSION_STORAGE_KEYS.loginPassword) || "");
+  dom.query.value = String(draftStore.getItem(SESSION_STORAGE_KEYS.loginQuery) || "");
+  dom.password.value = String(draftStore.getItem(SESSION_STORAGE_KEYS.loginPassword) || "");
 }
 
 function restorePortalSession() {
-  const sessionStore = getSessionStore();
-  if (!sessionStore) {
+  if (!getPortalStores().length) {
     return false;
   }
 
-  const storedStudentId = String(sessionStore.getItem(SESSION_STORAGE_KEYS.activeStudentId) || "").trim();
+  const storedStudentId = readStoredPortalValue(SESSION_STORAGE_KEYS.activeStudentId).trim();
   if (!storedStudentId) {
     return false;
   }
@@ -1030,7 +1114,7 @@ function restorePortalSession() {
   }
 
   const courseEntries = getStudentCourseEntries(student);
-  const storedCourseId = String(sessionStore.getItem(SESSION_STORAGE_KEYS.openCourseId) || "").trim();
+  const storedCourseId = readStoredPortalValue(SESSION_STORAGE_KEYS.openCourseId).trim();
 
   state.activeStudentId = student.id;
   state.openCourseId = courseEntries.some((entry) => entry.course.id === storedCourseId)
@@ -1079,7 +1163,7 @@ function authenticateLocalStudent(query, password) {
     };
   }
 
-  const storedPassword = String(student.password || "").trim();
+  const storedPassword = normalizePasswordValue(student.password || "");
   if (!storedPassword) {
     return {
       ok: false,
@@ -1113,7 +1197,7 @@ async function authenticateRemoteStudent(query, password) {
     body: new URLSearchParams({
       action: "login",
       query: String(query || "").trim(),
-      password: String(password || "").trim(),
+      password: String(password || ""),
     }),
   });
 
@@ -1155,14 +1239,16 @@ function parseTimestamp(dateValue) {
 }
 
 function getStudentCourseEntries(student) {
+  const linkedEnrollments = state.data.enrollments
+    .filter((enrollment) => isSameStudentReference(enrollment.studentId, student.id))
+    .map((enrollment) => ({
+      ...enrollment,
+      courseId: resolveCourseReference(enrollment.courseId, enrollment.courseId),
+    }));
+  const fallbackEnrollments = buildFallbackEnrollments(student);
   const sourceEnrollments = state.data.hasEnrollmentSheet
-    ? state.data.enrollments
-        .filter((enrollment) => isSameStudentReference(enrollment.studentId, student.id))
-        .map((enrollment) => ({
-          ...enrollment,
-          courseId: resolveCourseReference(enrollment.courseId, enrollment.courseId),
-        }))
-    : buildFallbackEnrollments(student);
+    ? [...linkedEnrollments, ...fallbackEnrollments]
+    : fallbackEnrollments;
 
   const seenCourseIds = new Set();
 

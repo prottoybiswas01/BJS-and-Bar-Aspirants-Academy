@@ -80,6 +80,12 @@ const LOOKUP_DIGIT_MAP_ = {
   "٨": "8",
   "٩": "9",
 };
+const LOCALIZED_DIGIT_RANGES_ = [
+  Object.freeze({ start: 0x09e6, end: 0x09ef }),
+  Object.freeze({ start: 0x0660, end: 0x0669 }),
+  Object.freeze({ start: 0x06f0, end: 0x06f9 }),
+];
+
 const STUDENT_FIELD_KEYS_ = {
   id: ["id", "studentId", "studentID", "userId", "userID", "memberId", "registrationId", "roll", "rollNumber"],
   name: ["name", "fullName", "studentName", "userName"],
@@ -519,6 +525,19 @@ function normalizeValue_(value) {
   return normalizeLookupText_(value).trim().toLowerCase();
 }
 
+function normalizeLocalizedDigit_(character) {
+  var charCode = character.charCodeAt(0);
+
+  for (var i = 0; i < LOCALIZED_DIGIT_RANGES_.length; i += 1) {
+    var range = LOCALIZED_DIGIT_RANGES_[i];
+    if (charCode >= range.start && charCode <= range.end) {
+      return String(charCode - range.start);
+    }
+  }
+
+  return character;
+}
+
 function normalizeLookupText_(value) {
   var text = String(value || "");
 
@@ -534,12 +553,38 @@ function normalizeLookupText_(value) {
     });
 }
 
+function normalizeLookupText_(value) {
+  var text = String(value || "");
+
+  if (typeof text.normalize === "function") {
+    text = text.normalize("NFKC");
+  }
+
+  return text
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[â€â€‘â€’â€“â€”âˆ’]/g, "-")
+    .replace(/[\u09E6-\u09EF\u0660-\u0669\u06F0-\u06F9]/g, normalizeLocalizedDigit_);
+}
+
+function normalizeLookupText_(value) {
+  var text = String(value || "");
+
+  if (typeof text.normalize === "function") {
+    text = text.normalize("NFKC");
+  }
+
+  return text
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[\u2010-\u2015\u2212]/g, "-")
+    .replace(/[\u09E6-\u09EF\u0660-\u0669\u06F0-\u06F9]/g, normalizeLocalizedDigit_);
+}
+
 function compactLookupValue_(value) {
   return normalizeValue_(value).replace(/[^a-z0-9]+/g, "");
 }
 
 function normalizePasswordValue_(value) {
-  return normalizeLookupText_(value).trim();
+  return normalizeLookupText_(value).replace(/\s+/g, " ").trim();
 }
 
 function canonicalLookupValue_(value) {
