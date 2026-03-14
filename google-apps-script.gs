@@ -78,6 +78,7 @@ const SHEET_HEADERS = {
 const APPROVED_LOGIN_VALUES = ["approved", "yes", "true", "allow", "allowed", "active", "1"];
 const PREVIEW_LOGIN_VALUES = ["preview", "viewonly", "readonly", "audit", "curriculum", "classlist", "listonly", "outline"];
 const BLOCKED_STATUS_VALUES = ["inactive", "blocked", "suspended", "expired", "rejected"];
+const STUDENT_LOGIN_QUERY_LABEL_ = "registration number, student ID, phone number, or email";
 const ADMIN_TOKEN_PREFIX_ = "ain-pathshala.admin-token.";
 const ADMIN_TOKEN_TTL_SECONDS_ = 21600;
 const LOCALIZED_DIGIT_RANGES_ = [
@@ -352,7 +353,7 @@ function handleLogin_(request) {
   const password = normalizePasswordValue_(request.password);
 
   if (!query) {
-    return jsonOutput_({ ok: false, message: "Student ID, phone number, or email is required." });
+    return jsonOutput_({ ok: false, message: "A " + STUDENT_LOGIN_QUERY_LABEL_ + " is required." });
   }
 
   if (!password) {
@@ -1611,6 +1612,24 @@ function syncLatestRegistrationReviewsForStudents_(spreadsheet, students, auth) 
 
     const nextRegistration = Object.assign({}, nextRegistrations[matchIndex]);
     nextRegistration.studentId = getStudentId_(student) || nextRegistration.studentId || "";
+    nextRegistration.name = String(
+      getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.name, nextRegistration.name || "")
+    ).trim();
+    nextRegistration.phone = normalizePhoneLookupValue_(
+      getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.phone, nextRegistration.phone || "")
+    );
+    nextRegistration.email = String(
+      getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.email, nextRegistration.email || "")
+    ).trim();
+    nextRegistration.batch = String(
+      getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.batch, nextRegistration.batch || "")
+    ).trim();
+    nextRegistration.session = String(
+      getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.session, nextRegistration.session || "")
+    ).trim();
+    nextRegistration.password = normalizePasswordValue_(
+      getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.password, nextRegistration.password || "")
+    );
     nextRegistration.status = review.status;
     nextRegistration.reviewedOn = reviewedOn;
     nextRegistration.reviewedBy = reviewedBy;

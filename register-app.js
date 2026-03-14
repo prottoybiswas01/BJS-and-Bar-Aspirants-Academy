@@ -29,6 +29,14 @@ const registerDom = {
   registrationResult: document.getElementById("registrationResult"),
 };
 
+function getRegisterCopyValue(key, fallback) {
+  if (typeof window !== "undefined" && typeof window.getAinPortalCopy === "function") {
+    return window.getAinPortalCopy(key, fallback);
+  }
+
+  return fallback || "";
+}
+
 function normalizeRegisterDigits(value) {
   return Array.from(String(value || ""))
     .map((character) => {
@@ -175,7 +183,13 @@ async function handleRegistrationSubmit(event) {
   };
 
   if (!payload.name || !payload.phone || !payload.password) {
-    setRegisterFeedback("Name, phone number, and password are required.", "error");
+    setRegisterFeedback(
+      `Name, ${getRegisterCopyValue("phoneNumberLabel", "Phone Number").toLowerCase()}, and ${getRegisterCopyValue(
+        "portalPasswordLabel",
+        "Portal Password"
+      ).toLowerCase()} are required.`,
+      "error"
+    );
     return;
   }
 
@@ -207,8 +221,8 @@ async function handleRegistrationSubmit(event) {
     registerDom.registrationResult.innerHTML = `
       <div class="space-y-3 text-sm text-slate-700">
         <p class="font-bold text-slate-950">Registration submitted successfully.</p>
-        <p>Student ID: <span class="font-extrabold text-blue-700">${escapeRegisterHtml(result.studentId || "-")}</span></p>
-        <p>Registration ID: <span class="font-extrabold text-emerald-700">${escapeRegisterHtml(
+        <p>${escapeRegisterHtml(getRegisterCopyValue("studentIdLabel", "Student ID"))}: <span class="font-extrabold text-blue-700">${escapeRegisterHtml(result.studentId || "-")}</span></p>
+        <p>${escapeRegisterHtml(getRegisterCopyValue("registrationNumberLabel", "Registration Number"))}: <span class="font-extrabold text-emerald-700">${escapeRegisterHtml(
           result.registrationId || "-"
         )}</span></p>
         <p class="text-slate-500">The request is now waiting in the admin approval queue.</p>

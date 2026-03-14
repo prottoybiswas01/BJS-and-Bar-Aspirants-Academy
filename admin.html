@@ -278,7 +278,7 @@
                       <tr class="text-left text-[11px] font-bold uppercase tracking-[0.28em] text-slate-400">
                         <th class="px-3 py-3">Select</th>
                         <th class="px-3 py-3">Student</th>
-                        <th class="px-3 py-3">Phone</th>
+                        <th class="px-3 py-3" data-copy-text="phoneShortLabel">Phone</th>
                         <th class="px-3 py-3">Batch</th>
                         <th class="px-3 py-3">Approval / Access</th>
                         <th class="px-3 py-3">Status</th>
@@ -305,8 +305,8 @@
                   <form id="studentEditorForm" class="mt-5 grid gap-3">
                     <input id="editorStudentId" type="hidden" />
                     <input id="editorStudentName" type="text" placeholder="Student name" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
-                    <input id="editorStudentPhone" type="text" placeholder="Phone number" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
-                    <input id="editorStudentEmail" type="email" placeholder="Email address" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                    <input id="editorStudentPhone" type="text" data-copy-placeholder="phoneNumberLabel" placeholder="Phone Number" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                    <input id="editorStudentEmail" type="email" data-copy-placeholder="emailAddressLabel" placeholder="Email Address" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
                     <input id="editorStudentBatch" type="text" placeholder="Batch" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
                     <input id="editorStudentSession" type="text" placeholder="Session" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
                     <input id="editorStudentPassword" type="text" placeholder="Password" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
@@ -566,6 +566,7 @@
       </div>
     </div>
 
-    <script src="./admin-app.js?v=20260315-1"></script>
+    <script src="./portal-copy.js?v=20260315-1"></script>
+    <script src="./admin-app.js?v=20260315-2"></script>
   </body>
 </html>

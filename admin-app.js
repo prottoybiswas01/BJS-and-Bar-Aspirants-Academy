@@ -225,6 +225,14 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+function getAdminCopyValue(key, fallback) {
+  if (typeof window !== "undefined" && typeof window.getAinPortalCopy === "function") {
+    return window.getAinPortalCopy(key, fallback);
+  }
+
+  return fallback || "";
+}
+
 function formatDateTime(value, fallback = "-") {
   if (!value) {
     return fallback;
@@ -1064,7 +1072,7 @@ function renderRegistrationQueue() {
               <p class="mt-1 text-sm text-slate-600">${escapeHtml(registration.phone || "-")} | ${escapeHtml(
                 registration.email || "No email"
               )}</p>
-              <p class="mt-2 text-xs text-slate-400">Student ID: ${escapeHtml(
+              <p class="mt-2 text-xs text-slate-400">${escapeHtml(getAdminCopyValue("studentIdLabel", "Student ID"))}: ${escapeHtml(
                 registration.studentId || "Will be generated"
               )} | Submitted: ${escapeHtml(formatDateTime(registration.submittedOn, "Not recorded"))}</p>
               <p class="mt-3 text-sm text-slate-600">Batch: ${escapeHtml(registration.batch || "-")} | Session: ${escapeHtml(

@@ -538,6 +538,14 @@ function decodeDataValue(value) {
   }
 }
 
+function getPortalCopyValue(key, fallback) {
+  if (typeof window !== "undefined" && typeof window.getAinPortalCopy === "function") {
+    return window.getAinPortalCopy(key, fallback);
+  }
+
+  return fallback || "";
+}
+
 function normalizeLookupCharacters(value) {
   let text = String(value || "");
   if (typeof text.normalize === "function") {
@@ -2287,7 +2295,13 @@ async function performLogin(query = dom.query.value) {
   syncLoginDraft();
 
   if (!studentQuery) {
-    setFeedback("Enter a student ID, phone number, or email address.", "error");
+    setFeedback(
+      `Enter your ${getPortalCopyValue(
+        "studentIdentifierSentenceLabel",
+        "student ID, phone number, or email address"
+      )}.`,
+      "error"
+    );
     showToast("Please enter your login information.", "error");
     return;
   }
@@ -2365,7 +2379,7 @@ async function performLogin(query = dom.query.value) {
 async function initialize() {
   const result = await loadData();
   applyPortalData(result);
-  dom.password.placeholder = "Enter your password";
+  dom.password.placeholder = getPortalCopyValue("passwordPlaceholder", "Enter your password");
   setFeedback("");
 
   if (!restorePortalSession()) {
