@@ -60,6 +60,10 @@ const dom = {
   selectedStudentsSummary: document.getElementById("selectedStudentsSummary"),
   selectedStudentsMeta: document.getElementById("selectedStudentsMeta"),
   studentQuickActionBar: document.getElementById("studentQuickActionBar"),
+  floatingSelectionBar: document.getElementById("floatingSelectionBar"),
+  floatingSelectedSummary: document.getElementById("floatingSelectedSummary"),
+  floatingSelectedMeta: document.getElementById("floatingSelectedMeta"),
+  floatingQuickActionBar: document.getElementById("floatingQuickActionBar"),
   studentEditorLabel: document.getElementById("studentEditorLabel"),
   studentEditorForm: document.getElementById("studentEditorForm"),
   editorStudentId: document.getElementById("editorStudentId"),
@@ -475,6 +479,13 @@ function renderSelectionState() {
   dom.selectedStudentsWorkspaceMeta.textContent = hasSelection
     ? `Managing ${selectedNames}. You can update approval, course access, and messages from this block.`
     : "Select one or more students to update approval, assign courses, and send messages.";
+  dom.floatingSelectionBar.classList.toggle("hidden", !hasSelection);
+  dom.floatingSelectedSummary.textContent = hasSelection
+    ? `${selectedCount} student${selectedCount === 1 ? "" : "s"} selected`
+    : "0 students selected";
+  dom.floatingSelectedMeta.textContent = hasSelection
+    ? `${selectedNames}. Use quick actions here or open the full controls section.`
+    : "Use quick actions or open the full controls section.";
 
   dom.selectAllStudents.disabled = !state.visibleStudentIds.length;
   dom.bulkActionSelect.disabled = !hasSelection;
@@ -483,6 +494,9 @@ function renderSelectionState() {
   setButtonDisabled(dom.sendMessageBtn, !hasSelection);
 
   [...dom.studentQuickActionBar.querySelectorAll("button")].forEach((button) => {
+    setButtonDisabled(button, !hasSelection);
+  });
+  [...dom.floatingQuickActionBar.querySelectorAll("button")].forEach((button) => {
     setButtonDisabled(button, !hasSelection);
   });
 }
@@ -578,6 +592,7 @@ function clearAdminSession() {
   state.selectedStudentIds = new Set();
   state.visibleStudentIds = [];
   removeStoredValue(STORAGE_KEYS.adminToken);
+  renderSelectionState();
   toggleAuthView(false);
 }
 
@@ -1558,6 +1573,7 @@ dom.studentMobileList.addEventListener("click", handleStudentTableClick);
 dom.studentMobileList.addEventListener("change", handleStudentTableChange);
 dom.selectAllStudents.addEventListener("change", handleSelectAllToggle);
 dom.studentQuickActionBar.addEventListener("click", handleStudentQuickActionClick);
+dom.floatingQuickActionBar.addEventListener("click", handleStudentQuickActionClick);
 dom.applyBulkActionBtn.addEventListener("click", handleBulkActionApply);
 dom.assignCoursesBtn.addEventListener("click", handleAssignCourses);
 dom.sendMessageBtn.addEventListener("click", handleSendMessage);
