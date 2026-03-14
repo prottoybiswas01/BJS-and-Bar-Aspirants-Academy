@@ -1054,6 +1054,17 @@ async function loadData() {
   };
 }
 
+function applyPortalData(result) {
+  if (!result || !result.data) {
+    return;
+  }
+
+  state.data = result.data;
+  state.dataModeLabel = result.modeLabel || "";
+  dom.dataModeBadge.textContent = state.dataModeLabel || "";
+  dom.dataModeBadge.classList.toggle("hidden", !state.dataModeLabel);
+}
+
 function getStudentByQuery(query) {
   return findStudentRecordByQuery(state.data.students, query);
 }
@@ -1258,7 +1269,7 @@ async function authenticateRemoteStudent(query, password) {
 }
 
 async function authenticateStudent(query, password) {
-  if (APP_CONFIG.dataMode === "remote" && APP_CONFIG.remoteEndpoint && state.dataModeLabel === "Live Google Sheet") {
+  if (APP_CONFIG.dataMode === "remote" && APP_CONFIG.remoteEndpoint) {
     return authenticateRemoteStudent(query, password);
   }
 
@@ -2250,33 +2261,50 @@ async function performLogin(query = dom.query.value) {
     return;
   }
 
+  if (authResult.students || authResult.courses || authResult.lessons || authResult.enrollments) {
+    applyPortalData({
+      data: normalizeData(authResult),
+      modeLabel: "Live Google Sheet",
+    });
+  }
+
   const student =
     state.data.students.find((entry) => entry.id === authResult.studentId) || getStudentByQuery(studentQuery);
-  if (!student) {
+  let nextStudent = student;
+
+  if (!nextStudent && APP_CONFIG.dataMode === "remote" && APP_CONFIG.remoteEndpoint) {
+    try {
+      const result = await loadData();
+      applyPortalData(result);
+      nextStudent =
+        state.data.students.find((entry) => entry.id === authResult.studentId) || getStudentByQuery(studentQuery);
+    } catch (error) {
+      console.warn("Unable to refresh portal data after login.", error);
+    }
+  }
+
+  if (!nextStudent) {
     setFeedback("Student data could not be loaded after login.", "error");
     showToast("Student data missing.", "error");
     return;
   }
 
-  state.activeStudentId = student.id;
-  state.openCourseId = getStudentCourseEntries(student)[0]?.course.id || "";
+  state.activeStudentId = nextStudent.id;
+  state.openCourseId = getStudentCourseEntries(nextStudent)[0]?.course.id || "";
   syncPortalSession();
 
-  renderDashboard(student);
+  renderDashboard(nextStudent);
   togglePage("profile");
   clearLoginDraft();
   dom.password.value = "";
-  setFeedback(`${student.name} logged in successfully.`, "success");
+  setFeedback(`${nextStudent.name} logged in successfully.`, "success");
   showToast("Logged in successfully!");
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 async function initialize() {
   const result = await loadData();
-  state.data = result.data;
-  state.dataModeLabel = result.modeLabel;
-
-  dom.dataModeBadge.textContent = result.modeLabel || "";
+  applyPortalData(result);
   dom.password.placeholder = "Enter your password";
   setFeedback("");
 

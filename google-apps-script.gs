@@ -410,8 +410,16 @@ function handleLogin_(request) {
   return jsonOutput_({
     ok: true,
     approved: true,
+    generatedAt: new Date().toISOString(),
+    spreadsheetId: spreadsheet.getId(),
+    spreadsheetName: spreadsheet.getName(),
     previewOnly: previewOnly,
     studentId: getStudentId_(student),
+    students: sanitizeStudents_(students),
+    courses: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses)),
+    lessons: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.lessons)),
+    notices: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.notices)),
+    enrollments: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.enrollments)),
     message: previewOnly ? "Preview access approved." : "Login approved.",
   });
 }
