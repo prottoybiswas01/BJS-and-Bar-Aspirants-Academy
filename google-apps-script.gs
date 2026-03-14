@@ -691,6 +691,8 @@ function handleAdminUpdateStudent_(request) {
     });
   }
 
+  syncLatestRegistrationReviewsForStudents_(spreadsheet, [nextStudent], auth);
+
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
 }
 
@@ -750,6 +752,13 @@ function handleAdminBulkStudentAction_(request) {
   });
 
   writeSheetEntries_(studentsData.sheet, studentsData.headers, nextStudents);
+  syncLatestRegistrationReviewsForStudents_(
+    spreadsheet,
+    nextStudents.filter(function (student) {
+      return selected[getStudentId_(student)];
+    }),
+    auth
+  );
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
 }
 
@@ -941,6 +950,7 @@ function handleAdminApproveRegistration_(request) {
       profileImage: "",
       password: normalizePasswordValue_(registration.password || ""),
       loginApproval: "Approved",
+      portalAccessMode: "",
       passwordResetUrl:
         "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20" +
         encodeURIComponent(studentId),
@@ -954,6 +964,7 @@ function handleAdminApproveRegistration_(request) {
   nextStudent.id = studentId;
   nextStudent.status = "Active";
   nextStudent.loginApproval = "Approved";
+  nextStudent.portalAccessMode = "";
   nextStudent.password = normalizePasswordValue_(nextStudent.password || registration.password || "");
   nextStudent.enrolledCourseIds = buildPipeList_(requestedCourses);
   nextStudent.joinedOn = nextStudent.joinedOn || getTodayIso_();
@@ -1054,6 +1065,7 @@ function handleAdminRejectRegistration_(request) {
         const nextStudent = Object.assign({}, student);
         nextStudent.status = "Inactive";
         nextStudent.loginApproval = "Rejected";
+        nextStudent.portalAccessMode = "";
         return nextStudent;
       })
     );
@@ -1495,6 +1507,113 @@ function buildCourseIdList_(value, courses) {
 
 function buildPipeList_(values) {
   return parseStringList_(values).join("|");
+}
+
+function buildRegistrationReviewFromStudent_(student) {
+  const approvalValue = normalizeValue_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.loginApproval, ""));
+  const statusValue = normalizeValue_(getStudentStatus_(student));
+
+  if (approvalValue === "rejected") {
+    return {
+      status: "Rejected",
+      reviewNote: "Rejected from admin panel.",
+    };
+  }
+
+  if (approvalValue === "pending" || statusValue === "pending") {
+    return {
+      status: "Pending",
+      reviewNote: "Marked pending from admin panel.",
+    };
+  }
+
+  if (isPreviewAccessStudent_(student)) {
+    return {
+      status: "Approved",
+      reviewNote: "Class list only access granted from admin panel.",
+    };
+  }
+
+  if (statusValue === "blocked" || statusValue === "suspended" || statusValue === "expired" || statusValue === "inactive") {
+    return {
+      status: "Blocked",
+      reviewNote: "Access blocked from admin panel.",
+    };
+  }
+
+  if (isLoginApproved_(student) || statusValue === "active") {
+    return {
+      status: "Approved",
+      reviewNote: "Approved from admin panel.",
+    };
+  }
+
+  return null;
+}
+
+function findLatestRegistrationIndexForStudent_(registrations, student) {
+  const studentId = getStudentId_(student);
+  const phone = normalizePhoneLookupValue_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.phone, ""));
+  const email = normalizeValue_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.email, ""));
+  let matchedIndex = -1;
+
+  (registrations || []).forEach(function (registration, index) {
+    const registrationStudentId = String(registration.studentId || "").trim();
+    const registrationPhone = normalizePhoneLookupValue_(registration.phone || "");
+    const registrationEmail = normalizeValue_(registration.email || "");
+
+    if (
+      (studentId && registrationStudentId === studentId) ||
+      (phone && registrationPhone === phone) ||
+      (email && registrationEmail === email)
+    ) {
+      matchedIndex = index;
+    }
+  });
+
+  return matchedIndex;
+}
+
+function syncLatestRegistrationReviewsForStudents_(spreadsheet, students, auth) {
+  const selectedStudents = (students || []).filter(Boolean);
+  if (!selectedStudents.length) {
+    return;
+  }
+
+  const registrationsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.registrations);
+  if (!registrationsData.records.length) {
+    return;
+  }
+
+  const reviewedOn = getNowIso_();
+  const reviewedBy = auth ? auth.username || auth.name || auth.id || "" : "";
+  const nextRegistrations = registrationsData.records.slice();
+  let hasChanges = false;
+
+  selectedStudents.forEach(function (student) {
+    const review = buildRegistrationReviewFromStudent_(student);
+    if (!review) {
+      return;
+    }
+
+    const matchIndex = findLatestRegistrationIndexForStudent_(nextRegistrations, student);
+    if (matchIndex === -1) {
+      return;
+    }
+
+    const nextRegistration = Object.assign({}, nextRegistrations[matchIndex]);
+    nextRegistration.studentId = getStudentId_(student) || nextRegistration.studentId || "";
+    nextRegistration.status = review.status;
+    nextRegistration.reviewedOn = reviewedOn;
+    nextRegistration.reviewedBy = reviewedBy;
+    nextRegistration.reviewNote = review.reviewNote;
+    nextRegistrations[matchIndex] = nextRegistration;
+    hasChanges = true;
+  });
+
+  if (hasChanges) {
+    writeSheetEntries_(registrationsData.sheet, registrationsData.headers, nextRegistrations);
+  }
 }
 
 function getSpreadsheet_() {

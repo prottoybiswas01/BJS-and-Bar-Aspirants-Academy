@@ -49,7 +49,7 @@
   </head>
   <body class="min-h-screen text-slate-900">
     <header class="admin-hero border-b border-white/10 text-white">
-      <div class="mx-auto flex w-full max-w-[1400px] items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
+      <div class="mx-auto flex w-full max-w-[1680px] items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
         <div>
           <p class="text-xs font-bold uppercase tracking-[0.35em] text-white/60">Ain Pathshala</p>
           <h1 class="mt-2 text-2xl font-extrabold md:text-3xl">Admin Control Panel</h1>
@@ -72,7 +72,7 @@
       </div>
     </header>
 
-    <main class="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8">
+    <main class="mx-auto w-full max-w-[1680px] px-4 py-6 sm:px-6 lg:px-8">
       <section
         id="adminLoginSection"
         class="panel-card mx-auto max-w-lg overflow-hidden rounded-[2rem] border border-white/70 bg-white/90"
@@ -167,7 +167,7 @@
           </div>
         </div>
 
-        <div class="grid gap-8 lg:grid-cols-[minmax(0,1.35fr),minmax(340px,0.95fr)]">
+        <div class="space-y-8">
           <section class="space-y-8">
             <article class="panel-card rounded-[2rem] border border-white/70 bg-white p-5 sm:p-6">
               <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -291,8 +291,8 @@
                 </div>
               </div>
 
-              <div class="mt-6 grid gap-6 xl:grid-cols-[minmax(0,0.92fr),minmax(0,1.08fr)]">
-                <div class="order-2 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4 sm:p-5 xl:order-1">
+              <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,0.92fr),minmax(0,1.08fr)]">
+                <div class="order-2 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4 sm:p-5 lg:order-1">
                   <div class="flex items-center justify-between gap-3">
                     <div>
                       <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Editor</p>
@@ -349,7 +349,7 @@
 
                 <div
                   id="selectedStudentWorkspace"
-                  class="order-1 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4 sm:p-5 xl:order-2"
+                  class="order-1 rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4 sm:p-5 lg:order-2"
                 >
                   <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                     <div>
@@ -373,33 +373,33 @@
                       <div id="bulkCourseSelector" class="grid gap-2 sm:grid-cols-2"></div>
                       <div class="mt-4 rounded-[1.25rem] border border-white bg-white p-4 sm:p-5">
                         <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Course Access Rules</p>
-                        <div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        <div class="mt-4 grid gap-4 sm:grid-cols-2 2xl:grid-cols-3">
                           <label class="block">
-                            <span class="mb-2 block text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Access Start Date</span>
+                            <span class="mb-2 block text-xs font-semibold tracking-[0.08em] text-slate-500">Access Start Date</span>
                             <input id="bulkAccessStartInput" type="date" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none" />
                           </label>
                           <label class="block">
-                            <span class="mb-2 block text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Access End Date</span>
+                            <span class="mb-2 block text-xs font-semibold tracking-[0.08em] text-slate-500">Access End Date</span>
                             <input id="bulkAccessEndInput" type="date" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none" />
                           </label>
                           <label class="block">
-                            <span class="mb-2 block text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Video Access Until</span>
+                            <span class="mb-2 block text-xs font-semibold tracking-[0.08em] text-slate-500">Video Access Until</span>
                             <input id="bulkVideoAccessUntilInput" type="date" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none" />
                           </label>
                           <label class="block">
-                            <span class="mb-2 block text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Last Payment Date</span>
+                            <span class="mb-2 block text-xs font-semibold tracking-[0.08em] text-slate-500">Last Payment Date</span>
                             <input id="bulkLastPaymentDateInput" type="date" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none" />
                           </label>
                           <label class="block">
-                            <span class="mb-2 block text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Payment Due Date</span>
+                            <span class="mb-2 block text-xs font-semibold tracking-[0.08em] text-slate-500">Payment Due Date</span>
                             <input id="bulkPaymentDueDateInput" type="date" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none" />
                           </label>
                           <label class="block">
-                            <span class="mb-2 block text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Monthly Fee</span>
+                            <span class="mb-2 block text-xs font-semibold tracking-[0.08em] text-slate-500">Monthly Fee</span>
                             <input id="bulkMonthlyFeeInput" type="text" placeholder="1500" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none" />
                           </label>
                           <label class="block">
-                            <span class="mb-2 block text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Enrollment Status</span>
+                            <span class="mb-2 block text-xs font-semibold tracking-[0.08em] text-slate-500">Enrollment Status</span>
                             <select id="bulkEnrollmentStatusInput" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none">
                               <option value="">Keep Current Status</option>
                               <option value="Active">Active</option>
@@ -409,8 +409,8 @@
                               <option value="Expired">Expired</option>
                             </select>
                           </label>
-                          <label class="block sm:col-span-2 xl:col-span-2">
-                            <span class="mb-2 block text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Paid Months</span>
+                          <label class="block sm:col-span-2 2xl:col-span-2">
+                            <span class="mb-2 block text-xs font-semibold tracking-[0.08em] text-slate-500">Paid Months</span>
                             <input id="bulkPaidMonthsInput" type="text" placeholder="2026-01|2026-03" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none" />
                           </label>
                         </div>
@@ -500,7 +500,6 @@
             </article>
           </section>
 
-          <section class="space-y-8">
             <article class="panel-card rounded-[2rem] border border-white/70 bg-white p-5 sm:p-6">
               <p class="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Registration Queue</p>
               <h3 class="mt-2 text-2xl font-extrabold text-slate-950">Pending Approval Requests</h3>
@@ -512,13 +511,12 @@
               <h3 class="mt-2 text-2xl font-extrabold text-slate-950">Recent Internal Messages</h3>
               <div id="messageLogPanel" class="mt-5 grid gap-3"></div>
             </article>
-          </section>
         </div>
       </section>
     </main>
 
     <div id="floatingSelectionBar" class="pointer-events-none fixed inset-x-0 bottom-4 z-50 hidden px-4">
-      <div class="pointer-events-auto mx-auto max-w-5xl rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-[0_24px_80px_-28px_rgba(15,23,42,0.45)] backdrop-blur">
+      <div class="pointer-events-auto mx-auto max-w-[1500px] rounded-[1.75rem] border border-slate-200 bg-white/95 p-4 shadow-[0_24px_80px_-28px_rgba(15,23,42,0.45)] backdrop-blur">
         <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div class="min-w-0">
             <p class="text-xs font-bold uppercase tracking-[0.28em] text-blue-500">Selection Active</p>
