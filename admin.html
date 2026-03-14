@@ -204,6 +204,7 @@
                   >
                     <option value="">Bulk Action</option>
                     <option value="approve">Approve Login</option>
+                    <option value="preview">Class List Only</option>
                     <option value="activate">Activate System</option>
                     <option value="block">Block System</option>
                     <option value="pending">Mark Pending</option>
@@ -247,6 +248,13 @@
                         Pending
                       </button>
                       <button
+                        data-quick-action="preview"
+                        type="button"
+                        class="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-indigo-700"
+                      >
+                        Class List
+                      </button>
+                      <button
                         data-quick-action="block"
                         type="button"
                         class="rounded-2xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-700"
@@ -272,7 +280,7 @@
                         <th class="px-3 py-3">Student</th>
                         <th class="px-3 py-3">Phone</th>
                         <th class="px-3 py-3">Batch</th>
-                        <th class="px-3 py-3">Approval</th>
+                        <th class="px-3 py-3">Approval / Access</th>
                         <th class="px-3 py-3">Status</th>
                         <th class="px-3 py-3">Courses</th>
                         <th class="px-3 py-3">Edit</th>
@@ -302,7 +310,7 @@
                     <input id="editorStudentBatch" type="text" placeholder="Batch" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
                     <input id="editorStudentSession" type="text" placeholder="Session" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
                     <input id="editorStudentPassword" type="text" placeholder="Password" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
-                    <div class="grid gap-3 sm:grid-cols-2">
+                    <div class="grid gap-3 sm:grid-cols-3">
                       <select id="editorStudentStatus" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none">
                         <option value="Active">Active</option>
                         <option value="Pending">Pending</option>
@@ -313,6 +321,10 @@
                         <option value="Approved">Approved</option>
                         <option value="Pending">Pending</option>
                         <option value="Rejected">Rejected</option>
+                      </select>
+                      <select id="editorStudentAccessMode" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none">
+                        <option value="">Full Video Access</option>
+                        <option value="Preview">Class List Only</option>
                       </select>
                     </div>
                     <textarea
@@ -507,6 +519,13 @@
               Pending
             </button>
             <button
+              data-quick-action="preview"
+              type="button"
+              class="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-indigo-700"
+            >
+              Class List
+            </button>
+            <button
               data-quick-action="block"
               type="button"
               class="rounded-2xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-700"
@@ -525,6 +544,6 @@
       </div>
     </div>
 
-    <script src="./admin-app.js?v=20260314-2"></script>
+    <script src="./admin-app.js?v=20260315-1"></script>
   </body>
 </html>

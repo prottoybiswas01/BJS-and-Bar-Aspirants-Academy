@@ -42,6 +42,27 @@ const LOCALIZED_DIGIT_RANGES = Object.freeze([
   Object.freeze({ start: 0x06f0, end: 0x06f9 }),
 ]);
 
+const APPROVED_LOGIN_VALUES = Object.freeze([
+  "approved",
+  "yes",
+  "true",
+  "allow",
+  "allowed",
+  "active",
+  "1",
+]);
+
+const PREVIEW_LOGIN_VALUES = Object.freeze([
+  "preview",
+  "viewonly",
+  "readonly",
+  "audit",
+  "curriculum",
+  "classlist",
+  "listonly",
+  "outline",
+]);
+
 const STUDENT_FIELD_KEYS = Object.freeze({
   id: ["id", "studentId", "studentID", "userId", "userID", "memberId", "registrationId", "roll", "rollNumber"],
   name: ["name", "fullName", "studentName", "userName"],
@@ -54,6 +75,7 @@ const STUDENT_FIELD_KEYS = Object.freeze({
   profileImage: ["profileImage", "photo", "imageUrl", "avatar", "profilePhoto"],
   password: ["password", "loginPassword", "portalPassword", "studentPassword", "passcode", "pin", "loginPin"],
   loginApproval: ["loginApproval", "approval", "loginApproved", "portalApproval", "approvalStatus", "accessApproval"],
+  portalAccessMode: ["portalAccessMode", "accessMode", "studentAccessMode", "videoAccessMode", "portalMode"],
   passwordResetUrl: ["passwordResetUrl", "resetPasswordUrl", "forgotPasswordUrl", "passwordResetLink"],
   highlight: ["highlight", "note", "remarks", "message"],
   enrolledCourseIds: ["enrolledCourseIds", "courseIds", "courses", "assignedCourses", "enrolledCourses"],
@@ -401,7 +423,9 @@ const dom = {
   heroStudentName: document.getElementById("heroStudentName"),
   heroWelcomeText: document.getElementById("heroWelcomeText"),
   completedCount: document.getElementById("completedCount"),
+  completedLabel: document.getElementById("completedLabel"),
   remainingCount: document.getElementById("remainingCount"),
+  remainingLabel: document.getElementById("remainingLabel"),
   studentStatus: document.getElementById("studentStatus"),
   studentBatch: document.getElementById("studentBatch"),
   studentSession: document.getElementById("studentSession"),
@@ -882,6 +906,7 @@ function normalizeData(raw) {
     profileImage: getFirstAvailableValue(student, STUDENT_FIELD_KEYS.profileImage, ""),
     password: normalizePasswordValue(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.password, "")),
     loginApproval: getFirstAvailableValue(student, STUDENT_FIELD_KEYS.loginApproval, ""),
+    portalAccessMode: getFirstAvailableValue(student, STUDENT_FIELD_KEYS.portalAccessMode, ""),
     passwordResetUrl: getFirstAvailableValue(student, STUDENT_FIELD_KEYS.passwordResetUrl, ""),
     highlight: getFirstAvailableValue(
       student,
@@ -1128,9 +1153,33 @@ function restorePortalSession() {
   return true;
 }
 
+function normalizeAccessModeValue(value) {
+  return normalizeLookupText(value).replace(/[^a-z0-9]+/g, "");
+}
+
+function isPreviewAccessValue(value) {
+  return PREVIEW_LOGIN_VALUES.includes(normalizeAccessModeValue(value));
+}
+
+function getStudentPortalAccessMode(student) {
+  if (!student) {
+    return "full";
+  }
+
+  if (isPreviewAccessValue(student.portalAccessMode) || isPreviewAccessValue(student.loginApproval)) {
+    return "preview";
+  }
+
+  return "full";
+}
+
+function isStudentPreviewOnly(student) {
+  return getStudentPortalAccessMode(student) === "preview";
+}
+
 function isLoginApprovalGranted(value) {
-  const normalized = String(value || "").trim().toLowerCase();
-  return ["approved", "yes", "true", "allow", "allowed", "active", "1"].includes(normalized);
+  const normalized = normalizeAccessModeValue(value);
+  return APPROVED_LOGIN_VALUES.includes(normalized) || PREVIEW_LOGIN_VALUES.includes(normalized);
 }
 
 function isStudentLoginBlocked(student) {
@@ -1239,6 +1288,7 @@ function parseTimestamp(dateValue) {
 }
 
 function getStudentCourseEntries(student) {
+  const previewOnly = isStudentPreviewOnly(student);
   const linkedEnrollments = state.data.enrollments
     .filter((enrollment) => isSameStudentReference(enrollment.studentId, student.id))
     .map((enrollment) => ({
@@ -1263,6 +1313,7 @@ function getStudentCourseEntries(student) {
     })
     .map((enrollment) => ({
       ...enrollment,
+      previewOnly,
       course: state.data.courseMap.get(enrollment.courseId) || null,
     }))
     .filter((entry) => entry.course)
@@ -1317,6 +1368,10 @@ function getEffectiveVideoAccessTimestamp(entry) {
 }
 
 function getEnrollmentVideoAccessSummary(entry) {
+  if (entry.previewOnly) {
+    return "Preview only";
+  }
+
   if (hasPaidMonthAccess(entry)) {
     return formatPaidMonthList(entry.paidMonths);
   }
@@ -1325,6 +1380,14 @@ function getEnrollmentVideoAccessSummary(entry) {
 }
 
 function getLessonAccessState(entry, lesson) {
+  if (entry.previewOnly) {
+    return {
+      canWatch: false,
+      reason: "Preview mode lets you see the class list only. Video playback is disabled for this account.",
+      status: "preview-only",
+    };
+  }
+
   if (isEnrollmentBlocked(entry)) {
     return {
       canWatch: false,
@@ -1421,14 +1484,42 @@ function getTotalResources(lessons) {
 }
 
 function getStudentStats(student, courseEntries) {
-  const lessons = courseEntries.flatMap((entry) =>
-    getCourseLessons(entry.course.id).filter((lesson) => getLessonAccessState(entry, lesson).canWatch)
+  const lessonStates = courseEntries.flatMap((entry) =>
+    getCourseLessons(entry.course.id).map((lesson) => ({
+      lesson,
+      accessState: getLessonAccessState(entry, lesson),
+    }))
   );
-  const completed = lessons.filter((lesson) => student.completedLessonIds.includes(lesson.id)).length;
+  const totalLessons = lessonStates.length;
+  const unlockedLessons = lessonStates.filter((item) => item.accessState.canWatch).length;
+  const completed = lessonStates.filter(
+    (item) => item.accessState.canWatch && student.completedLessonIds.includes(item.lesson.id)
+  ).length;
+
+  if (isStudentPreviewOnly(student)) {
+    return {
+      primaryCount: totalLessons,
+      primaryLabel: "Visible Classes",
+      secondaryCount: totalLessons,
+      secondaryLabel: "Locked Videos",
+      total: totalLessons,
+      completed: 0,
+      remaining: totalLessons,
+      unlocked: 0,
+      locked: totalLessons,
+    };
+  }
+
   return {
-    total: lessons.length,
+    primaryCount: completed,
+    primaryLabel: "Completed Classes",
+    secondaryCount: Math.max(totalLessons - completed, 0),
+    secondaryLabel: "Remaining Classes",
+    total: totalLessons,
     completed,
-    remaining: Math.max(lessons.length - completed, 0),
+    remaining: Math.max(totalLessons - completed, 0),
+    unlocked: unlockedLessons,
+    locked: Math.max(totalLessons - unlockedLessons, 0),
   };
 }
 
@@ -1490,6 +1581,10 @@ function getProfileAccessSummary(courseEntries) {
 }
 
 function getProfileVideoAccessSummary(courseEntries) {
+  if (courseEntries.length && courseEntries.every((entry) => entry.previewOnly)) {
+    return "Preview only";
+  }
+
   if (courseEntries.some((entry) => hasPaidMonthAccess(entry))) {
     if (!courseEntries.every((entry) => hasPaidMonthAccess(entry))) {
       return "Varies by course";
@@ -1710,6 +1805,7 @@ function closeVideo() {
 
 function renderStudentHeader(student, stats) {
   const avatarInitials = getAvatarInitials(student.name);
+  const previewOnly = isStudentPreviewOnly(student);
 
   dom.navStudentName.textContent = student.name;
   dom.navStudentId.textContent = `ID: ${student.id}`;
@@ -1718,12 +1814,15 @@ function renderStudentHeader(student, stats) {
   const firstName = student.name.split(" ")[0] || student.name;
   dom.heroStudentName.textContent = firstName;
   dom.heroWelcomeText.textContent =
-    student.highlight ||
-    "Your current lessons are listed below. Keep practicing consistently.";
+    previewOnly
+      ? "Preview mode is active. You can review all class titles and total class count, but video playback is disabled."
+      : student.highlight || "Your current lessons are listed below. Keep practicing consistently.";
 
-  dom.completedCount.textContent = formatNumber(stats.completed);
-  dom.remainingCount.textContent = formatNumber(stats.remaining);
-  dom.studentStatus.textContent = formatStatus(student.status);
+  dom.completedCount.textContent = formatNumber(stats.primaryCount);
+  dom.completedLabel.textContent = stats.primaryLabel;
+  dom.remainingCount.textContent = formatNumber(stats.secondaryCount);
+  dom.remainingLabel.textContent = stats.secondaryLabel;
+  dom.studentStatus.textContent = previewOnly ? "Preview Access" : formatStatus(student.status);
   dom.studentBatch.textContent = student.batch || "-";
   dom.studentSession.textContent = student.session || "-";
 }
@@ -1866,6 +1965,7 @@ function renderCourseList(student, courseEntries) {
     .map((entry, index) => {
       const course = entry.course;
       const lessons = getCourseLessons(course.id);
+      const isPreviewOnly = !!entry.previewOnly;
       const resourceCount = getTotalResources(lessons);
       const unlockedCount = lessons.filter((lesson) => getLessonAccessState(entry, lesson).canWatch)
         .length;
@@ -1939,23 +2039,29 @@ function renderCourseList(student, courseEntries) {
                   <span class="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-700">
                     Video Access: ${getEnrollmentVideoAccessSummary(entry)}
                   </span>
-                  <span class="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-bold text-emerald-700">
-                    Unlocked Videos: ${formatNumber(unlockedCount)}
-                  </span>
+                  ${
+                    isPreviewOnly
+                      ? `<span class="rounded-full bg-slate-900 px-3 py-1 text-[10px] font-bold text-white">Preview Mode: Videos disabled</span>`
+                      : `<span class="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-bold text-emerald-700">Unlocked Videos: ${formatNumber(
+                          unlockedCount
+                        )}</span>`
+                  }
                   ${
                     lockedCount
-                      ? `<span class="rounded-full bg-rose-50 px-3 py-1 text-[10px] font-bold text-rose-700">Locked Videos: ${formatNumber(
-                          lockedCount
-                        )}</span>`
+                      ? `<span class="rounded-full bg-rose-50 px-3 py-1 text-[10px] font-bold text-rose-700">${
+                          isPreviewOnly ? "Visible But Locked" : "Locked Videos"
+                        }: ${formatNumber(lockedCount)}</span>`
                       : ""
                   }
                   <span class="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-bold text-amber-700">
-                    Payment Due: ${formatDate(entry.paymentDueDate, "Not set")}
+                    ${isPreviewOnly ? "Class List" : "Payment Due"}: ${
+                      isPreviewOnly ? "Visible to student" : formatDate(entry.paymentDueDate, "Not set")
+                    }
                   </span>
                   <span class="rounded-full px-3 py-1 text-[10px] font-bold ${getStatusBadgeClass(
                     entry.status
                   )}">
-                    ${formatStatus(entry.status)}
+                    ${isPreviewOnly ? "Preview Access" : formatStatus(entry.status)}
                   </span>
                 </div>
               </div>
@@ -2000,7 +2106,13 @@ function renderCourseList(student, courseEntries) {
                                       : "text-slate-400 hover:text-slate-500"
                                   }"
                                 >
-                                  <span>${accessState.canWatch ? "Play Video" : "Locked Until Payment"}</span>
+                                  <span>${
+                                    accessState.canWatch
+                                      ? "Play Video"
+                                      : isPreviewOnly
+                                      ? "Class List Only"
+                                      : "Locked Until Payment"
+                                  }</span>
                                   <svg
                                     xmlns="http://www.w3.org/2000/svg"
                                     class="ml-1 h-3 w-3"
@@ -2027,7 +2139,13 @@ function renderCourseList(student, courseEntries) {
                                   ? "bg-blue-50 text-blue-700"
                                   : "bg-rose-100 text-rose-700"
                               }">
-                                ${accessState.canWatch ? "Unlocked" : "Payment Lock"}
+                                ${
+                                  accessState.canWatch
+                                    ? "Unlocked"
+                                    : isPreviewOnly
+                                    ? "Preview Lock"
+                                    : "Payment Lock"
+                                }
                               </div>
                               <div class="rounded-full px-3 py-1 text-[10px] font-bold ${
                                 isCompleted

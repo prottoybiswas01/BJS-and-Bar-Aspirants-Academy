@@ -24,6 +24,7 @@ const SHEET_HEADERS = {
     "profileImage",
     "password",
     "loginApproval",
+    "portalAccessMode",
     "passwordResetUrl",
     "highlight",
     "enrolledCourseIds",
@@ -75,6 +76,7 @@ const SHEET_HEADERS = {
 };
 
 const APPROVED_LOGIN_VALUES = ["approved", "yes", "true", "allow", "allowed", "active", "1"];
+const PREVIEW_LOGIN_VALUES = ["preview", "viewonly", "readonly", "audit", "curriculum", "classlist", "listonly", "outline"];
 const BLOCKED_STATUS_VALUES = ["inactive", "blocked", "suspended", "expired", "rejected"];
 const ADMIN_TOKEN_PREFIX_ = "ain-pathshala.admin-token.";
 const ADMIN_TOKEN_TTL_SECONDS_ = 21600;
@@ -94,6 +96,7 @@ const STUDENT_FIELD_KEYS_ = {
   status: ["status", "studentStatus", "accountStatus", "activeStatus"],
   password: ["password", "loginPassword", "portalPassword", "studentPassword", "passcode", "pin", "loginPin"],
   loginApproval: ["loginApproval", "approval", "loginApproved", "portalApproval", "approvalStatus", "accessApproval"],
+  portalAccessMode: ["portalAccessMode", "accessMode", "studentAccessMode", "videoAccessMode", "portalMode"],
 };
 
 const ADMIN_FIELD_KEYS_ = {
@@ -402,11 +405,14 @@ function handleLogin_(request) {
     });
   }
 
+  const previewOnly = isPreviewAccessStudent_(student);
+
   return jsonOutput_({
     ok: true,
     approved: true,
+    previewOnly: previewOnly,
     studentId: getStudentId_(student),
-    message: "Login approved.",
+    message: previewOnly ? "Preview access approved." : "Login approved.",
   });
 }
 
@@ -621,6 +627,7 @@ function handleAdminUpdateStudent_(request) {
       profileImage: "",
       password: "",
       loginApproval: "Approved",
+      portalAccessMode: "",
       passwordResetUrl:
         "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20" +
         encodeURIComponent(studentId),
@@ -642,6 +649,7 @@ function handleAdminUpdateStudent_(request) {
     "profileImage",
     "password",
     "loginApproval",
+    "portalAccessMode",
     "passwordResetUrl",
     "highlight",
   ].forEach(function (field) {
@@ -653,6 +661,10 @@ function handleAdminUpdateStudent_(request) {
   nextStudent.id = studentId;
   nextStudent.phone = normalizePhoneLookupValue_(nextStudent.phone || "");
   nextStudent.password = normalizePasswordValue_(nextStudent.password);
+  nextStudent.portalAccessMode = String(nextStudent.portalAccessMode || "").trim();
+  if (isPreviewAccessStudent_(nextStudent)) {
+    nextStudent.loginApproval = "Approved";
+  }
   nextStudent.enrolledCourseIds = buildPipeList_(courseIds);
 
   writeSheetEntries_(
@@ -713,16 +725,25 @@ function handleAdminBulkStudentAction_(request) {
     if (action === "approve") {
       nextStudent.status = "Active";
       nextStudent.loginApproval = "Approved";
+      nextStudent.portalAccessMode = "";
+    } else if (action === "preview" || action === "classlist" || action === "listonly") {
+      nextStudent.status = "Active";
+      nextStudent.loginApproval = "Approved";
+      nextStudent.portalAccessMode = "Preview";
     } else if (action === "activate") {
       nextStudent.status = "Active";
+      nextStudent.portalAccessMode = "";
     } else if (action === "block" || action === "suspend" || action === "disable") {
       nextStudent.status = "Blocked";
+      nextStudent.portalAccessMode = "";
     } else if (action === "pending") {
       nextStudent.status = "Pending";
       nextStudent.loginApproval = "Pending";
+      nextStudent.portalAccessMode = "";
     } else if (action === "reject") {
       nextStudent.status = "Inactive";
       nextStudent.loginApproval = "Rejected";
+      nextStudent.portalAccessMode = "";
     }
 
     return nextStudent;
@@ -1224,7 +1245,16 @@ function getStudentStatus_(student) {
 
 function isLoginApproved_(student) {
   const approvalValue = normalizeValue_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.loginApproval, ""));
-  return APPROVED_LOGIN_VALUES.indexOf(approvalValue) !== -1;
+  return (
+    APPROVED_LOGIN_VALUES.indexOf(approvalValue) !== -1 ||
+    PREVIEW_LOGIN_VALUES.indexOf(approvalValue) !== -1
+  );
+}
+
+function isPreviewAccessStudent_(student) {
+  const approvalValue = normalizeValue_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.loginApproval, ""));
+  const accessModeValue = normalizeValue_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.portalAccessMode, ""));
+  return PREVIEW_LOGIN_VALUES.indexOf(approvalValue) !== -1 || PREVIEW_LOGIN_VALUES.indexOf(accessModeValue) !== -1;
 }
 
 function normalizeValue_(value) {

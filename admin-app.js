@@ -15,6 +15,17 @@ const LOCALIZED_DIGIT_RANGES = Object.freeze([
   Object.freeze({ start: 0x06f0, end: 0x06f9 }),
 ]);
 
+const PREVIEW_ACCESS_VALUES = Object.freeze([
+  "preview",
+  "viewonly",
+  "readonly",
+  "audit",
+  "curriculum",
+  "classlist",
+  "listonly",
+  "outline",
+]);
+
 const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
   month: "short",
@@ -75,6 +86,7 @@ const dom = {
   editorStudentPassword: document.getElementById("editorStudentPassword"),
   editorStudentStatus: document.getElementById("editorStudentStatus"),
   editorStudentApproval: document.getElementById("editorStudentApproval"),
+  editorStudentAccessMode: document.getElementById("editorStudentAccessMode"),
   editorStudentHighlight: document.getElementById("editorStudentHighlight"),
   studentCourseSelector: document.getElementById("studentCourseSelector"),
   studentEditorFeedback: document.getElementById("studentEditorFeedback"),
@@ -230,6 +242,10 @@ function normalizeStatus(value) {
   return normalizeLookupText(value);
 }
 
+function normalizeAccessMode(value) {
+  return normalizeLookupText(value).replace(/\s+/g, "");
+}
+
 function setFeedback(element, message, tone = "neutral") {
   if (!element) {
     return;
@@ -263,9 +279,16 @@ function renderPill(value, type = "status") {
       ? {
           approved: "bg-emerald-50 text-emerald-700 ring-emerald-100",
           pending: "bg-amber-50 text-amber-700 ring-amber-100",
+          preview: "bg-indigo-50 text-indigo-700 ring-indigo-100",
           rejected: "bg-rose-50 text-rose-700 ring-rose-100",
           default: "bg-slate-100 text-slate-600 ring-slate-200",
         }
+      : type === "access"
+        ? {
+            "class list only": "bg-indigo-50 text-indigo-700 ring-indigo-100",
+            preview: "bg-indigo-50 text-indigo-700 ring-indigo-100",
+            default: "bg-slate-100 text-slate-600 ring-slate-200",
+          }
       : {
           active: "bg-blue-50 text-blue-700 ring-blue-100",
           pending: "bg-amber-50 text-amber-700 ring-amber-100",
@@ -280,6 +303,21 @@ function renderPill(value, type = "status") {
 
   const className = palettes[normalized] || palettes.default;
   return `<span class="inline-flex rounded-full px-3 py-1 text-xs font-bold ring-1 ${className}">${escapeHtml(label)}</span>`;
+}
+
+function isStudentPreviewOnly(student) {
+  return (
+    PREVIEW_ACCESS_VALUES.includes(normalizeAccessMode(student?.portalAccessMode)) ||
+    PREVIEW_ACCESS_VALUES.includes(normalizeAccessMode(student?.loginApproval))
+  );
+}
+
+function renderStudentAccessBadge(student) {
+  if (!isStudentPreviewOnly(student)) {
+    return "";
+  }
+
+  return renderPill("Class List Only", "access");
 }
 
 function formatSelectedStudentNames(students) {
@@ -353,6 +391,7 @@ function normalizeDashboard(payload = {}) {
       status: String(student.status || "Active").trim(),
       password: String(student.password || "").trim(),
       loginApproval: String(student.loginApproval || "Pending").trim(),
+      portalAccessMode: String(student.portalAccessMode || "").trim(),
       highlight: String(student.highlight || "").trim(),
       enrolledCourseIds: parseList(student.enrolledCourseIds || student.courseIds || student.courses || ""),
     }))
@@ -477,8 +516,8 @@ function renderSelectionState() {
     ? `${selectedCount} selected`
     : "No selection";
   dom.selectedStudentsWorkspaceMeta.textContent = hasSelection
-    ? `Managing ${selectedNames}. You can update approval, course access, and messages from this block.`
-    : "Select one or more students to update approval, assign courses, and send messages.";
+    ? `Managing ${selectedNames}. You can update approval, preview access, course access, and messages from this block.`
+    : "Select one or more students to update approval, preview access, assign courses, and send messages.";
   dom.floatingSelectionBar.classList.toggle("hidden", !hasSelection);
   dom.floatingSelectedSummary.textContent = hasSelection
     ? `${selectedCount} student${selectedCount === 1 ? "" : "s"} selected`
@@ -511,6 +550,7 @@ function buildStudentSearchHaystack(student) {
     student.session,
     student.status,
     student.loginApproval,
+    student.portalAccessMode,
   ]
     .map((item) => normalizeLookupText(item))
     .filter(Boolean);
@@ -540,6 +580,7 @@ function resetStudentEditor() {
   dom.editorStudentId.value = "";
   dom.editorStudentStatus.value = "Active";
   dom.editorStudentApproval.value = "Approved";
+  dom.editorStudentAccessMode.value = "";
   renderStudentEditor();
   setFeedback(dom.studentEditorFeedback, "");
 }
@@ -750,7 +791,8 @@ function renderStudentEditor() {
   dom.editorStudentSession.value = student?.session || "";
   dom.editorStudentPassword.value = student?.password || "";
   dom.editorStudentStatus.value = student?.status || "Active";
-  dom.editorStudentApproval.value = student?.loginApproval || "Approved";
+  dom.editorStudentApproval.value = isStudentPreviewOnly(student) ? "Approved" : student?.loginApproval || "Approved";
+  dom.editorStudentAccessMode.value = isStudentPreviewOnly(student) ? "Preview" : student?.portalAccessMode || "";
   dom.editorStudentHighlight.value = student?.highlight || "";
 
   renderCourseCheckboxes(dom.studentCourseSelector, courseIds, "editor");
@@ -819,6 +861,7 @@ function renderStudentMobileList(students) {
             </label>
             <div class="flex flex-wrap justify-end gap-2">
               ${renderPill(student.loginApproval || "Pending", "approval")}
+              ${renderStudentAccessBadge(student)}
               ${renderPill(student.status || "Active")}
             </div>
           </div>
@@ -914,7 +957,12 @@ function renderStudentTable() {
             <p>${escapeHtml(student.batch || "-")}</p>
             <p class="mt-1 text-xs text-slate-400">${escapeHtml(student.session || "-")}</p>
           </td>
-          <td class="px-3 py-4 align-top">${renderPill(student.loginApproval || "Pending", "approval")}</td>
+          <td class="px-3 py-4 align-top">
+            <div class="flex min-w-[150px] flex-wrap gap-2">
+              ${renderPill(student.loginApproval || "Pending", "approval")}
+              ${renderStudentAccessBadge(student)}
+            </div>
+          </td>
           <td class="px-3 py-4 align-top">${renderPill(student.status || "Active")}</td>
           <td class="px-3 py-4 align-top">
             <p class="font-semibold text-slate-800">${courseIds.length}</p>
@@ -1195,6 +1243,7 @@ async function handleStudentSave(event) {
     password: normalizePasswordValue(dom.editorStudentPassword.value),
     status: dom.editorStudentStatus.value.trim(),
     loginApproval: dom.editorStudentApproval.value.trim(),
+    portalAccessMode: dom.editorStudentAccessMode.value.trim(),
     highlight: dom.editorStudentHighlight.value.trim(),
     courseIds: buildPipeList(courseIds),
   };
