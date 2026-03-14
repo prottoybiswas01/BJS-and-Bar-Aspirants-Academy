@@ -4,6 +4,7 @@ const APPS_SCRIPT_DEPLOYMENT_ID =
 const APP_CONFIG = Object.freeze({
   dataMode: "remote",
   remoteEndpoint: `https://script.google.com/macros/s/${APPS_SCRIPT_DEPLOYMENT_ID}/exec`,
+  remoteRequestTimeoutMs: 15000,
 });
 
 const SESSION_STORAGE_KEYS = Object.freeze({
@@ -402,6 +403,7 @@ const state = {
   dataModeLabel: "",
   activeStudentId: "",
   openCourseId: "",
+  loginBusy: false,
 };
 
 const dom = {
@@ -418,6 +420,7 @@ const dom = {
   form: document.getElementById("lookup-form"),
   query: document.getElementById("student-query"),
   password: document.getElementById("student-password"),
+  submitBtn: document.querySelector('#lookup-form button[type="submit"]'),
   feedback: document.getElementById("loginFeedback"),
   dataModeBadge: document.getElementById("dataModeBadge"),
   heroStudentName: document.getElementById("heroStudentName"),
@@ -1248,24 +1251,51 @@ function authenticateLocalStudent(query, password) {
 }
 
 async function authenticateRemoteStudent(query, password) {
-  const response = await fetch(APP_CONFIG.remoteEndpoint, {
-    method: "POST",
-    headers: {
-      Accept: "application/json",
-      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-    },
-    body: new URLSearchParams({
-      action: "login",
-      query: String(query || "").trim(),
-      password: String(password || ""),
-    }),
-  });
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timeoutHandle = controller
+    ? setTimeout(() => controller.abort(), APP_CONFIG.remoteRequestTimeoutMs)
+    : null;
+  let response;
+
+  try {
+    response = await fetch(APP_CONFIG.remoteEndpoint, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      },
+      body: new URLSearchParams({
+        action: "login",
+        query: String(query || "").trim(),
+        password: String(password || ""),
+      }),
+      signal: controller ? controller.signal : undefined,
+    });
+  } catch (error) {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+
+    if (error && error.name === "AbortError") {
+      throw new Error("Login server took too long to respond. Please try again.");
+    }
+
+    throw error;
+  }
+
+  if (timeoutHandle) {
+    clearTimeout(timeoutHandle);
+  }
 
   if (!response.ok) {
     throw new Error("Remote login validation failed.");
   }
 
-  return response.json();
+  try {
+    return await response.json();
+  } catch (error) {
+    throw new Error("Login server returned an invalid response.");
+  }
 }
 
 async function authenticateStudent(query, password) {
@@ -1734,9 +1764,9 @@ function getPasswordResetUrl(student) {
 
 function setFeedback(message, type = "neutral") {
   const classMap = {
-    success: "mt-5 text-sm text-emerald-600",
-    error: "mt-5 text-sm text-red-500",
-    neutral: "mt-5 text-sm text-slate-500",
+    success: "mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-700",
+    error: "mt-5 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600",
+    neutral: "mt-5 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-600",
   };
 
   if (!message) {
@@ -1747,6 +1777,25 @@ function setFeedback(message, type = "neutral") {
 
   dom.feedback.textContent = message;
   dom.feedback.className = classMap[type] || classMap.neutral;
+}
+
+function setLoginBusy(isBusy, busyLabel = "Checking...") {
+  state.loginBusy = !!isBusy;
+
+  if (dom.submitBtn) {
+    dom.submitBtn.disabled = !!isBusy;
+    dom.submitBtn.textContent = isBusy ? busyLabel : "Enter Portal";
+    dom.submitBtn.classList.toggle("cursor-wait", !!isBusy);
+    dom.submitBtn.classList.toggle("opacity-80", !!isBusy);
+  }
+
+  if (dom.query) {
+    dom.query.disabled = !!isBusy;
+  }
+
+  if (dom.password) {
+    dom.password.disabled = !!isBusy;
+  }
 }
 
 function closeProfileModal() {
@@ -2229,6 +2278,10 @@ function logout() {
 }
 
 async function performLogin(query = dom.query.value) {
+  if (state.loginBusy) {
+    return;
+  }
+
   const studentQuery = String(query || "").trim();
   const password = String(dom.password.value || "").trim();
   syncLoginDraft();
@@ -2246,18 +2299,23 @@ async function performLogin(query = dom.query.value) {
   }
 
   let authResult;
+  setLoginBusy(true, "Checking...");
+  setFeedback("Checking your student credentials...", "neutral");
+
   try {
     authResult = await authenticateStudent(studentQuery, password);
   } catch (error) {
     console.error(error);
-    setFeedback("Login validation is unavailable right now.", "error");
-    showToast("Could not validate login.", "error");
+    setFeedback(error?.message || "Login validation is unavailable right now.", "error");
+    showToast(error?.message || "Could not validate login.", "error");
+    setLoginBusy(false);
     return;
   }
 
   if (!authResult || !authResult.ok) {
     setFeedback(authResult?.message || "Login failed.", "error");
     showToast(authResult?.message || "Login failed.", "error");
+    setLoginBusy(false);
     return;
   }
 
@@ -2286,6 +2344,7 @@ async function performLogin(query = dom.query.value) {
   if (!nextStudent) {
     setFeedback("Student data could not be loaded after login.", "error");
     showToast("Student data missing.", "error");
+    setLoginBusy(false);
     return;
   }
 
@@ -2297,6 +2356,7 @@ async function performLogin(query = dom.query.value) {
   togglePage("profile");
   clearLoginDraft();
   dom.password.value = "";
+  setLoginBusy(false);
   setFeedback(`${nextStudent.name} logged in successfully.`, "success");
   showToast("Logged in successfully!");
   window.scrollTo({ top: 0, behavior: "smooth" });
