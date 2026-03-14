@@ -94,10 +94,23 @@ const STUDENT_FIELD_KEYS_ = {
   email: ["email", "emailAddress", "mail", "gmail"],
   batch: ["batch", "batchName", "group", "groupName"],
   session: ["session", "sessionName", "shift"],
+  joinedOn: ["joinedOn", "joinDate", "createdOn", "admittedOn", "admissionDate", "enrolledOn"],
   status: ["status", "studentStatus", "accountStatus", "activeStatus"],
+  profileImage: ["profileImage", "photo", "imageUrl", "avatar", "profilePhoto"],
   password: ["password", "loginPassword", "portalPassword", "studentPassword", "passcode", "pin", "loginPin"],
   loginApproval: ["loginApproval", "approval", "loginApproved", "portalApproval", "approvalStatus", "accessApproval"],
   portalAccessMode: ["portalAccessMode", "accessMode", "studentAccessMode", "videoAccessMode", "portalMode"],
+  passwordResetUrl: ["passwordResetUrl", "resetPasswordUrl", "forgotPasswordUrl", "passwordResetLink"],
+  highlight: ["highlight", "note", "remarks", "message"],
+  enrolledCourseIds: ["enrolledCourseIds", "courseIds", "courses", "assignedCourses", "enrolledCourses"],
+  completedLessonIds: ["completedLessonIds", "completed", "completedLessons"],
+};
+
+const REGISTRATION_FIELD_KEYS_ = {
+  id: ["id", "registrationId", "requestId"],
+  studentId: ["studentId", "studentID", "approvedStudentId"],
+  phone: ["phone", "phoneNumber", "mobile", "mobileNumber"],
+  email: ["email", "emailAddress", "mail"],
 };
 
 const ADMIN_FIELD_KEYS_ = {
@@ -362,7 +375,7 @@ function handleLogin_(request) {
 
   const spreadsheet = getSpreadsheet_();
   const students = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students));
-  const student = findStudentByQuery_(students, query);
+  const student = findStudentForLogin_(spreadsheet, students, query);
 
   if (!student) {
     return jsonOutput_({ ok: false, message: "No matching student was found." });
@@ -407,6 +420,24 @@ function handleLogin_(request) {
   }
 
   const previewOnly = isPreviewAccessStudent_(student);
+  const notices = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.notices));
+  const courses = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses));
+  const lessons = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.lessons));
+  const enrollments = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.enrollments));
+  const studentId = getStudentId_(student);
+  const relatedEnrollments = enrollments.filter(function (enrollment) {
+    return String(enrollment.studentId || "").trim() === studentId;
+  });
+  const relatedCourseIds = parseStringList_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.enrolledCourseIds, ""))
+    .concat(
+      relatedEnrollments.map(function (enrollment) {
+        return String(enrollment.courseId || "").trim();
+      })
+    )
+    .filter(Boolean)
+    .filter(function (courseId, index, list) {
+      return list.indexOf(courseId) === index;
+    });
 
   return jsonOutput_({
     ok: true,
@@ -415,12 +446,16 @@ function handleLogin_(request) {
     spreadsheetId: spreadsheet.getId(),
     spreadsheetName: spreadsheet.getName(),
     previewOnly: previewOnly,
-    studentId: getStudentId_(student),
-    students: sanitizeStudents_(students),
-    courses: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses)),
-    lessons: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.lessons)),
-    notices: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.notices)),
-    enrollments: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.enrollments)),
+    studentId: studentId,
+    students: sanitizeStudents_([student]),
+    courses: courses.filter(function (course) {
+      return relatedCourseIds.indexOf(String(course.id || "").trim()) !== -1;
+    }),
+    lessons: lessons.filter(function (lesson) {
+      return relatedCourseIds.indexOf(String(lesson.courseId || "").trim()) !== -1;
+    }),
+    notices: notices,
+    enrollments: relatedEnrollments,
     message: previewOnly ? "Preview access approved." : "Login approved.",
   });
 }
@@ -1252,6 +1287,73 @@ function findStudentByQuery_(students, query) {
   );
 }
 
+function findStudentForLogin_(spreadsheet, students, query) {
+  const directStudent = findStudentByQuery_(students, query);
+  if (directStudent) {
+    return directStudent;
+  }
+
+  const registrations = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.registrations));
+  const matchedRegistration = findRegistrationByQuery_(registrations, query);
+  if (!matchedRegistration) {
+    return null;
+  }
+
+  const registrationStudentId = String(
+    getFirstAvailableValue_(matchedRegistration, REGISTRATION_FIELD_KEYS_.studentId, "")
+  ).trim();
+  if (registrationStudentId) {
+    const linkedStudent = students.find(function (student) {
+      return getStudentId_(student) === registrationStudentId;
+    });
+    if (linkedStudent) {
+      return linkedStudent;
+    }
+  }
+
+  const registrationPhone = normalizePhoneLookupValue_(
+    getFirstAvailableValue_(matchedRegistration, REGISTRATION_FIELD_KEYS_.phone, "")
+  );
+  const registrationEmail = normalizeValue_(
+    getFirstAvailableValue_(matchedRegistration, REGISTRATION_FIELD_KEYS_.email, "")
+  );
+
+  return (
+    students.find(function (student) {
+      return (
+        (registrationPhone &&
+          normalizePhoneLookupValue_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.phone, "")) ===
+            registrationPhone) ||
+        (registrationEmail &&
+          normalizeValue_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.email, "")) === registrationEmail)
+      );
+    }) || null
+  );
+}
+
+function findRegistrationByQuery_(registrations, query) {
+  const normalizedQuery = normalizeValue_(query);
+  const compactQuery = compactLookupValue_(query);
+  const canonicalQuery = canonicalLookupValue_(query);
+  const normalizedPhone = normalizePhoneLookupValue_(query);
+
+  if (!normalizedQuery && !compactQuery && !canonicalQuery && !normalizedPhone) {
+    return null;
+  }
+
+  return (
+    (registrations || []).find(function (registration) {
+      const tokens = getRegistrationLookupTokens_(registration);
+      return (
+        (normalizedQuery && tokens.indexOf(normalizedQuery) !== -1) ||
+        (compactQuery && tokens.indexOf(compactQuery) !== -1) ||
+        (canonicalQuery && tokens.indexOf(canonicalQuery) !== -1) ||
+        (normalizedPhone && tokens.indexOf(normalizedPhone) !== -1)
+      );
+    }) || null
+  );
+}
+
 function getStudentId_(student) {
   return String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.id, "")).trim();
 }
@@ -1381,6 +1483,29 @@ function getStudentLookupTokens_(student) {
   });
 }
 
+function getRegistrationLookupTokens_(registration) {
+  const rawRegistrationId = getFirstAvailableValue_(registration, REGISTRATION_FIELD_KEYS_.id, "");
+  const rawStudentId = getFirstAvailableValue_(registration, REGISTRATION_FIELD_KEYS_.studentId, "");
+  const rawEmail = getFirstAvailableValue_(registration, REGISTRATION_FIELD_KEYS_.email, "");
+  const rawPhone = getFirstAvailableValue_(registration, REGISTRATION_FIELD_KEYS_.phone, "");
+
+  return [
+    normalizeValue_(rawRegistrationId),
+    compactLookupValue_(rawRegistrationId),
+    canonicalLookupValue_(rawRegistrationId),
+    normalizeValue_(rawStudentId),
+    compactLookupValue_(rawStudentId),
+    canonicalLookupValue_(rawStudentId),
+    normalizeValue_(rawEmail),
+    compactLookupValue_(rawEmail),
+    normalizePhoneLookupValue_(rawPhone),
+  ]
+    .filter(Boolean)
+    .filter(function (token, index, list) {
+      return list.indexOf(token) === index;
+    });
+}
+
 function getAdminByQuery_(admins, query) {
   const normalizedQuery = normalizeValue_(query);
   const compactQuery = compactLookupValue_(query);
@@ -1404,6 +1529,10 @@ function getAdminByQuery_(admins, query) {
 }
 
 function getFirstAvailableValue_(record, keys, fallback) {
+  if (!Array.isArray(keys) || !keys.length) {
+    return fallback || "";
+  }
+
   for (let i = 0; i < keys.length; i += 1) {
     const key = keys[i];
     if (!Object.prototype.hasOwnProperty.call(record, key)) {
