@@ -2385,11 +2385,13 @@ async function performLogin(query = dom.query.value) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (error) {
     console.error("Login completion failed.", error, authResult);
+    const message =
+      error?.message || "Login response was received, but the dashboard could not be opened.";
     setFeedback(
-      error?.message || "Login response was received, but the dashboard could not be opened.",
+      message,
       "error"
     );
-    showToast("Login could not finish. Check the student data and Apps Script response.", "error");
+    showToast(message, "error");
   } finally {
     setLoginBusy(false);
   }
