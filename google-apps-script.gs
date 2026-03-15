@@ -78,6 +78,9 @@ const SHEET_HEADERS = {
 const APPROVED_LOGIN_VALUES = ["approved", "yes", "true", "allow", "allowed", "active", "1"];
 const PREVIEW_LOGIN_VALUES = ["preview", "viewonly", "readonly", "audit", "curriculum", "classlist", "listonly", "outline"];
 const BLOCKED_STATUS_VALUES = ["inactive", "blocked", "suspended", "expired", "rejected"];
+// Use "approved" for instant login, "preview" for class-list-only access, or "pending" for manual approval.
+const SELF_REGISTRATION_ACCESS_MODE_ = "approved";
+const SELF_REGISTRATION_REVIEWED_BY_ = "Self Registration";
 const STUDENT_LOGIN_QUERY_LABEL_ = "registration number, student ID, phone number, or email";
 const ADMIN_TOKEN_PREFIX_ = "ain-pathshala.admin-token.";
 const ADMIN_TOKEN_TTL_SECONDS_ = 21600;
@@ -375,28 +378,19 @@ function handleLogin_(request) {
 
   const spreadsheet = getSpreadsheet_();
   const students = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students));
-  const student = findStudentForLogin_(spreadsheet, students, query);
+  let student = findStudentForLogin_(spreadsheet, students, query);
 
   if (!student) {
     return jsonOutput_({ ok: false, message: "No matching student was found." });
   }
 
-  const studentStatus = normalizeValue_(getStudentStatus_(student));
+  let studentStatus = normalizeValue_(getStudentStatus_(student));
   if (BLOCKED_STATUS_VALUES.indexOf(studentStatus) !== -1) {
     return jsonOutput_({
       ok: false,
       approved: false,
       studentId: getStudentId_(student),
       message: "This student account is not active.",
-    });
-  }
-
-  if (!isLoginApproved_(student)) {
-    return jsonOutput_({
-      ok: false,
-      approved: false,
-      studentId: getStudentId_(student),
-      message: "This account is not ready for access right now.",
     });
   }
 
@@ -416,6 +410,32 @@ function handleLogin_(request) {
       approved: true,
       studentId: getStudentId_(student),
       message: "Incorrect password.",
+    });
+  }
+
+  if (!isLoginApproved_(student)) {
+    const activatedStudent = activateSelfRegisteredStudentIfAllowed_(spreadsheet, student);
+    if (activatedStudent) {
+      student = activatedStudent;
+      studentStatus = normalizeValue_(getStudentStatus_(student));
+    }
+  }
+
+  if (BLOCKED_STATUS_VALUES.indexOf(studentStatus) !== -1) {
+    return jsonOutput_({
+      ok: false,
+      approved: false,
+      studentId: getStudentId_(student),
+      message: "This student account is not active.",
+    });
+  }
+
+  if (!isLoginApproved_(student)) {
+    return jsonOutput_({
+      ok: false,
+      approved: false,
+      studentId: getStudentId_(student),
+      message: "This account is not ready for access right now.",
     });
   }
 
@@ -500,6 +520,7 @@ function handleStudentRegistration_(request) {
   const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
   const registrationsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.registrations);
   const courses = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses));
+  const selfRegistrationAccess = buildSelfRegistrationAccessState_();
 
   const requestedCourses = buildCourseIdList_(request.requestedCourseIds || request.courseIds || "", courses);
   const name = String(request.name || "").trim();
@@ -548,9 +569,8 @@ function handleStudentRegistration_(request) {
   const studentId = duplicateStudent ? getStudentId_(duplicateStudent) : generateStudentId_(studentsData.records);
   const registrationId = generateRegistrationId_(registrationsData.records);
   const today = getTodayIso_();
-  const note = requestedCourses.length
-    ? "Registered online and waiting for admin approval."
-    : "Registered online. Course selection pending admin review.";
+  const note = buildSelfRegistrationHighlight_(requestedCourses, selfRegistrationAccess);
+  const reviewedOn = normalizeValue_(selfRegistrationAccess.registrationStatus) === "pending" ? "" : getNowIso_();
 
   const nextStudent = Object.assign(
     {
@@ -561,10 +581,11 @@ function handleStudentRegistration_(request) {
       batch: batch,
       session: session,
       joinedOn: today,
-      status: "Pending",
+      status: selfRegistrationAccess.studentStatus,
       profileImage: "",
       password: password,
-      loginApproval: "Pending",
+      loginApproval: selfRegistrationAccess.loginApproval,
+      portalAccessMode: selfRegistrationAccess.portalAccessMode,
       passwordResetUrl:
         "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20" +
         encodeURIComponent(studentId),
@@ -581,9 +602,10 @@ function handleStudentRegistration_(request) {
   nextStudent.email = email;
   nextStudent.batch = batch;
   nextStudent.session = session;
-  nextStudent.status = "Pending";
+  nextStudent.status = selfRegistrationAccess.studentStatus;
   nextStudent.password = password;
-  nextStudent.loginApproval = "Pending";
+  nextStudent.loginApproval = selfRegistrationAccess.loginApproval;
+  nextStudent.portalAccessMode = selfRegistrationAccess.portalAccessMode;
   nextStudent.highlight = note;
   nextStudent.enrolledCourseIds = buildPipeList_(requestedCourses);
   nextStudent.joinedOn = nextStudent.joinedOn || today;
@@ -612,21 +634,133 @@ function handleStudentRegistration_(request) {
         session: session,
         password: password,
         requestedCourseIds: buildPipeList_(requestedCourses),
-        status: "Pending",
+        status: selfRegistrationAccess.registrationStatus,
         submittedOn: getNowIso_(),
-        reviewedOn: "",
-        reviewedBy: "",
-        reviewNote: "",
+        reviewedOn: reviewedOn,
+        reviewedBy: reviewedOn ? selfRegistrationAccess.reviewedBy : "",
+        reviewNote: reviewedOn ? selfRegistrationAccess.reviewNote : "",
       },
     ])
   );
 
   return jsonOutput_({
     ok: true,
-    message: "Registration submitted. Wait for admin approval.",
+    message: selfRegistrationAccess.responseMessage,
+    loginReady: normalizeValue_(selfRegistrationAccess.registrationStatus) !== "pending",
+    previewOnly: !!selfRegistrationAccess.portalAccessMode,
     studentId: studentId,
     registrationId: registrationId,
   });
+}
+
+function buildSelfRegistrationAccessState_() {
+  const mode = normalizeValue_(SELF_REGISTRATION_ACCESS_MODE_);
+
+  if (mode === "pending") {
+    return {
+      studentStatus: "Pending",
+      loginApproval: "Pending",
+      portalAccessMode: "",
+      registrationStatus: "Pending",
+      reviewedBy: "",
+      reviewNote: "",
+      responseMessage: "Registration submitted. Wait for admin approval.",
+    };
+  }
+
+  if (PREVIEW_LOGIN_VALUES.indexOf(mode) !== -1) {
+    return {
+      studentStatus: "Active",
+      loginApproval: "Approved",
+      portalAccessMode: "Preview",
+      registrationStatus: "Approved",
+      reviewedBy: SELF_REGISTRATION_REVIEWED_BY_,
+      reviewNote: "Preview access granted automatically from self registration.",
+      responseMessage: "Registration submitted. Preview access is ready now.",
+    };
+  }
+
+  return {
+    studentStatus: "Active",
+    loginApproval: "Approved",
+    portalAccessMode: "",
+    registrationStatus: "Approved",
+    reviewedBy: SELF_REGISTRATION_REVIEWED_BY_,
+    reviewNote: "Approved automatically from self registration.",
+    responseMessage: "Registration submitted. Login is ready now.",
+  };
+}
+
+function buildSelfRegistrationHighlight_(requestedCourses, accessState) {
+  if (!requestedCourses.length) {
+    return normalizeValue_(accessState.registrationStatus) === "pending"
+      ? "Registered online. Course selection pending admin review."
+      : "Registered online. Login is active. Course selection is still pending.";
+  }
+
+  if (accessState.portalAccessMode) {
+    return "Registered online. Preview access activated automatically.";
+  }
+
+  return normalizeValue_(accessState.registrationStatus) === "pending"
+    ? "Registered online and waiting for admin approval."
+    : "Registered online. Login activated automatically.";
+}
+
+function activateSelfRegisteredStudentIfAllowed_(spreadsheet, student) {
+  const accessState = buildSelfRegistrationAccessState_();
+  if (normalizeValue_(accessState.registrationStatus) === "pending") {
+    return null;
+  }
+
+  const registrationsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.registrations);
+  const registrationIndex = findLatestRegistrationIndexForStudent_(registrationsData.records, student);
+  if (registrationIndex === -1) {
+    return null;
+  }
+
+  const matchedRegistration = registrationsData.records[registrationIndex] || {};
+  const registrationStatus = normalizeValue_(matchedRegistration.status || "");
+  if (registrationStatus === "rejected" || registrationStatus === "blocked") {
+    return null;
+  }
+
+  const studentId = getStudentId_(student);
+  const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
+  const nextStudent = Object.assign({}, student);
+  nextStudent.status = accessState.studentStatus;
+  nextStudent.loginApproval = accessState.loginApproval;
+  nextStudent.portalAccessMode = accessState.portalAccessMode;
+  nextStudent.highlight =
+    String(nextStudent.highlight || "").trim() || buildSelfRegistrationHighlight_(parseStringList_(nextStudent.enrolledCourseIds || ""), accessState);
+
+  writeSheetEntries_(
+    studentsData.sheet,
+    studentsData.headers,
+    studentsData.records.map(function (entry) {
+      return getStudentId_(entry) === studentId ? nextStudent : entry;
+    })
+  );
+
+  writeSheetEntries_(
+    registrationsData.sheet,
+    registrationsData.headers,
+    registrationsData.records.map(function (entry, index) {
+      if (index !== registrationIndex) {
+        return entry;
+      }
+
+      const nextEntry = Object.assign({}, entry);
+      nextEntry.studentId = studentId || String(nextEntry.studentId || "").trim();
+      nextEntry.status = accessState.registrationStatus;
+      nextEntry.reviewedOn = getNowIso_();
+      nextEntry.reviewedBy = accessState.reviewedBy;
+      nextEntry.reviewNote = accessState.reviewNote;
+      return nextEntry;
+    })
+  );
+
+  return nextStudent;
 }
 
 function handleAdminGetDashboard_(request) {

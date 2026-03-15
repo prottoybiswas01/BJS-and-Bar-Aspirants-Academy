@@ -225,7 +225,13 @@ async function handleRegistrationSubmit(event) {
         <p>${escapeRegisterHtml(getRegisterCopyValue("registrationNumberLabel", "Registration Number"))}: <span class="font-extrabold text-emerald-700">${escapeRegisterHtml(
           result.registrationId || "-"
         )}</span></p>
-        <p class="text-slate-500">The request is now waiting in the admin approval queue.</p>
+        <p class="text-slate-500">${
+          result.loginReady
+            ? result.previewOnly
+              ? "Preview access is active now. Use the same password with the student ID or registration number to log in."
+              : "Login is active now. Use the same password with the student ID or registration number to log in."
+            : "The request is now waiting in the admin approval queue."
+        }</p>
       </div>
     `;
 

@@ -143,8 +143,9 @@ This is the current sheet-driven login system:
 - A student enters `student ID / phone / email` plus `password`
 - The site sends the login request to Apps Script for validation
 - The password is checked against the `Students` sheet
-- The student can log in only when `loginApproval=Approved`
-- If approval is not written by admin, login will fail
+- Self-registration is auto-approved by default in `google-apps-script.gs`
+- Change `SELF_REGISTRATION_ACCESS_MODE_` to `pending` if you want to restore manual admin approval
+- The student can log in when `loginApproval=Approved`
 
 Example:
 
