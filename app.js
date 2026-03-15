@@ -1264,6 +1264,7 @@ async function authenticateRemoteStudent(query, password) {
     ? setTimeout(() => controller.abort(), APP_CONFIG.remoteRequestTimeoutMs)
     : null;
   let response;
+  let rawResponse = "";
 
   try {
     response = await fetch(APP_CONFIG.remoteEndpoint, {
@@ -1296,13 +1297,23 @@ async function authenticateRemoteStudent(query, password) {
   }
 
   if (!response.ok) {
-    throw new Error("Remote login validation failed.");
+    throw new Error(`Remote login validation failed (${response.status}).`);
   }
 
   try {
-    return await response.json();
+    rawResponse = await response.text();
   } catch (error) {
-    throw new Error("Login server returned an invalid response.");
+    throw new Error("Login server response could not be read.");
+  }
+
+  try {
+    return JSON.parse(rawResponse);
+  } catch (error) {
+    if (/^\s*</.test(rawResponse)) {
+      throw new Error("Login server returned HTML instead of JSON. Redeploy the Apps Script web app and update the deployment ID.");
+    }
+
+    throw new Error("Login server returned an invalid JSON response.");
   }
 }
 
@@ -2326,54 +2337,62 @@ async function performLogin(query = dom.query.value) {
     return;
   }
 
-  if (!authResult || !authResult.ok) {
-    setFeedback(authResult?.message || "Login failed.", "error");
-    showToast(authResult?.message || "Login failed.", "error");
-    setLoginBusy(false);
-    return;
-  }
-
-  if (authResult.students || authResult.courses || authResult.lessons || authResult.enrollments) {
-    applyPortalData({
-      data: normalizeData(authResult),
-      modeLabel: "Live Google Sheet",
-    });
-  }
-
-  const student =
-    state.data.students.find((entry) => entry.id === authResult.studentId) || getStudentByQuery(studentQuery);
-  let nextStudent = student;
-
-  if (!nextStudent && APP_CONFIG.dataMode === "remote" && APP_CONFIG.remoteEndpoint) {
-    try {
-      const result = await loadData();
-      applyPortalData(result);
-      nextStudent =
-        state.data.students.find((entry) => entry.id === authResult.studentId) || getStudentByQuery(studentQuery);
-    } catch (error) {
-      console.warn("Unable to refresh portal data after login.", error);
+  try {
+    if (!authResult || !authResult.ok) {
+      setFeedback(authResult?.message || "Login failed.", "error");
+      showToast(authResult?.message || "Login failed.", "error");
+      return;
     }
-  }
 
-  if (!nextStudent) {
-    setFeedback("Student data could not be loaded after login.", "error");
-    showToast("Student data missing.", "error");
+    if (authResult.students || authResult.courses || authResult.lessons || authResult.enrollments) {
+      applyPortalData({
+        data: normalizeData(authResult),
+        modeLabel: "Live Google Sheet",
+      });
+    }
+
+    const student =
+      state.data.students.find((entry) => entry.id === authResult.studentId) || getStudentByQuery(studentQuery);
+    let nextStudent = student;
+
+    if (!nextStudent && APP_CONFIG.dataMode === "remote" && APP_CONFIG.remoteEndpoint) {
+      try {
+        const result = await loadData();
+        applyPortalData(result);
+        nextStudent =
+          state.data.students.find((entry) => entry.id === authResult.studentId) || getStudentByQuery(studentQuery);
+      } catch (error) {
+        console.warn("Unable to refresh portal data after login.", error);
+      }
+    }
+
+    if (!nextStudent) {
+      setFeedback("Student data could not be loaded after login.", "error");
+      showToast("Student data missing.", "error");
+      return;
+    }
+
+    state.activeStudentId = nextStudent.id;
+    state.openCourseId = getStudentCourseEntries(nextStudent)[0]?.course?.id || "";
+    syncPortalSession();
+
+    renderDashboard(nextStudent);
+    togglePage("profile");
+    clearLoginDraft();
+    dom.password.value = "";
+    setFeedback(`${nextStudent.name} logged in successfully.`, "success");
+    showToast("Logged in successfully!");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (error) {
+    console.error("Login completion failed.", error, authResult);
+    setFeedback(
+      error?.message || "Login response was received, but the dashboard could not be opened.",
+      "error"
+    );
+    showToast("Login could not finish. Check the student data and Apps Script response.", "error");
+  } finally {
     setLoginBusy(false);
-    return;
   }
-
-  state.activeStudentId = nextStudent.id;
-  state.openCourseId = getStudentCourseEntries(nextStudent)[0]?.course.id || "";
-  syncPortalSession();
-
-  renderDashboard(nextStudent);
-  togglePage("profile");
-  clearLoginDraft();
-  dom.password.value = "";
-  setLoginBusy(false);
-  setFeedback(`${nextStudent.name} logged in successfully.`, "success");
-  showToast("Logged in successfully!");
-  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 async function initialize() {
