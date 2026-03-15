@@ -1176,7 +1176,7 @@ function restorePortalSession() {
 }
 
 function normalizeAccessModeValue(value) {
-  return normalizeLookupText(value).replace(/[^a-z0-9]+/g, "");
+  return getNormalizedLookupValue(value).replace(/[^a-z0-9]+/g, "");
 }
 
 function isPreviewAccessValue(value) {
