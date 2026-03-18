@@ -13,6 +13,7 @@ const REGISTER_LOCALIZED_DIGIT_RANGES = Object.freeze([
 
 const registerState = {
   courses: [],
+  courseMap: new Map(),
 };
 
 const registerDom = {
@@ -97,16 +98,45 @@ function setRegisterFeedback(message, tone = "neutral") {
   registerDom.registrationFeedback.style.color = palette[tone] || palette.neutral;
 }
 
+function getRegisterCourseMeta(course) {
+  const parts = [
+    course.batch ? `Batch: ${course.batch}` : "",
+    course.session ? `Session: ${course.session}` : "",
+  ].filter(Boolean);
+
+  return parts.join(" | ");
+}
+
+function collectRegisterCourseValues(values) {
+  return [...new Set(values.map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function syncRegisterBatchSession() {
+  const selectedCourses = getSelectedRegisterCourseIds()
+    .map((courseId) => registerState.courseMap.get(courseId))
+    .filter(Boolean);
+
+  const batches = collectRegisterCourseValues(selectedCourses.map((course) => course.batch));
+  const sessions = collectRegisterCourseValues(selectedCourses.map((course) => course.session));
+
+  registerDom.registerBatch.value = batches.join(", ");
+  registerDom.registerSession.value = sessions.join(", ");
+}
+
 function renderRegisterCourses() {
   if (!registerState.courses.length) {
     registerDom.registerCourseList.innerHTML =
       '<div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500 sm:col-span-2">No live course is available right now.</div>';
+    syncRegisterBatchSession();
     return;
   }
 
   registerDom.registerCourseList.innerHTML = registerState.courses
     .map(
-      (course) => `
+      (course) => {
+        const courseMeta = getRegisterCourseMeta(course);
+
+        return `
         <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700 transition hover:border-blue-200 hover:bg-white">
           <input
             type="checkbox"
@@ -117,12 +147,19 @@ function renderRegisterCourses() {
           <span class="min-w-0">
             <span class="block truncate font-bold text-slate-900">${escapeRegisterHtml(course.title)}</span>
             <span class="mt-1 block text-xs text-slate-500">${escapeRegisterHtml(course.category || "Course")}</span>
+            ${
+              courseMeta
+                ? `<span class="mt-2 block text-xs text-slate-500">${escapeRegisterHtml(courseMeta)}</span>`
+                : ""
+            }
             <span class="mt-2 block text-xs text-slate-400">${escapeRegisterHtml(course.schedule || "Schedule pending")}</span>
           </span>
         </label>
-      `
+      `;
+      }
     )
     .join("");
+  syncRegisterBatchSession();
 }
 
 async function loadRegisterCourses() {
@@ -146,10 +183,13 @@ async function loadRegisterCourses() {
         id: String(course.id || course.courseId || "").trim(),
         title: String(course.title || "").trim(),
         category: String(course.category || "").trim(),
+        batch: String(course.batch || course.batchName || "").trim(),
+        session: String(course.session || course.sessionName || "").trim(),
         schedule: String(course.schedule || "").trim(),
       }))
       .filter((course) => course.id && course.title)
       .sort((left, right) => left.title.localeCompare(right.title));
+    registerState.courseMap = new Map(registerState.courses.map((course) => [course.id, course]));
 
     renderRegisterCourses();
     setRegisterFeedback(
@@ -158,6 +198,7 @@ async function loadRegisterCourses() {
     );
   } catch (error) {
     registerState.courses = [];
+    registerState.courseMap = new Map();
     renderRegisterCourses();
     setRegisterFeedback(error.message || "Unable to load live courses.", "error");
   }
@@ -167,6 +208,14 @@ function getSelectedRegisterCourseIds() {
   return [...registerDom.registerCourseList.querySelectorAll("[data-register-course]:checked")]
     .map((input) => String(input.value || "").trim())
     .filter(Boolean);
+}
+
+function handleRegisterCourseSelection(event) {
+  if (!event.target.matches("[data-register-course]")) {
+    return;
+  }
+
+  syncRegisterBatchSession();
 }
 
 async function handleRegistrationSubmit(event) {
@@ -244,5 +293,6 @@ async function handleRegistrationSubmit(event) {
 
 registerDom.registrationForm.addEventListener("submit", handleRegistrationSubmit);
 registerDom.refreshCoursesBtn.addEventListener("click", loadRegisterCourses);
+registerDom.registerCourseList.addEventListener("change", handleRegisterCourseSelection);
 
 loadRegisterCourses();

@@ -30,7 +30,7 @@ const SHEET_HEADERS = {
     "enrolledCourseIds",
     "completedLessonIds",
   ],
-  courses: ["id", "title", "shortTitle", "faculty", "category", "schedule", "nextLive", "description"],
+  courses: ["id", "title", "shortTitle", "faculty", "category", "batch", "session", "schedule", "nextLive", "description"],
   lessons: [
     "id",
     "courseId",
@@ -172,6 +172,8 @@ const SAMPLE_DATA = {
       shortTitle: "Judiciary",
       faculty: "Adv. Mahmudul Hasan",
       category: "Core Preparation",
+      batch: "Judiciary 2026",
+      session: "Weekend Intensive",
       schedule: "Sun, Tue, Thu at 8:30 PM",
       nextLive: "2026-03-14T20:30:00+06:00",
       description: "Constitution, core law topics, and MCQ preparation.",
@@ -182,6 +184,8 @@ const SAMPLE_DATA = {
       shortTitle: "Criminal Procedure",
       faculty: "Barrister Samiha Karim",
       category: "Procedure Track",
+      batch: "Bar Council 2026",
+      session: "Evening Program",
       schedule: "Mon, Wed at 9:00 PM",
       nextLive: "2026-03-15T21:00:00+06:00",
       description: "From FIR to trial in a structured, exam-focused format.",
@@ -1018,6 +1022,8 @@ function handleAdminCreateCourse_(request) {
       shortTitle: shortTitle,
       faculty: String(payload.faculty || "Faculty not set").trim(),
       category: String(payload.category || "Course").trim(),
+      batch: String(payload.batch || "").trim(),
+      session: String(payload.session || "").trim(),
       schedule: String(payload.schedule || "Schedule pending").trim(),
       nextLive: String(payload.nextLive || "").trim(),
       description: String(payload.description || "").trim(),
@@ -1030,6 +1036,8 @@ function handleAdminCreateCourse_(request) {
   nextCourse.shortTitle = shortTitle;
   nextCourse.faculty = String(payload.faculty || nextCourse.faculty || "").trim();
   nextCourse.category = String(payload.category || nextCourse.category || "").trim();
+  nextCourse.batch = String(payload.batch || nextCourse.batch || "").trim();
+  nextCourse.session = String(payload.session || nextCourse.session || "").trim();
   nextCourse.schedule = String(payload.schedule || nextCourse.schedule || "").trim();
   nextCourse.nextLive = String(payload.nextLive || nextCourse.nextLive || "").trim();
   nextCourse.description = String(payload.description || nextCourse.description || "").trim();

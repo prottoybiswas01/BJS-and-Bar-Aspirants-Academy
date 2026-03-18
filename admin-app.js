@@ -114,6 +114,8 @@ const dom = {
   courseShortTitleInput: document.getElementById("courseShortTitleInput"),
   courseFacultyInput: document.getElementById("courseFacultyInput"),
   courseCategoryInput: document.getElementById("courseCategoryInput"),
+  courseBatchInput: document.getElementById("courseBatchInput"),
+  courseSessionInput: document.getElementById("courseSessionInput"),
   courseScheduleInput: document.getElementById("courseScheduleInput"),
   courseNextLiveInput: document.getElementById("courseNextLiveInput"),
   courseDescriptionInput: document.getElementById("courseDescriptionInput"),
@@ -378,6 +380,8 @@ function normalizeDashboard(payload = {}) {
       shortTitle: String(course.shortTitle || course.title || "").trim() || "Course",
       faculty: String(course.faculty || "").trim(),
       category: String(course.category || "").trim(),
+      batch: String(course.batch || course.batchName || "").trim(),
+      session: String(course.session || course.sessionName || "").trim(),
       schedule: String(course.schedule || "").trim(),
       nextLive: String(course.nextLive || "").trim(),
       description: String(course.description || "").trim(),
@@ -1020,6 +1024,12 @@ function renderCourseList() {
   dom.courseListPanel.innerHTML = state.data.courses
     .map((course) => {
       const assignedCount = state.data.students.filter((student) => getStudentCourseIds(student).includes(course.id)).length;
+      const batchSessionLabel = [
+        course.batch ? `Batch: ${course.batch}` : "",
+        course.session ? `Session: ${course.session}` : "",
+      ]
+        .filter(Boolean)
+        .join(" | ");
 
       return `
         <div class="rounded-[1.5rem] border border-white bg-white p-5">
@@ -1028,6 +1038,11 @@ function renderCourseList() {
               <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">${escapeHtml(course.category || "Course")}</p>
               <h5 class="mt-2 break-words text-lg font-extrabold text-slate-950">${escapeHtml(course.title)}</h5>
               <p class="mt-1 break-words text-sm text-slate-500">${escapeHtml(course.faculty || "Faculty not set")}</p>
+              ${
+                batchSessionLabel
+                  ? `<p class="mt-3 text-sm text-slate-600">${escapeHtml(batchSessionLabel)}</p>`
+                  : ""
+              }
               <p class="mt-3 text-sm text-slate-600">${escapeHtml(course.schedule || "Schedule pending")}</p>
               <p class="mt-2 text-xs text-slate-400">ID: ${escapeHtml(course.id)} | Students: ${assignedCount}</p>
             </div>
@@ -1176,6 +1191,8 @@ function populateCourseForm(course) {
   dom.courseShortTitleInput.value = course.shortTitle || "";
   dom.courseFacultyInput.value = course.faculty || "";
   dom.courseCategoryInput.value = course.category || "";
+  dom.courseBatchInput.value = course.batch || "";
+  dom.courseSessionInput.value = course.session || "";
   dom.courseScheduleInput.value = course.schedule || "";
   dom.courseNextLiveInput.value = course.nextLive || "";
   dom.courseDescriptionInput.value = course.description || "";
@@ -1403,6 +1420,8 @@ async function handleCourseSave(event) {
     shortTitle: dom.courseShortTitleInput.value.trim(),
     faculty: dom.courseFacultyInput.value.trim(),
     category: dom.courseCategoryInput.value.trim(),
+    batch: dom.courseBatchInput.value.trim(),
+    session: dom.courseSessionInput.value.trim(),
     schedule: dom.courseScheduleInput.value.trim(),
     nextLive: dom.courseNextLiveInput.value.trim(),
     description: dom.courseDescriptionInput.value.trim(),
