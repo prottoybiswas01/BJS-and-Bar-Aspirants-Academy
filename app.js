@@ -441,6 +441,13 @@ const dom = {
   profileModal: document.getElementById("profileModal"),
   profileBackdrop: document.getElementById("profileBackdrop"),
   closeProfileBtn: document.getElementById("closeProfileBtn"),
+  approvalStatusModal: document.getElementById("approvalStatusModal"),
+  approvalStatusBackdrop: document.getElementById("approvalStatusBackdrop"),
+  closeApprovalStatusBtn: document.getElementById("closeApprovalStatusBtn"),
+  approvalStatusOkBtn: document.getElementById("approvalStatusOkBtn"),
+  approvalStatusTitle: document.getElementById("approvalStatusTitle"),
+  approvalStatusMessage: document.getElementById("approvalStatusMessage"),
+  approvalStatusNote: document.getElementById("approvalStatusNote"),
   profileBackBtn: document.getElementById("profileBackBtn"),
   profileLogoutBtn: document.getElementById("profileLogoutBtn"),
   profileImage: document.getElementById("profileImage"),
@@ -1209,6 +1216,44 @@ function isStudentLoginBlocked(student) {
   return ["inactive", "blocked", "suspended", "expired"].includes(normalized);
 }
 
+function getStudentApprovalState(student) {
+  const approvalValue = normalizeAccessModeValue(student?.loginApproval);
+  const statusValue = normalizeAccessModeValue(student?.status);
+
+  if (approvalValue === "rejected" || statusValue === "rejected") {
+    return {
+      approvalStatus: "rejected",
+      message: "Your registration was not approved by the admin yet.",
+    };
+  }
+
+  if (approvalValue === "pending" || statusValue === "pending") {
+    return {
+      approvalStatus: "pending",
+      message: "Your registration is waiting for admin approval. Video access will open after approval.",
+    };
+  }
+
+  if (isStudentLoginBlocked(student)) {
+    return {
+      approvalStatus: "inactive",
+      message: "This student account is not active.",
+    };
+  }
+
+  if (!isLoginApprovalGranted(student?.loginApproval)) {
+    return {
+      approvalStatus: "pending",
+      message: "This account is not ready for access right now.",
+    };
+  }
+
+  return {
+    approvalStatus: "approved",
+    message: "Login approved.",
+  };
+}
+
 function authenticateLocalStudent(query, password) {
   const student = getStudentByQuery(query);
   if (!student) {
@@ -1218,19 +1263,40 @@ function authenticateLocalStudent(query, password) {
     };
   }
 
-  if (isStudentLoginBlocked(student)) {
+  const initialApprovalState = getStudentApprovalState(student);
+  if (initialApprovalState.approvalStatus === "rejected" || initialApprovalState.approvalStatus === "inactive") {
     return {
       ok: false,
       studentId: student.id,
-      message: "This student account is not active.",
+      approvalStatus: initialApprovalState.approvalStatus,
+      message: initialApprovalState.message,
     };
   }
 
   if (!isLoginApprovalGranted(student.loginApproval)) {
+    const storedPassword = normalizePasswordValue(student.password || "");
+    if (!storedPassword) {
+      return {
+        ok: false,
+        studentId: student.id,
+        message: "Password has not been set for this student yet.",
+      };
+    }
+
+    if (storedPassword !== normalizePasswordValue(password)) {
+      return {
+        ok: false,
+        studentId: student.id,
+        message: "Incorrect password.",
+      };
+    }
+
+    const pendingApprovalState = getStudentApprovalState(student);
     return {
       ok: false,
       studentId: student.id,
-      message: "This account is not ready for access right now.",
+      approvalStatus: pendingApprovalState.approvalStatus,
+      message: pendingApprovalState.message,
     };
   }
 
@@ -1817,13 +1883,41 @@ function setLoginBusy(isBusy, busyLabel = "Checking...") {
   }
 }
 
+function syncBodyOverflow() {
+  const modalElements = [dom.videoModal, dom.profileModal, dom.approvalStatusModal].filter(Boolean);
+  const hasVisibleModal = modalElements.some((element) => !element.classList.contains("hidden"));
+  dom.body.style.overflow = hasVisibleModal ? "hidden" : "";
+}
+
 function closeProfileModal() {
   dom.profileModal.classList.add("hidden");
   dom.profileModal.classList.remove("flex");
+  syncBodyOverflow();
+}
 
-  if (dom.videoModal.classList.contains("hidden")) {
-    dom.body.style.overflow = "";
+function openApprovalStatusModal(options = {}) {
+  dom.approvalStatusTitle.textContent = options.title || "Approval Update";
+  dom.approvalStatusMessage.textContent =
+    options.message || "Your registration is waiting for admin approval.";
+
+  const note = String(options.note || "").trim();
+  if (note) {
+    dom.approvalStatusNote.textContent = `Admin note: ${note}`;
+    dom.approvalStatusNote.classList.remove("hidden");
+  } else {
+    dom.approvalStatusNote.textContent = "";
+    dom.approvalStatusNote.classList.add("hidden");
   }
+
+  dom.approvalStatusModal.classList.remove("hidden");
+  dom.approvalStatusModal.classList.add("flex");
+  syncBodyOverflow();
+}
+
+function closeApprovalStatusModal() {
+  dom.approvalStatusModal.classList.add("hidden");
+  dom.approvalStatusModal.classList.remove("flex");
+  syncBodyOverflow();
 }
 
 function togglePage(page) {
@@ -1870,16 +1964,14 @@ function openVideo(videoId, title) {
   dom.videoPlayer.src = `https://www.youtube.com/embed/${resolvedVideoId}?autoplay=1&rel=0`;
   dom.videoModal.classList.remove("hidden");
   dom.videoModal.classList.add("flex");
-  dom.body.style.overflow = "hidden";
+  syncBodyOverflow();
 }
 
 function closeVideo() {
   dom.videoPlayer.src = "";
   dom.videoModal.classList.add("hidden");
   dom.videoModal.classList.remove("flex");
-  if (dom.profileModal.classList.contains("hidden")) {
-    dom.body.style.overflow = "";
-  }
+  syncBodyOverflow();
 }
 
 function renderStudentHeader(student, stats) {
@@ -2301,6 +2393,8 @@ async function performLogin(query = dom.query.value) {
     return;
   }
 
+  closeApprovalStatusModal();
+
   const studentQuery = String(query || "").trim();
   const password = String(dom.password.value || "").trim();
   syncLoginDraft();
@@ -2339,8 +2433,17 @@ async function performLogin(query = dom.query.value) {
 
   try {
     if (!authResult || !authResult.ok) {
-      setFeedback(authResult?.message || "Login failed.", "error");
-      showToast(authResult?.message || "Login failed.", "error");
+      const failureMessage = authResult?.message || "Login failed.";
+      const isPendingApproval = authResult?.approvalStatus === "pending";
+      setFeedback(failureMessage, isPendingApproval ? "neutral" : "error");
+      showToast(failureMessage, isPendingApproval ? "info" : "error");
+      if (authResult?.approvalStatus === "rejected") {
+        openApprovalStatusModal({
+          title: "Registration Not Approved",
+          message: failureMessage,
+          note: authResult?.reviewNote || "",
+        });
+      }
       return;
     }
 
@@ -2445,6 +2548,9 @@ dom.closeVideoBtn.addEventListener("click", closeVideo);
 dom.videoBackdrop.addEventListener("click", closeVideo);
 dom.closeProfileBtn.addEventListener("click", closeProfileModal);
 dom.profileBackdrop.addEventListener("click", closeProfileModal);
+dom.closeApprovalStatusBtn.addEventListener("click", closeApprovalStatusModal);
+dom.approvalStatusBackdrop.addEventListener("click", closeApprovalStatusModal);
+dom.approvalStatusOkBtn.addEventListener("click", closeApprovalStatusModal);
 dom.profileBackBtn.addEventListener("click", closeProfileModal);
 dom.profileLogoutBtn.addEventListener("click", () => {
   logout();
@@ -2458,6 +2564,11 @@ dom.profileResetLink.addEventListener("click", () => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
+    if (!dom.approvalStatusModal.classList.contains("hidden")) {
+      closeApprovalStatusModal();
+      return;
+    }
+
     if (!dom.profileModal.classList.contains("hidden")) {
       closeProfileModal();
       return;

@@ -79,7 +79,7 @@ const APPROVED_LOGIN_VALUES = ["approved", "yes", "true", "allow", "allowed", "a
 const PREVIEW_LOGIN_VALUES = ["preview", "viewonly", "readonly", "audit", "curriculum", "classlist", "listonly", "outline"];
 const BLOCKED_STATUS_VALUES = ["inactive", "blocked", "suspended", "expired", "rejected"];
 // Use "approved" for instant login, "preview" for class-list-only access, or "pending" for manual approval.
-const SELF_REGISTRATION_ACCESS_MODE_ = "approved";
+const SELF_REGISTRATION_ACCESS_MODE_ = "pending";
 const SELF_REGISTRATION_REVIEWED_BY_ = "Self Registration";
 const STUDENT_LOGIN_QUERY_LABEL_ = "registration number, student ID, phone number, or email";
 const ADMIN_TOKEN_PREFIX_ = "ain-pathshala.admin-token.";
@@ -384,14 +384,9 @@ function handleLogin_(request) {
     return jsonOutput_({ ok: false, message: "No matching student was found." });
   }
 
-  let studentStatus = normalizeValue_(getStudentStatus_(student));
-  if (BLOCKED_STATUS_VALUES.indexOf(studentStatus) !== -1) {
-    return jsonOutput_({
-      ok: false,
-      approved: false,
-      studentId: getStudentId_(student),
-      message: "This student account is not active.",
-    });
+  const initialAccessState = getStudentLoginAccessState_(spreadsheet, student);
+  if (initialAccessState.approvalStatus === "rejected" || initialAccessState.approvalStatus === "inactive") {
+    return buildDeniedLoginResponse_(student, initialAccessState);
   }
 
   const storedPassword = getStudentPassword_(student);
@@ -417,26 +412,12 @@ function handleLogin_(request) {
     const activatedStudent = activateSelfRegisteredStudentIfAllowed_(spreadsheet, student);
     if (activatedStudent) {
       student = activatedStudent;
-      studentStatus = normalizeValue_(getStudentStatus_(student));
     }
   }
 
-  if (BLOCKED_STATUS_VALUES.indexOf(studentStatus) !== -1) {
-    return jsonOutput_({
-      ok: false,
-      approved: false,
-      studentId: getStudentId_(student),
-      message: "This student account is not active.",
-    });
-  }
-
-  if (!isLoginApproved_(student)) {
-    return jsonOutput_({
-      ok: false,
-      approved: false,
-      studentId: getStudentId_(student),
-      message: "This account is not ready for access right now.",
-    });
+  const finalAccessState = getStudentLoginAccessState_(spreadsheet, student);
+  if (finalAccessState.approvalStatus !== "approved") {
+    return buildDeniedLoginResponse_(student, finalAccessState);
   }
 
   const previewOnly = isPreviewAccessStudent_(student);
@@ -643,6 +624,14 @@ function handleStudentRegistration_(request) {
     ])
   );
 
+  appendSystemMessage_(spreadsheet, {
+    studentIds: buildPipeList_([studentId]),
+    title: "New Registration Request",
+    message: buildRegistrationAlertMessage_(studentId, name, batch, session, requestedCourses, courses),
+    status: "Sent",
+    createdBy: "System",
+  });
+
   return jsonOutput_({
     ok: true,
     message: selfRegistrationAccess.responseMessage,
@@ -705,6 +694,37 @@ function buildSelfRegistrationHighlight_(requestedCourses, accessState) {
   return normalizeValue_(accessState.registrationStatus) === "pending"
     ? "Registered online and waiting for admin approval."
     : "Registered online. Login activated automatically.";
+}
+
+function buildRegistrationAlertMessage_(studentId, name, batch, session, requestedCourseIds, courses) {
+  const courseLookup = {};
+  (courses || []).forEach(function (course) {
+    const courseId = String(course.id || course.courseId || "").trim();
+    if (courseId) {
+      courseLookup[courseId] = String(course.shortTitle || course.title || courseId).trim();
+    }
+  });
+
+  const requestedCourseLabels = (requestedCourseIds || [])
+    .map(function (courseId) {
+      return courseLookup[courseId] || courseId;
+    })
+    .filter(Boolean);
+  const requestedCourseText = requestedCourseLabels.length ? requestedCourseLabels.join(", ") : "No course requested";
+
+  return (
+    "Student " +
+    String(name || "Unknown Student").trim() +
+    " submitted a new registration request. Student ID: " +
+    String(studentId || "-").trim() +
+    ". Batch: " +
+    String(batch || "-").trim() +
+    ". Session: " +
+    String(session || "-").trim() +
+    ". Requested courses: " +
+    requestedCourseText +
+    ". Review this request from the registration queue."
+  );
 }
 
 function activateSelfRegisteredStudentIfAllowed_(spreadsheet, student) {
@@ -1288,6 +1308,26 @@ function handleAdminSendMessage_(request) {
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
 }
 
+function appendSystemMessage_(spreadsheet, entry) {
+  const messagesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.messages);
+
+  writeSheetEntries_(
+    messagesData.sheet,
+    messagesData.headers,
+    messagesData.records.concat([
+      {
+        id: Utilities.getUuid(),
+        studentIds: buildPipeList_(parseStringList_(entry.studentIds || "")),
+        title: String(entry.title || "System Message").trim(),
+        message: String(entry.message || "").trim(),
+        status: String(entry.status || "Sent").trim() || "Sent",
+        createdOn: getNowIso_(),
+        createdBy: String(entry.createdBy || "System").trim() || "System",
+      },
+    ])
+  );
+}
+
 function parseRequest_(e) {
   const parameterData = (e && e.parameter) || {};
   const postData = e && e.postData && e.postData.contents ? String(e.postData.contents) : "";
@@ -1498,6 +1538,55 @@ function getStudentPassword_(student) {
 
 function getStudentStatus_(student) {
   return getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.status, "");
+}
+
+function buildDeniedLoginResponse_(student, accessState) {
+  return jsonOutput_({
+    ok: false,
+    approved: false,
+    studentId: getStudentId_(student),
+    approvalStatus: accessState.approvalStatus,
+    reviewNote: accessState.reviewNote || "",
+    message: accessState.message || "This account is not ready for access right now.",
+  });
+}
+
+function getStudentLoginAccessState_(spreadsheet, student) {
+  const studentStatus = normalizeValue_(getStudentStatus_(student));
+  const approvalValue = normalizeValue_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.loginApproval, ""));
+  const latestRegistration = getLatestRegistrationForStudent_(spreadsheet, student);
+  const registrationStatus = normalizeValue_(latestRegistration && latestRegistration.status);
+  const reviewNote = String((latestRegistration && latestRegistration.reviewNote) || "").trim();
+
+  if (registrationStatus === "rejected" || approvalValue === "rejected" || studentStatus === "rejected") {
+    return {
+      approvalStatus: "rejected",
+      reviewNote: reviewNote,
+      message: reviewNote || "Your registration was not approved by the admin. Please contact the office.",
+    };
+  }
+
+  if (registrationStatus === "pending" || approvalValue === "pending" || studentStatus === "pending") {
+    return {
+      approvalStatus: "pending",
+      reviewNote: reviewNote,
+      message: "Your registration is waiting for admin approval. Video access will open after approval.",
+    };
+  }
+
+  if (BLOCKED_STATUS_VALUES.indexOf(studentStatus) !== -1) {
+    return {
+      approvalStatus: "inactive",
+      reviewNote: reviewNote,
+      message: "This student account is not active.",
+    };
+  }
+
+  return {
+    approvalStatus: "approved",
+    reviewNote: reviewNote,
+    message: "Login approved.",
+  };
 }
 
 function isLoginApproved_(student) {
@@ -1844,6 +1933,16 @@ function findLatestRegistrationIndexForStudent_(registrations, student) {
   });
 
   return matchedIndex;
+}
+
+function getLatestRegistrationForStudent_(spreadsheet, student) {
+  if (!spreadsheet || !student) {
+    return null;
+  }
+
+  const registrations = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.registrations));
+  const matchIndex = findLatestRegistrationIndexForStudent_(registrations, student);
+  return matchIndex === -1 ? null : registrations[matchIndex];
 }
 
 function syncLatestRegistrationReviewsForStudents_(spreadsheet, students, auth) {

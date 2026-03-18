@@ -230,7 +230,7 @@ async function handleRegistrationSubmit(event) {
             ? result.previewOnly
               ? "Preview access is active now. Use the same password with the student ID or registration number to log in."
               : "Login is active now. Use the same password with the student ID or registration number to log in."
-            : "The request is now waiting in the admin approval queue."
+            : "Your request has been sent to the admin approval queue. Videos will stay locked until an admin approves your account."
         }</p>
       </div>
     `;

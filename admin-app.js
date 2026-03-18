@@ -715,8 +715,20 @@ function applyDashboardPayload(payload, feedbackMessage = "", tone = "success") 
 
   renderDashboard();
 
+  const pendingRegistrationCount = state.data.registrations.filter(
+    (registration) => normalizeStatus(registration.status) === "pending"
+  ).length;
+
   if (feedbackMessage) {
     setFeedback(dom.adminTopFeedback, feedbackMessage, tone);
+  } else if (pendingRegistrationCount) {
+    setFeedback(
+      dom.adminTopFeedback,
+      `${pendingRegistrationCount} registration request${
+        pendingRegistrationCount === 1 ? " is" : "s are"
+      } waiting for approval in the queue.`,
+      "info"
+    );
   } else if (state.data.spreadsheetName) {
     setFeedback(
       dom.adminTopFeedback,
