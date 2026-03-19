@@ -5,6 +5,7 @@ const APP_CONFIG = Object.freeze({
   dataMode: "remote",
   remoteEndpoint: `https://script.google.com/macros/s/${APPS_SCRIPT_DEPLOYMENT_ID}/exec`,
   remoteRequestTimeoutMs: 15000,
+  portalDataCacheTtlMs: 5 * 60 * 1000,
 });
 
 const SESSION_STORAGE_KEYS = Object.freeze({
@@ -12,6 +13,7 @@ const SESSION_STORAGE_KEYS = Object.freeze({
   openCourseId: "ain-pathshala.openCourseId",
   loginQuery: "ain-pathshala.loginQuery",
   loginPassword: "ain-pathshala.loginPassword",
+  portalDataSnapshot: "ain-pathshala.portalDataSnapshot",
 });
 
 const LOOKUP_DIGIT_MAP = Object.freeze({
@@ -63,6 +65,12 @@ const PREVIEW_LOGIN_VALUES = Object.freeze([
   "listonly",
   "outline",
 ]);
+
+const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
 
 const STUDENT_FIELD_KEYS = Object.freeze({
   id: ["id", "studentId", "studentID", "userId", "userID", "memberId", "registrationId", "roll", "rollNumber"],
@@ -398,8 +406,22 @@ const demoData = {
   ],
 };
 
+function createEmptyPortalData() {
+  return {
+    students: [],
+    courses: [],
+    lessons: [],
+    notices: [],
+    enrollments: [],
+    hasEnrollmentSheet: false,
+    courseMap: new Map(),
+    courseReferenceMap: new Map(),
+    lessonsByCourseId: new Map(),
+  };
+}
+
 const state = {
-  data: null,
+  data: createEmptyPortalData(),
   dataModeLabel: "",
   activeStudentId: "",
   openCourseId: "",
@@ -519,6 +541,91 @@ function removeStoredPortalValue(key) {
   getPortalStores().forEach((store) => {
     store.removeItem(key);
   });
+}
+
+function serializePortalDataSnapshot(data) {
+  const activeStudentId = state.activeStudentId || readStoredPortalValue(SESSION_STORAGE_KEYS.activeStudentId).trim();
+  const students = (data?.students || []).filter((student) => {
+    return !activeStudentId || student.id === activeStudentId;
+  });
+  const enrollments = (data?.enrollments || []).filter((enrollment) => {
+    return !activeStudentId || enrollment.studentId === activeStudentId;
+  });
+  const relatedCourseIds = new Set();
+
+  students.forEach((student) => {
+    (student.enrolledCourseIds || []).forEach((courseId) => relatedCourseIds.add(courseId));
+  });
+  enrollments.forEach((enrollment) => {
+    if (enrollment.courseId) {
+      relatedCourseIds.add(enrollment.courseId);
+    }
+  });
+
+  return {
+    students: students.map((student) => ({
+      ...student,
+      password: "",
+    })),
+    courses: (data?.courses || []).filter((course) => !relatedCourseIds.size || relatedCourseIds.has(course.id)),
+    lessons: (data?.lessons || []).filter((lesson) => !relatedCourseIds.size || relatedCourseIds.has(lesson.courseId)),
+    notices: data?.notices || [],
+    enrollments,
+  };
+}
+
+function readCachedPortalDataSnapshot() {
+  const activeStudentId = readStoredPortalValue(SESSION_STORAGE_KEYS.activeStudentId).trim();
+  const localStore = getLocalStore();
+  const rawSnapshot = localStore
+    ? String(localStore.getItem(SESSION_STORAGE_KEYS.portalDataSnapshot) || "").trim()
+    : "";
+  if (!activeStudentId || !rawSnapshot) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(rawSnapshot);
+    const cachedAt = Number(payload.cachedAt || 0);
+    if (!cachedAt || Date.now() - cachedAt > APP_CONFIG.portalDataCacheTtlMs || !payload.data) {
+      return null;
+    }
+
+    return {
+      data: normalizeData(payload.data),
+      modeLabel: String(payload.modeLabel || "Live Google Sheet"),
+      persistCache: false,
+    };
+  } catch (error) {
+    if (localStore) {
+      localStore.removeItem(SESSION_STORAGE_KEYS.portalDataSnapshot);
+    }
+    return null;
+  }
+}
+
+function persistPortalDataSnapshot(result) {
+  if (!result || !result.data || result.persistCache === false || result.modeLabel !== "Live Google Sheet") {
+    return;
+  }
+
+  const localStore = getLocalStore();
+  if (!localStore) {
+    return;
+  }
+
+  try {
+    localStore.setItem(
+      SESSION_STORAGE_KEYS.portalDataSnapshot,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        modeLabel: result.modeLabel,
+        data: serializePortalDataSnapshot(result.data),
+      })
+    );
+  } catch (error) {
+    // Ignore storage write failures.
+  }
 }
 
 function normalizeLocalizedDigit(character) {
@@ -911,6 +1018,28 @@ function buildYouTubeWatchUrl(value) {
   return videoId ? `https://www.youtube.com/watch?v=${videoId}` : "";
 }
 
+function buildLessonsByCourseId(lessons) {
+  const lessonsByCourseId = new Map();
+
+  (lessons || []).forEach((lesson) => {
+    if (!lesson.courseId) {
+      return;
+    }
+
+    if (!lessonsByCourseId.has(lesson.courseId)) {
+      lessonsByCourseId.set(lesson.courseId, []);
+    }
+
+    lessonsByCourseId.get(lesson.courseId).push(lesson);
+  });
+
+  lessonsByCourseId.forEach((courseLessons) => {
+    courseLessons.sort((left, right) => new Date(left.releaseDate) - new Date(right.releaseDate));
+  });
+
+  return lessonsByCourseId;
+}
+
 function normalizeData(raw) {
   const students = (raw.students || []).map((student) => ({
     id: getFirstAvailableValue(student, STUDENT_FIELD_KEYS.id, ""),
@@ -1032,25 +1161,39 @@ function normalizeData(raw) {
       );
     })
     .filter((enrollment) => enrollment.studentId && enrollment.courseId);
+  const notices = Array.isArray(raw.notices) ? raw.notices.slice() : [];
+  const lessonsByCourseId = buildLessonsByCourseId(lessons);
 
   return {
     students,
     courses,
     lessons,
+    notices,
     enrollments,
     hasEnrollmentSheet: enrollments.length > 0,
     courseMap: new Map(courses.map((course) => [course.id, course])),
     courseReferenceMap: buildCourseReferenceMap(courses),
+    lessonsByCourseId,
   };
 }
 
 async function loadData() {
   if (APP_CONFIG.dataMode === "remote" && APP_CONFIG.remoteEndpoint) {
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    const timeoutHandle = controller
+      ? setTimeout(() => controller.abort(), APP_CONFIG.remoteRequestTimeoutMs)
+      : null;
+
     try {
       const response = await fetch(APP_CONFIG.remoteEndpoint, {
         method: "GET",
         headers: { Accept: "application/json" },
+        signal: controller ? controller.signal : undefined,
       });
+
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
 
       if (!response.ok) {
         throw new Error("Unable to load remote sheet data.");
@@ -1060,8 +1203,12 @@ async function loadData() {
       return {
         data: normalizeData(payload),
         modeLabel: "Live Google Sheet",
+        persistCache: true,
       };
     } catch (error) {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
       console.warn("Falling back to demo data:", error);
     }
   }
@@ -1069,6 +1216,7 @@ async function loadData() {
   return {
     data: normalizeData(demoData),
     modeLabel: "Demo Data",
+    persistCache: false,
   };
 }
 
@@ -1079,8 +1227,31 @@ function applyPortalData(result) {
 
   state.data = result.data;
   state.dataModeLabel = result.modeLabel || "";
+  persistPortalDataSnapshot(result);
   dom.dataModeBadge.textContent = state.dataModeLabel || "";
   dom.dataModeBadge.classList.toggle("hidden", !state.dataModeLabel);
+}
+
+async function refreshPortalDataInBackground() {
+  const activeStudentId = state.activeStudentId;
+  if (!activeStudentId || APP_CONFIG.dataMode !== "remote" || !APP_CONFIG.remoteEndpoint) {
+    return;
+  }
+
+  try {
+    const result = await loadData();
+    if (!result || result.modeLabel !== "Live Google Sheet" || state.activeStudentId !== activeStudentId) {
+      return;
+    }
+
+    applyPortalData(result);
+    const refreshedStudent = state.data.students.find((student) => student.id === activeStudentId) || null;
+    if (refreshedStudent) {
+      renderDashboard(refreshedStudent);
+    }
+  } catch (error) {
+    console.warn("Unable to refresh portal data in the background.", error);
+  }
 }
 
 function getStudentByQuery(query) {
@@ -1600,9 +1771,7 @@ function getLessonAccessState(entry, lesson) {
 }
 
 function getCourseLessons(courseId) {
-  return state.data.lessons
-    .filter((lesson) => lesson.courseId === courseId)
-    .sort((left, right) => new Date(left.releaseDate) - new Date(right.releaseDate));
+  return state.data.lessonsByCourseId.get(courseId) || [];
 }
 
 function getTotalResources(lessons) {
@@ -1659,11 +1828,7 @@ function formatDate(dateValue, fallback = "Date unavailable") {
     return String(dateValue);
   }
 
-  return new Intl.DateTimeFormat("en-US", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(date);
+  return DATE_FORMATTER.format(date);
 }
 
 function formatDateRange(startDate, endDate) {
@@ -2137,10 +2302,13 @@ function renderCourseList(student, courseEntries) {
       const course = entry.course;
       const lessons = getCourseLessons(course.id);
       const isPreviewOnly = !!entry.previewOnly;
+      const lessonItems = lessons.map((lesson) => ({
+        lesson,
+        accessState: getLessonAccessState(entry, lesson),
+      }));
       const resourceCount = getTotalResources(lessons);
-      const unlockedCount = lessons.filter((lesson) => getLessonAccessState(entry, lesson).canWatch)
-        .length;
-      const lockedCount = Math.max(lessons.length - unlockedCount, 0);
+      const unlockedCount = lessonItems.filter((item) => item.accessState.canWatch).length;
+      const lockedCount = Math.max(lessonItems.length - unlockedCount, 0);
       const isOpen = state.openCourseId === course.id;
 
       return `
@@ -2238,11 +2406,10 @@ function renderCourseList(student, courseEntries) {
               </div>
 
               ${
-                lessons.length
-                  ? lessons
-                      .map((lesson, lessonIndex) => {
+                lessonItems.length
+                  ? lessonItems
+                      .map(({ lesson, accessState }, lessonIndex) => {
                         const isCompleted = student.completedLessonIds.includes(lesson.id);
-                        const accessState = getLessonAccessState(entry, lesson);
                         return `
                           <div class="card-hover group/item flex flex-col items-start justify-between rounded-2xl border border-slate-100 bg-white p-5 transition-all hover:border-blue-200 sm:flex-row sm:items-center">
                             <div class="flex w-full min-w-0 items-center space-x-4 sm:w-auto">
@@ -2501,15 +2668,30 @@ async function performLogin(query = dom.query.value) {
 }
 
 async function initialize() {
-  const result = await loadData();
-  applyPortalData(result);
   dom.password.placeholder = getPortalCopyValue("passwordPlaceholder", "Enter your password");
   setFeedback("");
+  let restored = false;
+  const hadStoredSession = !!readStoredPortalValue(SESSION_STORAGE_KEYS.activeStudentId).trim();
 
-  if (!restorePortalSession()) {
-    restoreLoginDraft();
-    togglePage("login");
+  const cachedResult = readCachedPortalDataSnapshot();
+  if (cachedResult) {
+    applyPortalData(cachedResult);
+    restored = restorePortalSession();
   }
+
+  if (!restored && hadStoredSession) {
+    const result = await loadData();
+    applyPortalData(result);
+    restored = restorePortalSession();
+  }
+
+  if (restored) {
+    refreshPortalDataInBackground();
+    return;
+  }
+
+  restoreLoginDraft();
+  togglePage("login");
 }
 
 dom.form.addEventListener("submit", async (event) => {

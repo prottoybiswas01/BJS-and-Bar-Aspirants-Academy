@@ -84,6 +84,10 @@ const SELF_REGISTRATION_REVIEWED_BY_ = "Self Registration";
 const STUDENT_LOGIN_QUERY_LABEL_ = "registration number, student ID, phone number, or email";
 const ADMIN_TOKEN_PREFIX_ = "ain-pathshala.admin-token.";
 const ADMIN_TOKEN_TTL_SECONDS_ = 21600;
+const PUBLIC_CACHE_TTL_SECONDS_ = 300;
+const PUBLIC_CACHE_KEYS_ = Object.freeze({
+  courses: "ain-pathshala.public-courses",
+});
 const LOCALIZED_DIGIT_RANGES_ = [
   Object.freeze({ start: 0x09e6, end: 0x09ef }),
   Object.freeze({ start: 0x0660, end: 0x0669 }),
@@ -296,6 +300,10 @@ function doGet(e) {
 
     if (action === "status") {
       return jsonOutput_(buildStatusPayload_(spreadsheet));
+    }
+
+    if (action === "courses" || action === "publiccourses") {
+      return jsonOutput_(buildCachedCourseCatalogPayload_(spreadsheet));
     }
 
     const students = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students));
@@ -1352,6 +1360,60 @@ function parseRequest_(e) {
   return Object.assign({}, bodyData, parameterData);
 }
 
+function buildCachedCourseCatalogPayload_(spreadsheet) {
+  const cache = getScriptCache_();
+  if (cache) {
+    const cached = cache.get(PUBLIC_CACHE_KEYS_.courses);
+    if (cached) {
+      const parsed = parseJsonField_(cached);
+      if (parsed) {
+        return parsed;
+      }
+    }
+  }
+
+  const payload = {
+    ok: true,
+    generatedAt: new Date().toISOString(),
+    spreadsheetId: spreadsheet.getId(),
+    spreadsheetName: spreadsheet.getName(),
+    courses: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses)),
+  };
+
+  if (cache) {
+    try {
+      cache.put(PUBLIC_CACHE_KEYS_.courses, JSON.stringify(payload), PUBLIC_CACHE_TTL_SECONDS_);
+    } catch (error) {
+      // Ignore cache write failures and still return live payload.
+    }
+  }
+
+  return payload;
+}
+
+function getScriptCache_() {
+  try {
+    return CacheService.getScriptCache();
+  } catch (error) {
+    return null;
+  }
+}
+
+function invalidatePublicReadCaches_() {
+  const cache = getScriptCache_();
+  if (!cache) {
+    return;
+  }
+
+  try {
+    cache.removeAll(Object.keys(PUBLIC_CACHE_KEYS_).map(function (key) {
+      return PUBLIC_CACHE_KEYS_[key];
+    }));
+  } catch (error) {
+    // Ignore cache invalidation failures.
+  }
+}
+
 function parseFormEncodedBody_(postData) {
   return String(postData || "")
     .split("&")
@@ -2158,6 +2220,7 @@ function writeSheetEntries_(sheet, headers, records) {
   }
 
   if (!records.length || !headers.length) {
+    invalidatePublicReadCaches_();
     return;
   }
 
@@ -2168,6 +2231,7 @@ function writeSheetEntries_(sheet, headers, records) {
   });
 
   sheet.getRange(2, 1, values.length, headers.length).setValues(values);
+  invalidatePublicReadCaches_();
 }
 
 function serializeRowValue_(value) {

@@ -3,6 +3,8 @@ const REGISTER_APPS_SCRIPT_DEPLOYMENT_ID =
 
 const REGISTER_APP_CONFIG = Object.freeze({
   remoteEndpoint: `https://script.google.com/macros/s/${REGISTER_APPS_SCRIPT_DEPLOYMENT_ID}/exec`,
+  courseCacheTtlMs: 5 * 60 * 1000,
+  requestTimeoutMs: 15000,
 });
 
 const REGISTER_LOCALIZED_DIGIT_RANGES = Object.freeze([
@@ -10,6 +12,10 @@ const REGISTER_LOCALIZED_DIGIT_RANGES = Object.freeze([
   Object.freeze({ start: 0x0660, end: 0x0669 }),
   Object.freeze({ start: 0x06f0, end: 0x06f9 }),
 ]);
+
+const REGISTER_STORAGE_KEYS = Object.freeze({
+  courseCatalog: "ain-pathshala.register.courseCatalog",
+});
 
 const registerState = {
   courses: [],
@@ -83,6 +89,58 @@ function parseRegisterList(value) {
 
 function buildRegisterPipeList(values) {
   return parseRegisterList(values).join("|");
+}
+
+function getRegisterStore() {
+  try {
+    return window.localStorage;
+  } catch (error) {
+    return null;
+  }
+}
+
+function readCachedRegisterCourses() {
+  const store = getRegisterStore();
+  if (!store) {
+    return null;
+  }
+
+  const raw = String(store.getItem(REGISTER_STORAGE_KEYS.courseCatalog) || "").trim();
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const payload = JSON.parse(raw);
+    const cachedAt = Number(payload.cachedAt || 0);
+    const courses = Array.isArray(payload.courses) ? payload.courses : [];
+    if (!cachedAt || Date.now() - cachedAt > REGISTER_APP_CONFIG.courseCacheTtlMs || !courses.length) {
+      return null;
+    }
+
+    return courses;
+  } catch (error) {
+    return null;
+  }
+}
+
+function cacheRegisterCourses(courses) {
+  const store = getRegisterStore();
+  if (!store) {
+    return;
+  }
+
+  try {
+    store.setItem(
+      REGISTER_STORAGE_KEYS.courseCatalog,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        courses: courses,
+      })
+    );
+  } catch (error) {
+    // Ignore storage write failures.
+  }
 }
 
 function setRegisterFeedback(message, tone = "neutral") {
@@ -162,16 +220,45 @@ function renderRegisterCourses() {
   syncRegisterBatchSession();
 }
 
-async function loadRegisterCourses() {
+function applyRegisterCourses(courses) {
+  registerState.courses = courses;
+  registerState.courseMap = new Map(registerState.courses.map((course) => [course.id, course]));
+  renderRegisterCourses();
+}
+
+async function loadRegisterCourses(options = {}) {
+  const forceRefresh = !!options.forceRefresh;
+
+  if (!forceRefresh) {
+    const cachedCourses = readCachedRegisterCourses();
+    if (cachedCourses) {
+      applyRegisterCourses(cachedCourses);
+      setRegisterFeedback("Live course list loaded.", "success");
+      return;
+    }
+  }
+
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timeoutHandle = controller
+    ? setTimeout(() => controller.abort(), REGISTER_APP_CONFIG.requestTimeoutMs)
+    : null;
+
   try {
     setRegisterFeedback("Loading live courses...", "info");
+    const requestUrl = new URL(REGISTER_APP_CONFIG.remoteEndpoint);
+    requestUrl.searchParams.set("action", "courses");
 
-    const response = await fetch(REGISTER_APP_CONFIG.remoteEndpoint, {
+    const response = await fetch(requestUrl.toString(), {
       method: "GET",
       headers: {
         Accept: "application/json",
       },
+      signal: controller ? controller.signal : undefined,
     });
+
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
 
     if (!response.ok) {
       throw new Error("Unable to load live courses.");
@@ -189,17 +276,22 @@ async function loadRegisterCourses() {
       }))
       .filter((course) => course.id && course.title)
       .sort((left, right) => left.title.localeCompare(right.title));
-    registerState.courseMap = new Map(registerState.courses.map((course) => [course.id, course]));
-
-    renderRegisterCourses();
+    cacheRegisterCourses(registerState.courses);
+    applyRegisterCourses(registerState.courses);
     setRegisterFeedback(
       registerState.courses.length ? "Live course list loaded." : "No live course is available right now.",
       registerState.courses.length ? "success" : "neutral"
     );
   } catch (error) {
-    registerState.courses = [];
-    registerState.courseMap = new Map();
-    renderRegisterCourses();
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+    if (error && error.name === "AbortError") {
+      error = new Error("Course list took too long to load. Please try again.");
+    }
+    if (!registerState.courses.length) {
+      applyRegisterCourses([]);
+    }
     setRegisterFeedback(error.message || "Unable to load live courses.", "error");
   }
 }
@@ -292,7 +384,7 @@ async function handleRegistrationSubmit(event) {
 }
 
 registerDom.registrationForm.addEventListener("submit", handleRegistrationSubmit);
-registerDom.refreshCoursesBtn.addEventListener("click", loadRegisterCourses);
+registerDom.refreshCoursesBtn.addEventListener("click", () => loadRegisterCourses({ forceRefresh: true }));
 registerDom.registerCourseList.addEventListener("change", handleRegisterCourseSelection);
 
 loadRegisterCourses();
