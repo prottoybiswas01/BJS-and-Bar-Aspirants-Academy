@@ -79,7 +79,7 @@ const APPROVED_LOGIN_VALUES = ["approved", "yes", "true", "allow", "allowed", "a
 const PREVIEW_LOGIN_VALUES = ["preview", "viewonly", "readonly", "audit", "curriculum", "classlist", "listonly", "outline"];
 const BLOCKED_STATUS_VALUES = ["inactive", "blocked", "suspended", "expired", "rejected"];
 // Use "approved" for instant login, "preview" for class-list-only access, or "pending" for manual approval.
-const SELF_REGISTRATION_ACCESS_MODE_ = "pending";
+const SELF_REGISTRATION_ACCESS_MODE_ = "preview";
 const SELF_REGISTRATION_REVIEWED_BY_ = "Self Registration";
 const STUDENT_LOGIN_QUERY_LABEL_ = "registration number, student ID, phone number, or email";
 const ADMIN_TOKEN_PREFIX_ = "ain-pathshala.admin-token.";
@@ -639,7 +639,7 @@ function handleStudentRegistration_(request) {
   return jsonOutput_({
     ok: true,
     message: selfRegistrationAccess.responseMessage,
-    loginReady: normalizeValue_(selfRegistrationAccess.registrationStatus) !== "pending",
+    loginReady: normalizeValue_(selfRegistrationAccess.loginApproval) !== "pending",
     previewOnly: !!selfRegistrationAccess.portalAccessMode,
     studentId: studentId,
     registrationId: registrationId,
@@ -666,10 +666,10 @@ function buildSelfRegistrationAccessState_() {
       studentStatus: "Active",
       loginApproval: "Approved",
       portalAccessMode: "Preview",
-      registrationStatus: "Approved",
-      reviewedBy: SELF_REGISTRATION_REVIEWED_BY_,
-      reviewNote: "Preview access granted automatically from self registration.",
-      responseMessage: "Registration submitted. Preview access is ready now.",
+      registrationStatus: "Pending",
+      reviewedBy: "",
+      reviewNote: "",
+      responseMessage: "Registration submitted. Preview access is ready now. Videos will unlock after admin approval.",
     };
   }
 
@@ -692,7 +692,7 @@ function buildSelfRegistrationHighlight_(requestedCourses, accessState) {
   }
 
   if (accessState.portalAccessMode) {
-    return "Registered online. Preview access activated automatically.";
+    return "Registered online. Preview access activated automatically. Full video access is waiting for admin approval.";
   }
 
   return normalizeValue_(accessState.registrationStatus) === "pending"
@@ -1565,6 +1565,8 @@ function getStudentLoginAccessState_(spreadsheet, student) {
   const latestRegistration = getLatestRegistrationForStudent_(spreadsheet, student);
   const registrationStatus = normalizeValue_(latestRegistration && latestRegistration.status);
   const reviewNote = String((latestRegistration && latestRegistration.reviewNote) || "").trim();
+  const previewOnly = isPreviewAccessStudent_(student);
+  const loginApproved = isLoginApproved_(student);
 
   if (registrationStatus === "rejected" || approvalValue === "rejected" || studentStatus === "rejected") {
     return {
@@ -1574,7 +1576,7 @@ function getStudentLoginAccessState_(spreadsheet, student) {
     };
   }
 
-  if (registrationStatus === "pending" || approvalValue === "pending" || studentStatus === "pending") {
+  if (approvalValue === "pending" || studentStatus === "pending") {
     return {
       approvalStatus: "pending",
       reviewNote: reviewNote,
@@ -1590,10 +1592,20 @@ function getStudentLoginAccessState_(spreadsheet, student) {
     };
   }
 
+  if (registrationStatus === "pending" && !loginApproved) {
+    return {
+      approvalStatus: "pending",
+      reviewNote: reviewNote,
+      message: "Your registration is waiting for admin approval. Video access will open after approval.",
+    };
+  }
+
   return {
     approvalStatus: "approved",
     reviewNote: reviewNote,
-    message: "Login approved.",
+    message: previewOnly
+      ? "Preview access approved. Videos will stay locked until admin approval."
+      : "Login approved.",
   };
 }
 

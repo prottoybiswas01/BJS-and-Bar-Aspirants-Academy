@@ -68,8 +68,8 @@ id | name | phone | email | batch | session | joinedOn | status | profileImage |
 Important login columns:
 
 - `password`: the student password used for portal login
-- `loginApproval`: write `Approved` when the student is allowed to log in
-- If `loginApproval` is empty, `Pending`, or anything other than an approved value, the student cannot log in
+- `loginApproval`: write `Approved` for normal login or use `Preview`/`Class List Only` access when the student should log in without video playback
+- If `loginApproval` is empty, `Pending`, or anything other than an approved or preview value, the student cannot log in
 - If `status` is `Inactive`, `Blocked`, `Suspended`, or `Expired`, the student cannot log in even if the password is correct
 
 ### Courses
