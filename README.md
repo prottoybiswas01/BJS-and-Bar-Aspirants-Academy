@@ -11,6 +11,28 @@ This is a frontend prototype for a law-focused coaching portal that uses Tailwin
 - `register.html`: the student registration page
 - `register-app.js`: registration form logic
 - `google-apps-script.gs`: Apps Script endpoint to expose workbook tabs as JSON
+- `styles/tailwind.css`: Tailwind input stylesheet
+- `styles/app.css`: compiled production stylesheet used by all pages
+
+## CSS build
+
+Install dependencies once:
+
+```text
+npm install
+```
+
+Build the minified stylesheet:
+
+```text
+npm run build:css
+```
+
+For active editing:
+
+```text
+npm run watch:css
+```
 
 ## What is already implemented
 
