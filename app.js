@@ -2201,6 +2201,15 @@ function formatDateTime(dateValue, fallback = "Date unavailable") {
   return DATE_TIME_FORMATTER.format(date);
 }
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function formatProfileSession(value, fallback = "-") {
   const text = String(value || "").trim();
   if (!text) {
