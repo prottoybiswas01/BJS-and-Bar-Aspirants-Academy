@@ -11,6 +11,7 @@ const APP_CONFIG = Object.freeze({
 const SESSION_STORAGE_KEYS = Object.freeze({
   activeStudentId: "ain-pathshala.activeStudentId",
   openCourseId: "ain-pathshala.openCourseId",
+  pendingCourseRequestIds: "ain-pathshala.pendingCourseRequestIds",
   loginQuery: "ain-pathshala.loginQuery",
   loginPassword: "ain-pathshala.loginPassword",
   portalDataSnapshot: "ain-pathshala.portalDataSnapshot",
@@ -433,6 +434,8 @@ const state = {
   dataModeLabel: "",
   activeStudentId: "",
   openCourseId: "",
+  pendingCourseRequestIds: new Set(),
+  courseRequestBusyIds: new Set(),
   loginBusy: false,
 };
 
@@ -559,24 +562,14 @@ function serializePortalDataSnapshot(data) {
   const enrollments = (data?.enrollments || []).filter((enrollment) => {
     return !activeStudentId || enrollment.studentId === activeStudentId;
   });
-  const relatedCourseIds = new Set();
-
-  students.forEach((student) => {
-    (student.enrolledCourseIds || []).forEach((courseId) => relatedCourseIds.add(courseId));
-  });
-  enrollments.forEach((enrollment) => {
-    if (enrollment.courseId) {
-      relatedCourseIds.add(enrollment.courseId);
-    }
-  });
 
   return {
     students: students.map((student) => ({
       ...student,
       password: "",
     })),
-    courses: (data?.courses || []).filter((course) => !relatedCourseIds.size || relatedCourseIds.has(course.id)),
-    lessons: (data?.lessons || []).filter((lesson) => !relatedCourseIds.size || relatedCourseIds.has(lesson.courseId)),
+    courses: data?.courses || [],
+    lessons: data?.lessons || [],
     notices: data?.notices || [],
     enrollments,
   };
@@ -1279,11 +1272,20 @@ function syncPortalSession() {
   if (!state.activeStudentId) {
     removeStoredPortalValue(SESSION_STORAGE_KEYS.activeStudentId);
     removeStoredPortalValue(SESSION_STORAGE_KEYS.openCourseId);
+    removeStoredPortalValue(SESSION_STORAGE_KEYS.pendingCourseRequestIds);
     return;
   }
 
   writeStoredPortalValue(SESSION_STORAGE_KEYS.activeStudentId, state.activeStudentId);
   writeStoredPortalValue(SESSION_STORAGE_KEYS.openCourseId, state.openCourseId || "");
+  if (state.pendingCourseRequestIds.size) {
+    writeStoredPortalValue(
+      SESSION_STORAGE_KEYS.pendingCourseRequestIds,
+      [...state.pendingCourseRequestIds].join("|")
+    );
+  } else {
+    removeStoredPortalValue(SESSION_STORAGE_KEYS.pendingCourseRequestIds);
+  }
 }
 
 function syncLoginDraft() {
@@ -1342,17 +1344,17 @@ function restorePortalSession() {
   if (!student || isStudentLoginBlocked(student) || !isLoginApprovalGranted(student.loginApproval)) {
     state.activeStudentId = "";
     state.openCourseId = "";
+    state.pendingCourseRequestIds = new Set();
     syncPortalSession();
     return false;
   }
 
-  const courseEntries = getStudentCourseEntries(student);
   const storedCourseId = readStoredPortalValue(SESSION_STORAGE_KEYS.openCourseId).trim();
 
   state.activeStudentId = student.id;
-  state.openCourseId = courseEntries.some((entry) => entry.course.id === storedCourseId)
+  state.openCourseId = getCourseCatalogEntries(student).some((entry) => entry.course.id === storedCourseId)
     ? storedCourseId
-    : courseEntries[0]?.course.id || "";
+    : getDefaultOpenCourseId(student);
 
   syncPortalSession();
   renderDashboard(student);
@@ -1638,6 +1640,125 @@ function getStudentCourses(student) {
   return getStudentCourseEntries(student).map((entry) => entry.course);
 }
 
+function getPendingCourseRequestIds(student) {
+  if (!student || student.id !== state.activeStudentId) {
+    return new Set();
+  }
+
+  const activeCourseIds = new Set(getStudentCourseEntries(student).map((entry) => entry.course.id));
+  const nextPendingCourseIds = [...state.pendingCourseRequestIds].filter((courseId) => {
+    return courseId && !activeCourseIds.has(courseId) && state.data.courseMap.has(courseId);
+  });
+
+  if (nextPendingCourseIds.length !== state.pendingCourseRequestIds.size) {
+    state.pendingCourseRequestIds = new Set(nextPendingCourseIds);
+    syncPortalSession();
+  }
+
+  return new Set(nextPendingCourseIds);
+}
+
+function getCourseCatalogEntries(student) {
+  const enrolledEntries = getStudentCourseEntries(student);
+  const enrolledEntryMap = new Map(enrolledEntries.map((entry) => [entry.course.id, entry]));
+  const pendingCourseIds = getPendingCourseRequestIds(student);
+
+  return state.data.courses
+    .map((course) => {
+      const enrolledEntry = enrolledEntryMap.get(course.id);
+      if (enrolledEntry) {
+        return {
+          ...enrolledEntry,
+          catalogOnly: false,
+          pendingRequest: false,
+        };
+      }
+
+      return {
+        id: `catalog-${student.id}-${course.id}`,
+        studentId: student.id,
+        courseId: course.id,
+        course,
+        previewOnly: false,
+        catalogOnly: true,
+        pendingRequest: pendingCourseIds.has(course.id),
+        accessStartDate: "",
+        accessEndDate: "",
+        videoAccessUntil: "",
+        lastPaymentDate: "",
+        paymentDueDate: "",
+        monthlyFee: "",
+        paidMonths: [],
+        status: pendingCourseIds.has(course.id) ? "Pending Request" : "Catalog Locked",
+      };
+    })
+    .sort((left, right) => {
+      const leftRank = !left.catalogOnly ? 0 : left.pendingRequest ? 1 : 2;
+      const rightRank = !right.catalogOnly ? 0 : right.pendingRequest ? 1 : 2;
+      if (leftRank !== rightRank) {
+        return leftRank - rightRank;
+      }
+
+      return left.course.title.localeCompare(right.course.title);
+    });
+}
+
+function getDefaultOpenCourseId(student) {
+  const courseEntries = getCourseCatalogEntries(student);
+  const preferredEntry = courseEntries.find((entry) => !entry.catalogOnly) || courseEntries[0] || null;
+  return preferredEntry ? preferredEntry.course.id : "";
+}
+
+function getCourseEntryLockReason(entry) {
+  if (entry.pendingRequest) {
+    return "Your access request is pending admin approval. Videos will unlock after review.";
+  }
+
+  if (entry.catalogOnly) {
+    return "This course is visible in your course map. Request access to unlock classes and videos.";
+  }
+
+  return "This video is not available right now.";
+}
+
+function getCourseEntryStatusMeta(entry) {
+  if (entry.catalogOnly) {
+    return entry.pendingRequest
+      ? {
+          label: "Request Pending",
+          className: "bg-amber-100 text-amber-800",
+          summary: "Your request is already in the admin queue. Access will unlock after approval.",
+          accessSummary: "Awaiting admin approval",
+          videoSummary: "Locked until approval",
+        }
+      : {
+          label: "Catalog Locked",
+          className: "bg-slate-200 text-slate-700",
+          summary: "This live course is visible in your course map. Request access to unlock all classes and videos.",
+          accessSummary: "Not granted yet",
+          videoSummary: "Request access first",
+        };
+  }
+
+  if (entry.previewOnly) {
+    return {
+      label: "Preview Access",
+      className: "bg-slate-900 text-white",
+      summary: "You can review the full class list for this course. Video playback stays locked until admin approval.",
+      accessSummary: formatDateRange(entry.accessStartDate, entry.accessEndDate),
+      videoSummary: "Preview only",
+    };
+  }
+
+  return {
+    label: formatStatus(entry.status),
+    className: getStatusBadgeClass(entry.status),
+    summary: entry.course.description || "You have active access to this course.",
+    accessSummary: formatDateRange(entry.accessStartDate, entry.accessEndDate),
+    videoSummary: getEnrollmentVideoAccessSummary(entry),
+  };
+}
+
 function isEnrollmentBlocked(entry) {
   const normalized = String(entry.status || "").trim().toLowerCase();
   return normalized === "blocked" || normalized === "suspended";
@@ -1673,6 +1794,10 @@ function getEffectiveVideoAccessTimestamp(entry) {
 }
 
 function getEnrollmentVideoAccessSummary(entry) {
+  if (entry.catalogOnly) {
+    return entry.pendingRequest ? "Pending approval" : "Locked";
+  }
+
   if (entry.previewOnly) {
     return "Preview only";
   }
@@ -1685,6 +1810,14 @@ function getEnrollmentVideoAccessSummary(entry) {
 }
 
 function getLessonAccessState(entry, lesson) {
+  if (entry.catalogOnly) {
+    return {
+      canWatch: false,
+      reason: getCourseEntryLockReason(entry),
+      status: entry.pendingRequest ? "pending-request" : "catalog-locked",
+    };
+  }
+
   if (entry.previewOnly) {
     return {
       canWatch: false,
@@ -2302,7 +2435,7 @@ function openProfileModal() {
   dom.body.style.overflow = "hidden";
 }
 
-function renderCourseList(student, courseEntries) {
+function renderCourseListLegacy(student, courseEntries) {
   if (!courseEntries.length) {
     dom.courseList.innerHTML = `
       <div class="rounded-[2rem] border border-slate-100 bg-white p-8 text-center shadow-sm">
@@ -2554,7 +2687,7 @@ function renderCourseList(student, courseEntries) {
   });
 }
 
-function renderDashboard(student) {
+function renderDashboardLegacy(student) {
   const courseEntries = getStudentCourseEntries(student);
   const stats = getStudentStats(student, courseEntries);
 
@@ -2563,11 +2696,507 @@ function renderDashboard(student) {
   renderProfileModal(student, courseEntries);
 }
 
+async function requestCourseAccess(courseId) {
+  const student = getActiveStudent();
+  if (!student) {
+    throw new Error("Your session expired. Please log in again.");
+  }
+
+  if (!state.data.courseMap.has(courseId)) {
+    throw new Error("This course could not be found.");
+  }
+
+  if (APP_CONFIG.dataMode !== "remote" || !APP_CONFIG.remoteEndpoint) {
+    state.pendingCourseRequestIds = new Set([...state.pendingCourseRequestIds, courseId]);
+    syncPortalSession();
+    return {
+      ok: true,
+      message: "Course request saved in demo mode.",
+      requestedCourseIds: [...state.pendingCourseRequestIds].join("|"),
+    };
+  }
+
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timeoutHandle = controller
+    ? setTimeout(() => controller.abort(), APP_CONFIG.remoteRequestTimeoutMs)
+    : null;
+
+  try {
+    const response = await fetch(APP_CONFIG.remoteEndpoint, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      },
+      body: new URLSearchParams({
+        action: "requeststudentcourses",
+        studentId: student.id,
+        requestedCourseIds: courseId,
+      }),
+      signal: controller ? controller.signal : undefined,
+    });
+
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+
+    if (!response.ok) {
+      throw new Error("Unable to send the course request right now.");
+    }
+
+    const result = await response.json();
+    if (!result.ok) {
+      throw new Error(result.message || "Course request failed.");
+    }
+
+    const requestedCourseIds = parseList(result.requestedCourseIds || [...state.pendingCourseRequestIds, courseId]);
+    state.pendingCourseRequestIds = new Set(requestedCourseIds);
+    syncPortalSession();
+    return result;
+  } catch (error) {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+
+    if (error && error.name === "AbortError") {
+      throw new Error("Course request took too long. Please try again.");
+    }
+
+    throw error;
+  }
+}
+
+function renderCourseList(student, courseEntries) {
+  if (!courseEntries.length) {
+    dom.courseList.innerHTML = `
+      <div class="rounded-[2rem] border border-slate-100 bg-white p-8 text-center shadow-sm">
+        <h3 class="text-2xl font-bold text-blue-950">No Courses Found</h3>
+        <p class="mt-3 text-slate-500">No live course is available right now.</p>
+      </div>
+    `;
+    return;
+  }
+
+  if (!courseEntries.some((entry) => entry.course.id === state.openCourseId)) {
+    state.openCourseId = courseEntries.find((entry) => !entry.catalogOnly)?.course.id || courseEntries[0].course.id;
+  }
+
+  syncPortalSession();
+
+  const accessibleCount = courseEntries.filter((entry) => !entry.catalogOnly).length;
+  const pendingCount = courseEntries.filter((entry) => entry.pendingRequest).length;
+  const lockedCount = courseEntries.filter((entry) => entry.catalogOnly && !entry.pendingRequest).length;
+
+  const courseMapMarkup = `
+    <section class="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-6">
+      <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+        <div class="min-w-0">
+          <p class="text-xs font-bold uppercase tracking-[0.3em] text-blue-500">Course Map</p>
+          <h2 class="mt-2 text-2xl font-bold text-blue-950">See Every Live Course After Login</h2>
+          <p class="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+            Every live course stays visible here. Courses without access remain locked until you send a request and the admin approves it.
+          </p>
+        </div>
+        <div class="grid gap-3 sm:grid-cols-3">
+          <div class="rounded-[1.5rem] border border-blue-100 bg-blue-50 px-4 py-4">
+            <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-blue-500">Active Access</p>
+            <p class="mt-2 text-2xl font-extrabold text-blue-950">${formatNumber(accessibleCount)}</p>
+          </div>
+          <div class="rounded-[1.5rem] border border-amber-100 bg-amber-50 px-4 py-4">
+            <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-amber-600">Pending Request</p>
+            <p class="mt-2 text-2xl font-extrabold text-amber-700">${formatNumber(pendingCount)}</p>
+          </div>
+          <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-4">
+            <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-500">Locked Catalog</p>
+            <p class="mt-2 text-2xl font-extrabold text-slate-900">${formatNumber(lockedCount)}</p>
+          </div>
+        </div>
+      </div>
+      <div class="mt-6 flex flex-wrap gap-2">
+        ${courseEntries
+          .map((entry) => {
+            const isActive = state.openCourseId === entry.course.id;
+            const baseClass = isActive
+              ? "border-blue-900 bg-blue-900 text-white"
+              : !entry.catalogOnly
+              ? "border-blue-100 bg-blue-50 text-blue-900"
+              : entry.pendingRequest
+              ? "border-amber-200 bg-amber-50 text-amber-800"
+              : "border-slate-200 bg-slate-50 text-slate-700";
+
+            return `
+              <button
+                type="button"
+                data-course-map-id="${entry.course.id}"
+                class="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-bold transition hover:-translate-y-0.5 ${baseClass}"
+              >
+                <span class="h-2.5 w-2.5 rounded-full ${
+                  !entry.catalogOnly ? "bg-emerald-400" : entry.pendingRequest ? "bg-amber-400" : "bg-slate-400"
+                }"></span>
+                <span>${entry.course.shortTitle || entry.course.title}</span>
+              </button>
+            `;
+          })
+          .join("")}
+      </div>
+    </section>
+  `;
+
+  const courseCardsMarkup = courseEntries
+    .map((entry, index) => {
+      const course = entry.course;
+      const statusMeta = getCourseEntryStatusMeta(entry);
+      const lessons = getCourseLessons(course.id);
+      const lessonItems = lessons.map((lesson) => ({
+        lesson,
+        accessState: getLessonAccessState(entry, lesson),
+      }));
+      const resourceCount = getTotalResources(lessons);
+      const unlockedCount = lessonItems.filter((item) => item.accessState.canWatch).length;
+      const totalLockedLessons = Math.max(lessonItems.length - unlockedCount, 0);
+      const isOpen = state.openCourseId === course.id;
+      const nextLiveLabel = formatProfileSession(course.nextLive, "Announced soon");
+      const requestBusy = state.courseRequestBusyIds.has(course.id);
+
+      return `
+        <div data-course-card="${course.id}" class="group overflow-hidden rounded-[2rem] border border-slate-100 bg-white shadow-sm ${
+          isOpen ? "accordion-active" : ""
+        }">
+          <button
+            type="button"
+            data-course-id="${course.id}"
+            class="flex w-full flex-col items-start justify-between gap-4 px-6 py-6 text-left transition-colors hover:bg-slate-50 sm:flex-row sm:items-center sm:px-8 sm:py-7"
+          >
+            <div class="flex min-w-0 items-start gap-4 sm:items-center sm:gap-5">
+              <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-xl font-bold text-blue-900 transition-all duration-300 group-hover:bg-blue-900 group-hover:text-white">
+                ${formatNumber(String(index + 1).padStart(2, "0"))}
+              </div>
+              <div class="min-w-0">
+                <h3 class="break-words text-xl font-bold text-blue-950">${course.title}</h3>
+                <p class="break-words text-sm text-slate-500">
+                  ${formatNumber(lessons.length)} recorded classes | ${formatNumber(resourceCount)} resources
+                </p>
+              </div>
+            </div>
+            <div class="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
+              <span class="inline-flex rounded-full px-3 py-1 text-[10px] font-bold ${statusMeta.className}">
+                ${statusMeta.label}
+              </span>
+              <div
+                class="arrow-icon shrink-0 rounded-full bg-slate-100 p-2 transition-transform duration-300"
+                style="transform: rotate(${isOpen ? 180 : 0}deg)"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-6 w-6"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    stroke-width="3"
+                    d="M19 9l-7 7-7-7"
+                  />
+                </svg>
+              </div>
+            </div>
+          </button>
+
+          <div class="accordion-content px-4">
+            <div class="space-y-3 rounded-3xl bg-slate-50 p-4">
+              <div class="rounded-2xl border border-slate-100 bg-white p-4">
+                <div class="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
+                  <div class="min-w-0 flex-1">
+                    <div class="grid gap-3 text-sm text-slate-600 md:grid-cols-3">
+                      <div class="min-w-0">
+                        <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Faculty</p>
+                        <p class="mt-1 break-words font-semibold text-slate-800">${course.faculty}</p>
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Schedule</p>
+                        <p class="mt-1 break-words font-semibold text-slate-800">${course.schedule}</p>
+                      </div>
+                      <div class="min-w-0">
+                        <p class="text-xs font-bold uppercase tracking-wider text-slate-400">Category</p>
+                        <p class="mt-1 break-words font-semibold text-slate-800">${course.category}</p>
+                      </div>
+                    </div>
+                    <p class="mt-4 text-sm leading-6 text-slate-600">${statusMeta.summary}</p>
+                    <div class="mt-4 flex flex-wrap gap-2">
+                      <span class="rounded-full bg-blue-50 px-3 py-1 text-[10px] font-bold text-blue-700">
+                        Access: ${statusMeta.accessSummary}
+                      </span>
+                      <span class="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-700">
+                        Video Access: ${statusMeta.videoSummary}
+                      </span>
+                      <span class="rounded-full bg-violet-50 px-3 py-1 text-[10px] font-bold text-violet-700">
+                        Next Live: ${nextLiveLabel}
+                      </span>
+                      ${
+                        entry.catalogOnly
+                          ? `<span class="rounded-full bg-rose-50 px-3 py-1 text-[10px] font-bold text-rose-700">Videos stay locked</span>`
+                          : entry.previewOnly
+                          ? `<span class="rounded-full bg-slate-900 px-3 py-1 text-[10px] font-bold text-white">Preview Mode: Videos disabled</span>`
+                          : `<span class="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-bold text-emerald-700">Unlocked Videos: ${formatNumber(
+                              unlockedCount
+                            )}</span>`
+                      }
+                      ${
+                        totalLockedLessons
+                          ? `<span class="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-bold text-amber-700">${
+                              entry.catalogOnly
+                                ? "Locked Lessons"
+                                : entry.previewOnly
+                                ? "Visible But Locked"
+                                : "Locked Videos"
+                            }: ${formatNumber(totalLockedLessons)}</span>`
+                          : ""
+                      }
+                    </div>
+                  </div>
+                  ${
+                    entry.catalogOnly
+                      ? `
+                        <div class="w-full rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 xl:w-[320px]">
+                          <p class="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">${
+                            entry.pendingRequest ? "Request Sent" : "Unlock This Course"
+                          }</p>
+                          <p class="mt-3 text-sm leading-6 text-slate-600">${
+                            entry.pendingRequest
+                              ? "The admin queue already has your request for this course."
+                              : "Send this course to the admin queue so access can be approved for your account."
+                          }</p>
+                          <button
+                            type="button"
+                            data-request-course="${course.id}"
+                            class="mt-4 w-full rounded-2xl ${
+                              entry.pendingRequest
+                                ? "bg-slate-300 text-slate-600"
+                                : "bg-slate-950 text-white hover:bg-slate-800"
+                            } px-4 py-3 text-sm font-bold transition ${requestBusy ? "cursor-wait opacity-80" : ""}"
+                            ${entry.pendingRequest ? "disabled" : ""}
+                          >
+                            ${requestBusy ? "Sending..." : entry.pendingRequest ? "Request Sent" : "Request Access"}
+                          </button>
+                        </div>
+                      `
+                      : `
+                        <div class="w-full rounded-[1.5rem] border border-emerald-100 bg-emerald-50 p-4 xl:w-[320px]">
+                          <p class="text-xs font-bold uppercase tracking-[0.24em] text-emerald-600">${
+                            entry.previewOnly ? "Preview Active" : "Course Ready"
+                          }</p>
+                          <p class="mt-3 text-sm leading-6 text-emerald-900/80">${
+                            entry.previewOnly
+                              ? "You can inspect the full class list right now. Admin approval is still required for video playback."
+                              : "This course is already active in your account. Open the lessons below to start studying."
+                          }</p>
+                        </div>
+                      `
+                  }
+                </div>
+              </div>
+
+              ${
+                lessonItems.length
+                  ? lessonItems
+                      .map(({ lesson, accessState }, lessonIndex) => {
+                        const isCompleted = student.completedLessonIds.includes(lesson.id);
+                        return `
+                          <div class="card-hover group/item flex flex-col items-start justify-between rounded-2xl border border-slate-100 bg-white p-5 transition-all hover:border-blue-200 sm:flex-row sm:items-center">
+                            <div class="flex w-full min-w-0 items-center space-x-4 sm:w-auto">
+                              <div class="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-600 transition group-hover/item:bg-blue-600 group-hover/item:text-white">
+                                <svg
+                                  xmlns="http://www.w3.org/2000/svg"
+                                  class="h-5 w-5"
+                                  fill="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path d="M8 5v14l11-7z" />
+                                </svg>
+                              </div>
+                              <div class="min-w-0">
+                                <h4 class="break-words font-bold text-slate-800">
+                                  Class ${formatNumber(String(lessonIndex + 1).padStart(2, "0"))}: ${lesson.title}
+                                </h4>
+                                <p class="mt-1 text-xs text-slate-500">${lesson.module} | ${lesson.duration}</p>
+                                <button
+                                  type="button"
+                                  data-video-src="${encodeDataValue(lesson.youtubeUrl || lesson.youtubeId)}"
+                                  data-video-title="${encodeDataValue(lesson.title)}"
+                                  data-video-locked="${accessState.canWatch ? "false" : "true"}"
+                                  data-lock-reason="${encodeDataValue(accessState.reason)}"
+                                  class="mt-2 flex items-center text-xs font-bold transition ${
+                                    accessState.canWatch
+                                      ? "text-blue-600 hover:text-blue-800"
+                                      : "text-slate-400 hover:text-slate-500"
+                                  }"
+                                >
+                                  <span>${
+                                    accessState.canWatch
+                                      ? "Play Video"
+                                      : entry.catalogOnly
+                                      ? entry.pendingRequest
+                                        ? "Request Pending"
+                                        : "Request Access First"
+                                      : entry.previewOnly
+                                      ? "Class List Only"
+                                      : "Locked Until Payment"
+                                  }</span>
+                                  <svg
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    class="ml-1 h-3 w-3"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                    stroke="currentColor"
+                                  >
+                                    <path
+                                      stroke-linecap="round"
+                                      stroke-linejoin="round"
+                                      stroke-width="2"
+                                      d="M13 7l5 5m0 0l-5 5m5-5H6"
+                                    />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                            <div class="mt-4 flex flex-wrap items-center gap-2 sm:mt-0 sm:justify-end">
+                              <div class="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-400">
+                                Updated: ${formatDate(lesson.releaseDate)}
+                              </div>
+                              <div class="rounded-full px-3 py-1 text-[10px] font-bold ${
+                                accessState.canWatch
+                                  ? "bg-blue-50 text-blue-700"
+                                  : "bg-rose-100 text-rose-700"
+                              }">
+                                ${
+                                  accessState.canWatch
+                                    ? "Unlocked"
+                                    : entry.catalogOnly
+                                    ? entry.pendingRequest
+                                      ? "Pending Approval"
+                                      : "Catalog Lock"
+                                    : entry.previewOnly
+                                    ? "Preview Lock"
+                                    : "Payment Lock"
+                                }
+                              </div>
+                              <div class="rounded-full px-3 py-1 text-[10px] font-bold ${
+                                isCompleted
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-amber-100 text-amber-700"
+                              }">
+                                ${isCompleted ? "Completed" : "New"}
+                              </div>
+                            </div>
+                          </div>
+                        `;
+                      })
+                      .join("")
+                  : `
+                    <div class="rounded-2xl border border-dashed border-slate-200 bg-white p-6 text-sm text-slate-500">
+                      No classes have been added to this course yet.
+                    </div>
+                  `
+              }
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  dom.courseList.innerHTML = `${courseMapMarkup}<div class="mt-6 grid gap-6">${courseCardsMarkup}</div>`;
+
+  dom.courseList.querySelectorAll("[data-course-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.openCourseId = state.openCourseId === button.dataset.courseId ? "" : button.dataset.courseId;
+      renderCourseList(student, courseEntries);
+    });
+  });
+
+  dom.courseList.querySelectorAll("[data-video-src]").forEach((button) => {
+    button.addEventListener("click", () => {
+      if (button.dataset.videoLocked === "true") {
+        showToast(
+          decodeDataValue(button.dataset.lockReason) || "This video is not available right now.",
+          "info"
+        );
+        return;
+      }
+
+      openVideo(decodeDataValue(button.dataset.videoSrc), decodeDataValue(button.dataset.videoTitle));
+    });
+  });
+
+  dom.courseList.querySelectorAll("[data-course-map-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const courseId = String(button.dataset.courseMapId || "").trim();
+      if (!courseId) {
+        return;
+      }
+
+      state.openCourseId = courseId;
+      syncPortalSession();
+      renderCourseList(student, courseEntries);
+      const targetCard = dom.courseList.querySelector(`[data-course-card="${courseId}"]`);
+      if (targetCard) {
+        targetCard.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+    });
+  });
+
+  dom.courseList.querySelectorAll("[data-request-course]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const courseId = String(button.dataset.requestCourse || "").trim();
+      if (!courseId || state.courseRequestBusyIds.has(courseId)) {
+        return;
+      }
+
+      state.courseRequestBusyIds.add(courseId);
+      button.disabled = true;
+      button.textContent = "Sending...";
+
+      try {
+        const result = await requestCourseAccess(courseId);
+        state.openCourseId = courseId;
+        setFeedback(result.message || "Course request sent successfully.", "success");
+        showToast(result.message || "Course request sent successfully.");
+      } catch (error) {
+        setFeedback(error.message || "Unable to send the course request.", "error");
+        showToast(error.message || "Unable to send the course request.", "error");
+      } finally {
+        state.courseRequestBusyIds.delete(courseId);
+        const activeStudent = getActiveStudent();
+        if (activeStudent) {
+          renderDashboard(activeStudent);
+        }
+      }
+    });
+  });
+}
+
+function renderDashboard(student) {
+  const enrolledCourseEntries = getStudentCourseEntries(student);
+  const catalogCourseEntries = getCourseCatalogEntries(student);
+  const stats = getStudentStats(student, enrolledCourseEntries);
+
+  renderStudentHeader(student, stats);
+  renderCourseList(student, catalogCourseEntries);
+  renderProfileModal(student, enrolledCourseEntries);
+}
+
 function logout() {
   closeVideo();
   closeProfileModal();
   state.activeStudentId = "";
   state.openCourseId = "";
+  state.pendingCourseRequestIds = new Set();
+  state.courseRequestBusyIds = new Set();
   syncPortalSession();
   dom.query.value = "";
   dom.password.value = "";
@@ -2665,7 +3294,7 @@ async function performLogin(query = dom.query.value) {
     }
 
     state.activeStudentId = nextStudent.id;
-    state.openCourseId = getStudentCourseEntries(nextStudent)[0]?.course?.id || "";
+    state.openCourseId = getDefaultOpenCourseId(nextStudent);
     syncPortalSession();
 
     renderDashboard(nextStudent);
@@ -2692,6 +3321,9 @@ async function performLogin(query = dom.query.value) {
 async function initialize() {
   dom.password.placeholder = getPortalCopyValue("passwordPlaceholder", "Enter your password");
   setFeedback("");
+  state.pendingCourseRequestIds = new Set(
+    parseList(readStoredPortalValue(SESSION_STORAGE_KEYS.pendingCourseRequestIds))
+  );
   let restored = false;
   const hadStoredSession = !!readStoredPortalValue(SESSION_STORAGE_KEYS.activeStudentId).trim();
 

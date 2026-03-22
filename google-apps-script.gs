@@ -333,6 +333,7 @@ function doPost(e) {
     if (action === "login") return handleLogin_(request);
     if (action === "adminlogin") return handleAdminLogin_(request);
     if (action === "registerstudent") return handleStudentRegistration_(request);
+    if (action === "requeststudentcourses") return handleStudentCourseRequest_(request);
     if (action === "admingetdashboard") return handleAdminGetDashboard_(request);
     if (action === "adminupdatestudent") return handleAdminUpdateStudent_(request);
     if (action === "adminbulkstudentaction") return handleAdminBulkStudentAction_(request);
@@ -461,12 +462,8 @@ function handleLogin_(request) {
     previewOnly: previewOnly,
     studentId: studentId,
     students: sanitizeStudents_([student]),
-    courses: courses.filter(function (course) {
-      return relatedCourseIds.indexOf(String(course.id || "").trim()) !== -1;
-    }),
-    lessons: lessons.filter(function (lesson) {
-      return relatedCourseIds.indexOf(String(lesson.courseId || "").trim()) !== -1;
-    }),
+    courses: courses,
+    lessons: lessons,
     notices: notices,
     enrollments: relatedEnrollments,
     message: previewOnly ? "Preview access approved." : "Login approved.",
@@ -654,6 +651,151 @@ function handleStudentRegistration_(request) {
   });
 }
 
+function handleStudentCourseRequest_(request) {
+  const spreadsheet = getSpreadsheet_();
+  const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
+  const registrationsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.registrations);
+  const courses = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses));
+  const studentId = String(request.studentId || "").trim();
+
+  if (!studentId) {
+    return jsonOutput_({
+      ok: false,
+      message: "Student ID is required for a course request.",
+    });
+  }
+
+  const student = studentsData.records.find(function (entry) {
+    return getStudentId_(entry) === studentId;
+  });
+  if (!student) {
+    return jsonOutput_({
+      ok: false,
+      message: "Student account was not found.",
+    });
+  }
+
+  const requestedCourseIds = buildCourseIdList_(
+    request.requestedCourseIds || request.courseIds || request.courseId || "",
+    courses
+  );
+  if (!requestedCourseIds.length) {
+    return jsonOutput_({
+      ok: false,
+      message: "Select at least one live course before sending a request.",
+    });
+  }
+
+  const assignedCourseIds = getStudentAssignedCourseIds_(spreadsheet, student);
+  const newCourseIds = requestedCourseIds.filter(function (courseId) {
+    return assignedCourseIds.indexOf(courseId) === -1;
+  });
+  if (!newCourseIds.length) {
+    return jsonOutput_({
+      ok: false,
+      message: "These course requests are already active for this student.",
+    });
+  }
+
+  const pendingRegistrationIndex = registrationsData.records.findIndex(function (registration) {
+    return (
+      normalizeValue_(registration.status) === "pending" &&
+      String(registration.studentId || "").trim() === studentId
+    );
+  });
+
+  const studentName = String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.name, "Student")).trim();
+  const studentBatch = String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.batch, "-")).trim();
+  const studentSession = String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.session, "-")).trim();
+  const studentPhone = String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.phone, "")).trim();
+  const studentEmail = String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.email, "")).trim();
+  const studentPassword = normalizePasswordValue_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.password, ""));
+  let registrationId = "";
+  let mergedRequestedCourseIds = [];
+
+  if (pendingRegistrationIndex !== -1) {
+    const pendingRegistration = registrationsData.records[pendingRegistrationIndex] || {};
+    registrationId = String(pendingRegistration.id || "").trim();
+    mergedRequestedCourseIds = parseStringList_(pendingRegistration.requestedCourseIds || "").concat(newCourseIds);
+    mergedRequestedCourseIds = mergedRequestedCourseIds.filter(function (courseId, index, list) {
+      return list.indexOf(courseId) === index;
+    });
+
+    writeSheetEntries_(
+      registrationsData.sheet,
+      registrationsData.headers,
+      registrationsData.records.map(function (entry, index) {
+        if (index !== pendingRegistrationIndex) {
+          return entry;
+        }
+
+        const nextEntry = Object.assign({}, entry);
+        nextEntry.studentId = studentId;
+        nextEntry.name = studentName;
+        nextEntry.phone = studentPhone;
+        nextEntry.email = studentEmail;
+        nextEntry.batch = studentBatch;
+        nextEntry.session = studentSession;
+        nextEntry.password = studentPassword;
+        nextEntry.requestedCourseIds = buildPipeList_(mergedRequestedCourseIds);
+        nextEntry.submittedOn = getNowIso_();
+        return nextEntry;
+      })
+    );
+  } else {
+    registrationId = generateRegistrationId_(registrationsData.records);
+    mergedRequestedCourseIds = newCourseIds.slice();
+
+    writeSheetEntries_(
+      registrationsData.sheet,
+      registrationsData.headers,
+      registrationsData.records.concat([
+        {
+          id: registrationId,
+          studentId: studentId,
+          name: studentName,
+          phone: studentPhone,
+          email: studentEmail,
+          batch: studentBatch,
+          session: studentSession,
+          password: studentPassword,
+          requestedCourseIds: buildPipeList_(mergedRequestedCourseIds),
+          status: "Pending",
+          submittedOn: getNowIso_(),
+          reviewedOn: "",
+          reviewedBy: "",
+          reviewNote: "",
+        },
+      ])
+    );
+  }
+
+  appendSystemMessage_(spreadsheet, {
+    studentIds: buildPipeList_([studentId]),
+    title: "New Course Access Request",
+    message: buildCourseRequestAlertMessage_(
+      studentId,
+      studentName,
+      studentBatch,
+      studentSession,
+      newCourseIds,
+      courses
+    ),
+    status: "Sent",
+    createdBy: "Student Portal",
+  });
+
+  return jsonOutput_({
+    ok: true,
+    message:
+      newCourseIds.length === 1
+        ? "Course request sent to the admin queue."
+        : "Course requests sent to the admin queue.",
+    registrationId: registrationId,
+    requestedCourseIds: buildPipeList_(mergedRequestedCourseIds),
+  });
+}
+
 function buildSelfRegistrationAccessState_() {
   const mode = normalizeValue_(SELF_REGISTRATION_ACCESS_MODE_);
 
@@ -737,6 +879,53 @@ function buildRegistrationAlertMessage_(studentId, name, batch, session, request
     requestedCourseText +
     ". Review this request from the registration queue."
   );
+}
+
+function buildCourseRequestAlertMessage_(studentId, name, batch, session, requestedCourseIds, courses) {
+  const courseLookup = {};
+  (courses || []).forEach(function (course) {
+    const courseId = String(course.id || course.courseId || "").trim();
+    if (courseId) {
+      courseLookup[courseId] = String(course.shortTitle || course.title || courseId).trim();
+    }
+  });
+
+  const requestedCourseLabels = (requestedCourseIds || [])
+    .map(function (courseId) {
+      return courseLookup[courseId] || courseId;
+    })
+    .filter(Boolean);
+
+  return (
+    String(name || "A student").trim() +
+    " requested additional course access from the student portal. Student ID: " +
+    String(studentId || "-").trim() +
+    ". Batch: " +
+    String(batch || "-").trim() +
+    ". Session: " +
+    String(session || "-").trim() +
+    ". Requested courses: " +
+    (requestedCourseLabels.length ? requestedCourseLabels.join(", ") : "No course requested") +
+    ". Review this request from the registration queue."
+  );
+}
+
+function getStudentAssignedCourseIds_(spreadsheet, student) {
+  const studentCourseIds = parseStringList_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.enrolledCourseIds, ""));
+  const studentId = getStudentId_(student);
+  const enrollments = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.enrollments));
+  const enrollmentCourseIds = enrollments
+    .filter(function (enrollment) {
+      return String(enrollment.studentId || "").trim() === studentId;
+    })
+    .map(function (enrollment) {
+      return String(enrollment.courseId || "").trim();
+    })
+    .filter(Boolean);
+
+  return studentCourseIds.concat(enrollmentCourseIds).filter(function (courseId, index, list) {
+    return list.indexOf(courseId) === index;
+  });
 }
 
 function activateSelfRegisteredStudentIfAllowed_(spreadsheet, student) {
@@ -1150,6 +1339,11 @@ function handleAdminApproveRegistration_(request) {
     return getStudentId_(student) === studentId;
   });
   const requestedCourses = buildCourseIdList_(registration.requestedCourseIds || "", courses);
+  const mergedCourseIds = (existingStudent ? getStudentAssignedCourseIds_(spreadsheet, existingStudent) : [])
+    .concat(requestedCourses)
+    .filter(function (courseId, index, list) {
+      return courseId && list.indexOf(courseId) === index;
+    });
 
   const nextStudent = Object.assign(
     {
@@ -1169,7 +1363,7 @@ function handleAdminApproveRegistration_(request) {
         "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20" +
         encodeURIComponent(studentId),
       highlight: "Approved from admin panel.",
-      enrolledCourseIds: buildPipeList_(requestedCourses),
+      enrolledCourseIds: buildPipeList_(mergedCourseIds),
       completedLessonIds: "",
     },
     existingStudent || {}
@@ -1180,7 +1374,7 @@ function handleAdminApproveRegistration_(request) {
   nextStudent.loginApproval = "Approved";
   nextStudent.portalAccessMode = "";
   nextStudent.password = normalizePasswordValue_(nextStudent.password || registration.password || "");
-  nextStudent.enrolledCourseIds = buildPipeList_(requestedCourses);
+  nextStudent.enrolledCourseIds = buildPipeList_(mergedCourseIds);
   nextStudent.joinedOn = nextStudent.joinedOn || getTodayIso_();
 
   writeSheetEntries_(
@@ -1193,7 +1387,7 @@ function handleAdminApproveRegistration_(request) {
       .concat([nextStudent])
   );
 
-  syncStudentCourses_(spreadsheet, [studentId], requestedCourses, {
+  syncStudentCourses_(spreadsheet, [studentId], mergedCourseIds, {
     accessStartDate: getTodayIso_(),
     accessEndDate: "",
     videoAccessUntil: "",
