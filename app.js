@@ -2188,6 +2188,19 @@ function formatDate(dateValue, fallback = "Date unavailable") {
   return DATE_FORMATTER.format(date);
 }
 
+function formatDateTime(dateValue, fallback = "Date unavailable") {
+  if (!dateValue) {
+    return fallback;
+  }
+
+  const date = new Date(dateValue);
+  if (Number.isNaN(date.getTime())) {
+    return String(dateValue);
+  }
+
+  return DATE_TIME_FORMATTER.format(date);
+}
+
 function formatProfileSession(value, fallback = "-") {
   const text = String(value || "").trim();
   if (!text) {
@@ -2512,6 +2525,10 @@ function openStudentMessageModal(student = getActiveStudent()) {
   dom.studentMessageTitle.textContent = pendingMessage.title || "Admin Message";
   dom.studentMessageBody.textContent = pendingMessage.message || "";
   dom.studentMessageMeta.textContent = `From ${pendingMessage.createdBy || "Admin"} • ${formatDateTime(
+    pendingMessage.createdOn,
+    "Just now"
+  )}`;
+  dom.studentMessageMeta.textContent = `From ${pendingMessage.createdBy || "Admin"} | ${formatDateTime(
     pendingMessage.createdOn,
     "Just now"
   )}`;
