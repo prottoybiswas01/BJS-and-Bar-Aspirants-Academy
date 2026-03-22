@@ -72,7 +72,7 @@ const SHEET_HEADERS = {
     "reviewedBy",
     "reviewNote",
   ],
-  messages: ["id", "studentIds", "title", "message", "status", "createdOn", "createdBy"],
+  messages: ["id", "studentIds", "title", "message", "status", "createdOn", "createdBy", "audience", "recipientStateJson"],
 };
 
 const APPROVED_LOGIN_VALUES = ["approved", "yes", "true", "allow", "allowed", "active", "1"];
@@ -343,6 +343,7 @@ function doPost(e) {
     if (action === "adminapproveregistration") return handleAdminApproveRegistration_(request);
     if (action === "adminrejectregistration") return handleAdminRejectRegistration_(request);
     if (action === "adminsendmessage") return handleAdminSendMessage_(request);
+    if (action === "studentrespondmessage") return handleStudentRespondMessage_(request);
 
     return jsonOutput_({
       ok: false,
@@ -439,6 +440,7 @@ function handleLogin_(request) {
   const lessons = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.lessons));
   const enrollments = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.enrollments));
   const studentId = getStudentId_(student);
+  const inboxMessages = getStudentInboxMessages_(spreadsheet, studentId);
   const relatedEnrollments = enrollments.filter(function (enrollment) {
     return String(enrollment.studentId || "").trim() === studentId;
   });
@@ -466,6 +468,7 @@ function handleLogin_(request) {
     lessons: lessons,
     notices: notices,
     enrollments: relatedEnrollments,
+    messages: inboxMessages,
     message: previewOnly ? "Preview access approved." : "Login approved.",
   });
 }
@@ -908,6 +911,129 @@ function buildCourseRequestAlertMessage_(studentId, name, batch, session, reques
     (requestedCourseLabels.length ? requestedCourseLabels.join(", ") : "No course requested") +
     ". Review this request from the registration queue."
   );
+}
+
+function getMessageAudience_(message) {
+  const explicitAudience = normalizeValue_(message.audience || message.visibility || message.channel || "");
+  if (explicitAudience) {
+    return explicitAudience === "student" ? "student" : "admin";
+  }
+
+  const createdBy = normalizeValue_(message.createdBy || "");
+  if (createdBy === "system" || createdBy === "student portal") {
+    return "admin";
+  }
+
+  return "student";
+}
+
+function buildMessageRecipientState_(studentIds) {
+  return parseStringList_(studentIds).reduce(function (result, studentId) {
+    result[studentId] = {
+      status: "Pending",
+      reply: "",
+      respondedOn: "",
+      respondedBy: "",
+    };
+    return result;
+  }, {});
+}
+
+function parseMessageRecipientState_(value, studentIds) {
+  const parsed = parseJsonField_(value);
+  const recipientState =
+    parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+
+  parseStringList_(studentIds).forEach(function (studentId) {
+    const currentState =
+      recipientState[studentId] && typeof recipientState[studentId] === "object"
+        ? recipientState[studentId]
+        : {};
+    recipientState[studentId] = {
+      status: String(currentState.status || "Pending").trim() || "Pending",
+      reply: String(currentState.reply || "").trim(),
+      respondedOn: String(currentState.respondedOn || "").trim(),
+      respondedBy: String(currentState.respondedBy || "").trim(),
+    };
+  });
+
+  return recipientState;
+}
+
+function serializeMessageRecipientState_(recipientState) {
+  try {
+    return JSON.stringify(recipientState || {});
+  } catch (error) {
+    return "{}";
+  }
+}
+
+function buildMessageAggregateStatus_(recipientState) {
+  const statuses = Object.keys(recipientState || {}).map(function (studentId) {
+    return normalizeValue_((recipientState[studentId] || {}).status || "pending");
+  });
+
+  if (!statuses.length) {
+    return "Sent";
+  }
+
+  const pendingCount = statuses.filter(function (status) {
+    return !status || status === "pending" || status === "sent";
+  }).length;
+  const repliedCount = statuses.filter(function (status) {
+    return status === "replied";
+  }).length;
+  const skippedCount = statuses.filter(function (status) {
+    return status === "skipped";
+  }).length;
+
+  if (!pendingCount && repliedCount && !skippedCount) {
+    return "Replied";
+  }
+
+  if (!pendingCount && skippedCount && !repliedCount) {
+    return "Skipped";
+  }
+
+  if (!pendingCount) {
+    return "Completed";
+  }
+
+  if (repliedCount) {
+    return "Replies Received";
+  }
+
+  return "Sent";
+}
+
+function getStudentInboxMessages_(spreadsheet, studentId) {
+  if (!spreadsheet || !studentId) {
+    return [];
+  }
+
+  return readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.messages))
+    .filter(function (message) {
+      return (
+        getMessageAudience_(message) === "student" &&
+        parseStringList_(message.studentIds || "").indexOf(studentId) !== -1
+      );
+    })
+    .map(function (message) {
+      const targetedStudentIds = parseStringList_(message.studentIds || "");
+      const recipientState = parseMessageRecipientState_(
+        message.recipientStateJson || message.recipientState || "",
+        targetedStudentIds
+      );
+
+      return Object.assign({}, message, {
+        audience: "Student",
+        status: buildMessageAggregateStatus_(recipientState),
+        recipientStateJson: serializeMessageRecipientState_(recipientState),
+      });
+    })
+    .sort(function (left, right) {
+      return new Date(right.createdOn || 0) - new Date(left.createdOn || 0);
+    });
 }
 
 function getStudentAssignedCourseIds_(spreadsheet, student) {
@@ -1498,6 +1624,7 @@ function handleAdminSendMessage_(request) {
 
   const spreadsheet = getSpreadsheet_();
   const messagesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.messages);
+  const recipientState = buildMessageRecipientState_(studentIds);
 
   writeSheetEntries_(
     messagesData.sheet,
@@ -1508,14 +1635,105 @@ function handleAdminSendMessage_(request) {
         studentIds: buildPipeList_(studentIds),
         title: title || "Admin Message",
         message: message,
-        status: "Sent",
+        status: buildMessageAggregateStatus_(recipientState),
         createdOn: getNowIso_(),
         createdBy: auth.username || auth.name || auth.id || "",
+        audience: "Student",
+        recipientStateJson: serializeMessageRecipientState_(recipientState),
       },
     ])
   );
 
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
+}
+
+function handleStudentRespondMessage_(request) {
+  const studentId = String(request.studentId || "").trim();
+  const messageId = String(request.messageId || request.id || "").trim();
+  const responseType = normalizeValue_(request.responseType || request.mode || "");
+  const replyText = String(request.reply || request.replyText || "").trim();
+
+  if (!studentId || !messageId) {
+    return jsonOutput_({
+      ok: false,
+      message: "Student ID and message ID are required.",
+    });
+  }
+
+  if (responseType !== "reply" && responseType !== "skip") {
+    return jsonOutput_({
+      ok: false,
+      message: "Choose reply or skip for this message.",
+    });
+  }
+
+  if (responseType === "reply" && !replyText) {
+    return jsonOutput_({
+      ok: false,
+      message: "Write a reply before sending it to the admin.",
+    });
+  }
+
+  const spreadsheet = getSpreadsheet_();
+  const messagesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.messages);
+  const messageIndex = messagesData.records.findIndex(function (entry) {
+    return String(entry.id || "").trim() === messageId;
+  });
+
+  if (messageIndex === -1) {
+    return jsonOutput_({
+      ok: false,
+      message: "This message could not be found.",
+    });
+  }
+
+  const currentMessage = messagesData.records[messageIndex] || {};
+  const targetedStudentIds = parseStringList_(currentMessage.studentIds || "");
+  if (
+    getMessageAudience_(currentMessage) !== "student" ||
+    targetedStudentIds.indexOf(studentId) === -1
+  ) {
+    return jsonOutput_({
+      ok: false,
+      message: "This message is not available for the current student.",
+    });
+  }
+
+  const recipientState = parseMessageRecipientState_(
+    currentMessage.recipientStateJson || currentMessage.recipientState || "",
+    targetedStudentIds
+  );
+  recipientState[studentId] = Object.assign({}, recipientState[studentId] || {}, {
+    status: responseType === "reply" ? "Replied" : "Skipped",
+    reply: responseType === "reply" ? replyText : "",
+    respondedOn: getNowIso_(),
+    respondedBy: studentId,
+  });
+
+  writeSheetEntries_(
+    messagesData.sheet,
+    messagesData.headers,
+    messagesData.records.map(function (entry, index) {
+      if (index !== messageIndex) {
+        return entry;
+      }
+
+      const nextEntry = Object.assign({}, entry);
+      nextEntry.status = buildMessageAggregateStatus_(recipientState);
+      nextEntry.audience = getMessageAudience_(entry) === "admin" ? "Admin" : "Student";
+      nextEntry.recipientStateJson = serializeMessageRecipientState_(recipientState);
+      return nextEntry;
+    })
+  );
+
+  return jsonOutput_({
+    ok: true,
+    message:
+      responseType === "reply"
+        ? "Your reply has been sent to the admin."
+        : "This message has been skipped for now.",
+    messages: getStudentInboxMessages_(spreadsheet, studentId),
+  });
 }
 
 function appendSystemMessage_(spreadsheet, entry) {
@@ -1533,6 +1751,8 @@ function appendSystemMessage_(spreadsheet, entry) {
         status: String(entry.status || "Sent").trim() || "Sent",
         createdOn: getNowIso_(),
         createdBy: String(entry.createdBy || "System").trim() || "System",
+        audience: String(entry.audience || "Admin").trim() || "Admin",
+        recipientStateJson: String(entry.recipientStateJson || "").trim(),
       },
     ])
   );

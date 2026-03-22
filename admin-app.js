@@ -267,6 +267,48 @@ function buildPipeList(values) {
   return parseList(values).join("|");
 }
 
+function parseRecipientState(value, studentIds = []) {
+  let parsed = null;
+
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    parsed = value;
+  } else if (String(value || "").trim()) {
+    try {
+      parsed = JSON.parse(String(value));
+    } catch (error) {
+      parsed = null;
+    }
+  }
+
+  const recipientState =
+    parsed && typeof parsed === "object" && !Array.isArray(parsed) ? { ...parsed } : {};
+
+  parseList(studentIds).forEach((studentId) => {
+    const currentState =
+      recipientState[studentId] && typeof recipientState[studentId] === "object"
+        ? recipientState[studentId]
+        : {};
+    recipientState[studentId] = {
+      status: String(currentState.status || "Pending").trim() || "Pending",
+      reply: String(currentState.reply || "").trim(),
+      respondedOn: String(currentState.respondedOn || "").trim(),
+      respondedBy: String(currentState.respondedBy || "").trim(),
+    };
+  });
+
+  return recipientState;
+}
+
+function getMessageAudience(message) {
+  const explicitAudience = normalizeLookupText(message?.audience || message?.visibility || message?.channel || "");
+  if (explicitAudience) {
+    return explicitAudience === "student" ? "student" : "admin";
+  }
+
+  const createdBy = normalizeLookupText(message?.createdBy || "");
+  return createdBy === "system" || createdBy === "student portal" ? "admin" : "student";
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -351,6 +393,11 @@ function renderPill(value, type = "status") {
       : {
           active: "bg-blue-50 text-blue-700 ring-blue-100",
           pending: "bg-amber-50 text-amber-700 ring-amber-100",
+          sent: "bg-blue-50 text-blue-700 ring-blue-100",
+          replied: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+          "replies received": "bg-emerald-50 text-emerald-700 ring-emerald-100",
+          completed: "bg-indigo-50 text-indigo-700 ring-indigo-100",
+          skipped: "bg-slate-100 text-slate-600 ring-slate-200",
           blocked: "bg-rose-50 text-rose-700 ring-rose-100",
           suspended: "bg-rose-50 text-rose-700 ring-rose-100",
           expired: "bg-orange-50 text-orange-700 ring-orange-100",
@@ -514,6 +561,8 @@ function normalizeDashboard(payload = {}) {
       status: String(message.status || "Sent").trim(),
       createdOn: String(message.createdOn || "").trim(),
       createdBy: String(message.createdBy || "").trim(),
+      audience: getMessageAudience(message),
+      recipientState: parseRecipientState(message.recipientStateJson || message.recipientState || "", message.studentIds),
     }))
     .sort((left, right) => new Date(right.createdOn || 0) - new Date(left.createdOn || 0));
 
@@ -721,7 +770,7 @@ function getCachedDashboardPayload() {
   return cached;
 }
 
-async function requestAction(action, payload = {}) {
+async function requestAction(action, payload = {}, options = {}) {
   const response = await fetch(APP_CONFIG.remoteEndpoint, {
     method: "POST",
     headers: {
@@ -749,8 +798,10 @@ async function requestAction(action, payload = {}) {
 
   const data = await response.json();
   if (!data.ok && normalizeLookupText(data.message).includes("admin authentication is required")) {
-    clearAdminSession();
-    setFeedback(dom.adminLoginFeedback, "Admin session expired. Log in again.", "error");
+    if (!options.preserveSessionOnUnauthorized) {
+      clearAdminSession();
+      setFeedback(dom.adminLoginFeedback, "Admin session expired. Log in again.", "error");
+    }
   }
 
   return data;
@@ -817,8 +868,8 @@ function applyDashboardPayload(payload, feedbackMessage = "", tone = "success") 
   }
 }
 
-async function loadDashboard(feedbackMessage = "") {
-  const payload = await requestAction("admingetdashboard");
+async function loadDashboard(feedbackMessage = "", options = {}) {
+  const payload = await requestAction("admingetdashboard", {}, options);
   if (!payload.ok) {
     throw new Error(payload.message || "Unable to load admin dashboard.");
   }
@@ -1216,22 +1267,56 @@ function renderMessageLog() {
 
   dom.messageLogPanel.innerHTML = state.data.messages
     .slice(0, 8)
-    .map(
-      (message) => `
+    .map((message) => {
+      const recipientStates = Object.values(message.recipientState || {});
+      const repliedEntries = recipientStates.filter((entry) => normalizeStatus(entry.status) === "replied");
+      const skippedCount = recipientStates.filter((entry) => normalizeStatus(entry.status) === "skipped").length;
+      const pendingCount = recipientStates.filter((entry) => normalizeStatus(entry.status) === "pending").length;
+      const replyMarkup = repliedEntries.length
+        ? repliedEntries
+            .slice(0, 3)
+            .map((entry) => {
+              const student = getStudentById(entry.respondedBy) || null;
+              const studentLabel = student?.name || entry.respondedBy || "Student";
+              return `
+                <div class="rounded-2xl border border-white bg-white px-4 py-3">
+                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-600">${escapeHtml(studentLabel)}</p>
+                  <p class="mt-2 text-sm leading-6 text-slate-700">${escapeHtml(entry.reply || "Reply received.")}</p>
+                  <p class="mt-2 text-xs text-slate-400">${escapeHtml(formatDateTime(entry.respondedOn, "Just now"))}</p>
+                </div>
+              `;
+            })
+            .join("")
+        : "";
+
+      return `
         <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4">
           <div class="flex flex-wrap items-center justify-between gap-3">
-            <h4 class="text-sm font-extrabold text-slate-950">${escapeHtml(message.title)}</h4>
+            <div class="min-w-0">
+              <h4 class="text-sm font-extrabold text-slate-950">${escapeHtml(message.title)}</h4>
+              <p class="mt-2 flex flex-wrap gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                <span>${message.audience === "student" ? "Student Popup" : "Admin Notice"}</span>
+                <span>Pending: ${pendingCount}</span>
+                <span>Replies: ${repliedEntries.length}</span>
+                <span>Skipped: ${skippedCount}</span>
+              </p>
+            </div>
             ${renderPill(message.status)}
           </div>
           <p class="mt-3 text-sm leading-6 text-slate-600">${escapeHtml(message.message)}</p>
+          ${
+            replyMarkup
+              ? `<div class="mt-4 grid gap-3">${replyMarkup}</div>`
+              : ""
+          }
           <p class="mt-3 text-xs text-slate-400">
             Students: ${message.studentIds.length} | By: ${escapeHtml(message.createdBy || "-")} | ${escapeHtml(
               formatDateTime(message.createdOn, "Not recorded")
             )}
           </p>
         </div>
-      `
-    )
+      `;
+    })
     .join("");
 }
 
@@ -1459,7 +1544,7 @@ async function handleSendMessage() {
   }
 
   try {
-    setFeedback(dom.messageFeedback, "Saving message log...", "info");
+    setFeedback(dom.messageFeedback, "Sending popup message...", "info");
     const response = await requestAction("adminsendmessage", {
       studentIds: buildPipeList(selectedStudentIds),
       title,
@@ -1467,15 +1552,15 @@ async function handleSendMessage() {
     });
 
     if (!response.ok) {
-      throw new Error(response.message || "Unable to save the message.");
+      throw new Error(response.message || "Unable to send the popup message.");
     }
 
-    applyDashboardPayload(response, "Message log saved.");
+    applyDashboardPayload(response, "Popup message sent.");
     dom.messageTitleInput.value = "";
     dom.messageBodyInput.value = "";
-    setFeedback(dom.messageFeedback, "Message log saved.", "success");
+    setFeedback(dom.messageFeedback, "Popup message sent to the selected students.", "success");
   } catch (error) {
-    setFeedback(dom.messageFeedback, error.message || "Unable to save the message.", "error");
+    setFeedback(dom.messageFeedback, error.message || "Unable to send the popup message.", "error");
   }
 }
 
@@ -1684,7 +1769,9 @@ async function bootstrap() {
       cachedPayload ? "Syncing live admin data..." : "Restoring admin session...",
       "info"
     );
-    await loadDashboard("Admin session restored.");
+    await loadDashboard("Admin session restored.", {
+      preserveSessionOnUnauthorized: true,
+    });
     restoreAdminScrollPosition();
   } catch (error) {
     if (!state.token) {

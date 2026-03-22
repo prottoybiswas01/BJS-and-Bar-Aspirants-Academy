@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://script.google.com" />
     <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin />
-    <link rel="stylesheet" href="./styles/app.css?v=20260323-2" />
+    <link rel="stylesheet" href="./styles/app.css?v=20260323-3" />
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
@@ -25,16 +25,41 @@
       .hero-shell {
         background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 55%, #0f766e 100%);
       }
+
+      .register-header-shell {
+        gap: 1rem;
+      }
+
+      .register-header-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+      }
+
+      @media (max-width: 767px) {
+        .register-header-shell {
+          align-items: flex-start;
+        }
+
+        .register-header-actions {
+          width: 100%;
+        }
+
+        .register-header-actions > a {
+          flex: 1 1 140px;
+          text-align: center;
+        }
+      }
     </style>
   </head>
   <body class="min-h-screen text-slate-900">
     <header class="border-b border-white/20 hero-shell text-white">
-      <div class="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-5">
+      <div class="register-header-shell mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-5">
         <div>
           <p class="text-xs font-bold uppercase tracking-[0.35em] text-white/60">Ain Pathshala</p>
           <h1 class="mt-2 text-2xl font-extrabold md:text-3xl">Student Registration</h1>
         </div>
-        <div class="flex flex-wrap gap-3">
+        <div class="register-header-actions">
           <a
             href="./index.html"
             class="rounded-2xl border border-white/20 px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10"

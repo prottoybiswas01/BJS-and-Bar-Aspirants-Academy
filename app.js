@@ -413,6 +413,21 @@ const demoData = {
       status: "Active",
     },
   ],
+  messages: [
+    {
+      id: "msg-demo-01",
+      studentIds: ["LAW-2026-014", "BAR-2026-008"],
+      title: "Check Your Weekly Schedule",
+      message:
+        "Please review the updated weekly class routine before tonight. If you need help, reply here and the admin panel will receive your message.",
+      status: "Sent",
+      createdOn: "2026-03-22T18:30:00+06:00",
+      createdBy: "Portal Admin",
+      audience: "Student",
+      recipientStateJson:
+        '{"LAW-2026-014":{"status":"Pending","reply":"","respondedOn":"","respondedBy":""},"BAR-2026-008":{"status":"Pending","reply":"","respondedOn":"","respondedBy":""}}',
+    },
+  ],
 };
 
 function createEmptyPortalData() {
@@ -422,6 +437,7 @@ function createEmptyPortalData() {
     lessons: [],
     notices: [],
     enrollments: [],
+    messages: [],
     hasEnrollmentSheet: false,
     courseMap: new Map(),
     courseReferenceMap: new Map(),
@@ -436,6 +452,8 @@ const state = {
   openCourseId: "",
   pendingCourseRequestIds: new Set(),
   courseRequestBusyIds: new Set(),
+  activeMessageId: "",
+  messageReplyBusy: false,
   loginBusy: false,
 };
 
@@ -483,6 +501,16 @@ const dom = {
   approvalStatusTitle: document.getElementById("approvalStatusTitle"),
   approvalStatusMessage: document.getElementById("approvalStatusMessage"),
   approvalStatusNote: document.getElementById("approvalStatusNote"),
+  studentMessageModal: document.getElementById("studentMessageModal"),
+  studentMessageBackdrop: document.getElementById("studentMessageBackdrop"),
+  closeStudentMessageBtn: document.getElementById("closeStudentMessageBtn"),
+  studentMessageTitle: document.getElementById("studentMessageTitle"),
+  studentMessageBody: document.getElementById("studentMessageBody"),
+  studentMessageMeta: document.getElementById("studentMessageMeta"),
+  studentMessageReply: document.getElementById("studentMessageReply"),
+  studentMessageFeedback: document.getElementById("studentMessageFeedback"),
+  studentMessageSkipBtn: document.getElementById("studentMessageSkipBtn"),
+  studentMessageReplyBtn: document.getElementById("studentMessageReplyBtn"),
   profileBackBtn: document.getElementById("profileBackBtn"),
   profileLogoutBtn: document.getElementById("profileLogoutBtn"),
   profileImage: document.getElementById("profileImage"),
@@ -594,6 +622,7 @@ function serializePortalDataSnapshot(data) {
     lessons: data?.lessons || [],
     notices: data?.notices || [],
     enrollments,
+    messages: data?.messages || [],
   };
 }
 
@@ -917,6 +946,38 @@ function parseList(value) {
     .filter(Boolean);
 }
 
+function parseRecipientState(value, studentIds = []) {
+  let parsed = null;
+
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    parsed = value;
+  } else if (String(value || "").trim()) {
+    try {
+      parsed = JSON.parse(String(value));
+    } catch (error) {
+      parsed = null;
+    }
+  }
+
+  const recipientState =
+    parsed && typeof parsed === "object" && !Array.isArray(parsed) ? { ...parsed } : {};
+
+  parseList(studentIds).forEach((studentId) => {
+    const currentState =
+      recipientState[studentId] && typeof recipientState[studentId] === "object"
+        ? recipientState[studentId]
+        : {};
+    recipientState[studentId] = {
+      status: String(currentState.status || "Pending").trim() || "Pending",
+      reply: String(currentState.reply || "").trim(),
+      respondedOn: String(currentState.respondedOn || "").trim(),
+      respondedBy: String(currentState.respondedBy || "").trim(),
+    };
+  });
+
+  return recipientState;
+}
+
 function toMonthKey(year, monthNumber) {
   const numericMonth = Number(monthNumber);
   if (!year || numericMonth < 1 || numericMonth > 12) {
@@ -1185,6 +1246,25 @@ function normalizeData(raw) {
     })
     .filter((enrollment) => enrollment.studentId && enrollment.courseId);
   const notices = Array.isArray(raw.notices) ? raw.notices.slice() : [];
+  const messages = Array.isArray(raw.messages)
+    ? raw.messages
+        .map((message) => ({
+          id: String(message.id || "").trim(),
+          studentIds: parseList(message.studentIds || ""),
+          title: String(message.title || "Admin Message").trim(),
+          message: String(message.message || "").trim(),
+          status: String(message.status || "Sent").trim(),
+          createdOn: String(message.createdOn || "").trim(),
+          createdBy: String(message.createdBy || "").trim(),
+          audience: String(message.audience || "Student").trim() || "Student",
+          recipientState: parseRecipientState(
+            message.recipientStateJson || message.recipientState || "",
+            message.studentIds || ""
+          ),
+        }))
+        .filter((message) => message.id)
+        .sort((left, right) => new Date(right.createdOn || 0) - new Date(left.createdOn || 0))
+    : null;
   const lessonsByCourseId = buildLessonsByCourseId(lessons);
 
   return {
@@ -1193,6 +1273,7 @@ function normalizeData(raw) {
     lessons,
     notices,
     enrollments,
+    messages,
     hasEnrollmentSheet: enrollments.length > 0,
     courseMap: new Map(courses.map((course) => [course.id, course])),
     courseReferenceMap: buildCourseReferenceMap(courses),
@@ -1248,6 +1329,10 @@ function applyPortalData(result) {
     return;
   }
 
+  if (!Array.isArray(result.data.messages)) {
+    result.data.messages = Array.isArray(state.data.messages) ? state.data.messages : [];
+  }
+
   state.data = result.data;
   state.dataModeLabel = result.modeLabel || "";
   persistPortalDataSnapshot(result);
@@ -1283,6 +1368,27 @@ function getStudentByQuery(query) {
 
 function getActiveStudent() {
   return state.data.students.find((student) => student.id === state.activeStudentId) || null;
+}
+
+function getStudentInboxMessages(student) {
+  if (!student) {
+    return [];
+  }
+
+  return (state.data.messages || []).filter((message) => {
+    return parseList(message.studentIds).includes(student.id);
+  });
+}
+
+function getStudentPendingMessages(student) {
+  if (!student) {
+    return [];
+  }
+
+  return getStudentInboxMessages(student).filter((message) => {
+    const recipientState = message.recipientState?.[student.id] || null;
+    return !recipientState || normalizeAccessModeValue(recipientState.status || "pending") === "pending";
+  });
 }
 
 function syncPortalSession() {
@@ -1382,6 +1488,7 @@ function restorePortalSession() {
   renderDashboard(student);
   togglePage("profile");
   setFeedback(`${student.name} session restored after refresh.`, "success");
+  openStudentMessageModal(student);
   return true;
 }
 
@@ -2226,7 +2333,9 @@ function setLoginBusy(isBusy, busyLabel = "Checking...") {
 }
 
 function syncBodyOverflow() {
-  const modalElements = [dom.videoModal, dom.profileModal, dom.approvalStatusModal].filter(Boolean);
+  const modalElements = [dom.videoModal, dom.profileModal, dom.approvalStatusModal, dom.studentMessageModal].filter(
+    Boolean
+  );
   const hasVisibleModal = modalElements.some((element) => !element.classList.contains("hidden"));
   dom.body.style.overflow = hasVisibleModal ? "hidden" : "";
 }
@@ -2262,11 +2371,79 @@ function closeApprovalStatusModal() {
   syncBodyOverflow();
 }
 
+function getCurrentPendingStudentMessage(student = getActiveStudent()) {
+  const pendingMessages = getStudentPendingMessages(student);
+  if (!pendingMessages.length) {
+    return null;
+  }
+
+  return pendingMessages.find((message) => message.id === state.activeMessageId) || pendingMessages[0];
+}
+
+function syncStudentMessageButtons() {
+  const isBusy = !!state.messageReplyBusy;
+  if (dom.studentMessageReplyBtn) {
+    dom.studentMessageReplyBtn.disabled = isBusy;
+    dom.studentMessageReplyBtn.classList.toggle("cursor-wait", isBusy);
+    dom.studentMessageReplyBtn.classList.toggle("opacity-80", isBusy);
+    dom.studentMessageReplyBtn.textContent = isBusy ? "Sending Reply..." : "Send Reply";
+  }
+
+  if (dom.studentMessageSkipBtn) {
+    dom.studentMessageSkipBtn.disabled = isBusy;
+    dom.studentMessageSkipBtn.classList.toggle("cursor-wait", isBusy);
+    dom.studentMessageSkipBtn.classList.toggle("opacity-80", isBusy);
+  }
+}
+
+function closeStudentMessageModal(options = {}) {
+  if (!options.preserveActiveId) {
+    state.activeMessageId = "";
+  }
+
+  if (dom.studentMessageReply) {
+    dom.studentMessageReply.value = "";
+  }
+  if (dom.studentMessageFeedback) {
+    dom.studentMessageFeedback.textContent = "";
+    dom.studentMessageFeedback.className = "hidden";
+  }
+
+  dom.studentMessageModal.classList.add("hidden");
+  dom.studentMessageModal.classList.remove("flex");
+  syncBodyOverflow();
+}
+
+function openStudentMessageModal(student = getActiveStudent()) {
+  const pendingMessage = getCurrentPendingStudentMessage(student);
+  if (!student || !pendingMessage) {
+    closeStudentMessageModal();
+    return false;
+  }
+
+  state.activeMessageId = pendingMessage.id;
+  dom.studentMessageTitle.textContent = pendingMessage.title || "Admin Message";
+  dom.studentMessageBody.textContent = pendingMessage.message || "";
+  dom.studentMessageMeta.textContent = `From ${pendingMessage.createdBy || "Admin"} • ${formatDateTime(
+    pendingMessage.createdOn,
+    "Just now"
+  )}`;
+  dom.studentMessageReply.value = "";
+  dom.studentMessageFeedback.textContent = "";
+  dom.studentMessageFeedback.className = "hidden";
+  syncStudentMessageButtons();
+  dom.studentMessageModal.classList.remove("hidden");
+  dom.studentMessageModal.classList.add("flex");
+  syncBodyOverflow();
+  return true;
+}
+
 function togglePage(page) {
   const isLogin = page === "login";
 
   if (isLogin) {
     closeProfileModal();
+    closeStudentMessageModal();
   }
 
   dom.loginSection.classList.toggle("hidden", !isLogin);
@@ -2717,6 +2894,151 @@ function renderDashboardLegacy(student) {
   renderStudentHeader(student, stats);
   renderCourseList(student, courseEntries);
   renderProfileModal(student, courseEntries);
+}
+
+function replaceStudentInboxMessages(messages) {
+  const normalized = normalizeData({
+    messages,
+  });
+
+  if (Array.isArray(normalized.messages)) {
+    state.data.messages = normalized.messages;
+    persistPortalDataSnapshot({
+      data: state.data,
+      modeLabel: state.dataModeLabel,
+      persistCache: state.dataModeLabel === "Live Google Sheet",
+    });
+  }
+}
+
+async function requestStudentMessageResponse(responseType) {
+  const student = getActiveStudent();
+  const pendingMessage = getCurrentPendingStudentMessage(student);
+
+  if (!student || !pendingMessage) {
+    throw new Error("No pending message is available right now.");
+  }
+
+  const replyText = String(dom.studentMessageReply?.value || "").trim();
+  if (responseType === "reply" && !replyText) {
+    throw new Error("Write a reply before sending it to the admin.");
+  }
+
+  if (APP_CONFIG.dataMode !== "remote" || !APP_CONFIG.remoteEndpoint) {
+    const nextMessages = (state.data.messages || []).map((message) => {
+      if (message.id !== pendingMessage.id) {
+        return message;
+      }
+
+      const recipientState = {
+        ...(message.recipientState || {}),
+        [student.id]: {
+          status: responseType === "reply" ? "Replied" : "Skipped",
+          reply: responseType === "reply" ? replyText : "",
+          respondedOn: new Date().toISOString(),
+          respondedBy: student.id,
+        },
+      };
+
+      return {
+        ...message,
+        status: responseType === "reply" ? "Replies Received" : "Completed",
+        recipientState,
+      };
+    });
+
+    replaceStudentInboxMessages(nextMessages);
+    return {
+      ok: true,
+      message: responseType === "reply" ? "Your demo reply has been saved." : "This demo message was skipped.",
+      messages: nextMessages,
+    };
+  }
+
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timeoutHandle = controller
+    ? setTimeout(() => controller.abort(), APP_CONFIG.remoteRequestTimeoutMs)
+    : null;
+
+  try {
+    const response = await fetch(APP_CONFIG.remoteEndpoint, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      },
+      body: new URLSearchParams({
+        action: "studentrespondmessage",
+        studentId: student.id,
+        messageId: pendingMessage.id,
+        responseType,
+        reply: replyText,
+      }),
+      signal: controller ? controller.signal : undefined,
+    });
+
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+
+    if (!response.ok) {
+      throw new Error("Unable to send your message response right now.");
+    }
+
+    const result = await response.json();
+    if (!result.ok) {
+      throw new Error(result.message || "Message response failed.");
+    }
+
+    replaceStudentInboxMessages(result.messages || []);
+    return result;
+  } catch (error) {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+
+    if (error && error.name === "AbortError") {
+      throw new Error("Message response took too long. Please try again.");
+    }
+
+    throw error;
+  }
+}
+
+async function handleStudentMessageAction(responseType) {
+  if (state.messageReplyBusy) {
+    return;
+  }
+
+  state.messageReplyBusy = true;
+  syncStudentMessageButtons();
+
+  try {
+    const result = await requestStudentMessageResponse(responseType);
+    const activeStudent = getActiveStudent();
+    state.activeMessageId = "";
+    if (activeStudent) {
+      renderDashboard(activeStudent);
+    }
+
+    showToast(
+      result.message || (responseType === "reply" ? "Reply sent successfully." : "Message skipped."),
+      "success"
+    );
+
+    if (activeStudent && getStudentPendingMessages(activeStudent).length) {
+      openStudentMessageModal(activeStudent);
+    } else {
+      closeStudentMessageModal();
+    }
+  } catch (error) {
+    dom.studentMessageFeedback.textContent = error.message || "Unable to send your response.";
+    dom.studentMessageFeedback.className =
+      "mt-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600";
+  } finally {
+    state.messageReplyBusy = false;
+    syncStudentMessageButtons();
+  }
 }
 
 async function requestCourseAccess(courseId) {
@@ -3216,10 +3538,13 @@ function renderDashboard(student) {
 function logout() {
   closeVideo();
   closeProfileModal();
+  closeStudentMessageModal();
   state.activeStudentId = "";
   state.openCourseId = "";
   state.pendingCourseRequestIds = new Set();
   state.courseRequestBusyIds = new Set();
+  state.activeMessageId = "";
+  state.messageReplyBusy = false;
   syncPortalSession();
   dom.query.value = "";
   dom.password.value = "";
@@ -3330,6 +3655,7 @@ async function performLogin(query = dom.query.value) {
     syncStudentPasswordToggle();
     setFeedback(`${nextStudent.name} logged in successfully.`, "success");
     showToast("Logged in successfully!");
+    openStudentMessageModal(nextStudent);
     window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (error) {
     console.error("Login completion failed.", error, authResult);
@@ -3348,6 +3674,7 @@ async function performLogin(query = dom.query.value) {
 async function initialize() {
   dom.password.placeholder = getPortalCopyValue("passwordPlaceholder", "Enter your password");
   syncStudentPasswordToggle();
+  syncStudentMessageButtons();
   setFeedback("");
   state.pendingCourseRequestIds = new Set(
     parseList(readStoredPortalValue(SESSION_STORAGE_KEYS.pendingCourseRequestIds))
@@ -3418,6 +3745,22 @@ dom.profileBackdrop.addEventListener("click", closeProfileModal);
 dom.closeApprovalStatusBtn.addEventListener("click", closeApprovalStatusModal);
 dom.approvalStatusBackdrop.addEventListener("click", closeApprovalStatusModal);
 dom.approvalStatusOkBtn.addEventListener("click", closeApprovalStatusModal);
+if (dom.closeStudentMessageBtn) {
+  dom.closeStudentMessageBtn.addEventListener("click", () => closeStudentMessageModal({ preserveActiveId: true }));
+}
+if (dom.studentMessageBackdrop) {
+  dom.studentMessageBackdrop.addEventListener("click", () => closeStudentMessageModal({ preserveActiveId: true }));
+}
+if (dom.studentMessageSkipBtn) {
+  dom.studentMessageSkipBtn.addEventListener("click", async () => {
+    await handleStudentMessageAction("skip");
+  });
+}
+if (dom.studentMessageReplyBtn) {
+  dom.studentMessageReplyBtn.addEventListener("click", async () => {
+    await handleStudentMessageAction("reply");
+  });
+}
 dom.profileBackBtn.addEventListener("click", closeProfileModal);
 dom.profileLogoutBtn.addEventListener("click", () => {
   logout();
@@ -3431,6 +3774,11 @@ dom.profileResetLink.addEventListener("click", () => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
+    if (!dom.studentMessageModal.classList.contains("hidden")) {
+      closeStudentMessageModal({ preserveActiveId: true });
+      return;
+    }
+
     if (!dom.approvalStatusModal.classList.contains("hidden")) {
       closeApprovalStatusModal();
       return;
