@@ -442,6 +442,7 @@ const state = {
 const dom = {
   body: document.body,
   loginBtn: document.getElementById("loginBtn"),
+  registerNavLink: document.getElementById("registerNavLink"),
   userProfile: document.getElementById("userProfile"),
   navStudentName: document.getElementById("navStudentName"),
   navStudentId: document.getElementById("navStudentId"),
@@ -2271,6 +2272,7 @@ function togglePage(page) {
   dom.loginSection.classList.toggle("hidden", !isLogin);
   dom.dashboardSection.classList.toggle("hidden", isLogin);
   dom.loginBtn.classList.toggle("hidden", !isLogin);
+  dom.registerNavLink?.classList.toggle("hidden", !isLogin);
   dom.userProfile.classList.toggle("hidden", isLogin);
 }
 

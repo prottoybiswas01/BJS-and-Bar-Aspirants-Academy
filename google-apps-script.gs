@@ -2547,35 +2547,127 @@ function getAuthorizedAdminSession_(request) {
     return null;
   }
 
-  const cache = CacheService.getScriptCache();
-  const raw = cache.get(ADMIN_TOKEN_PREFIX_ + token);
-  if (!raw) {
+  const cachedPayload = readAdminSessionPayloadFromCache_(token);
+  const storedPayload = cachedPayload || readAdminSessionPayloadFromStore_(token);
+  if (!storedPayload) {
     return null;
   }
 
-  const payload = parseJsonField_(raw);
-  if (!payload) {
+  if (isAdminSessionExpired_(storedPayload)) {
+    deleteAdminSessionPayload_(token);
     return null;
   }
 
-  cache.put(ADMIN_TOKEN_PREFIX_ + token, JSON.stringify(payload), ADMIN_TOKEN_TTL_SECONDS_);
-  return payload;
+  const refreshedPayload = refreshAdminSessionPayloadExpiry_(storedPayload);
+  storeAdminSessionPayload_(token, refreshedPayload);
+  return sanitizeAdminSessionPayload_(refreshedPayload);
 }
 
 function putAdminSession_(admin) {
   const token = Utilities.getUuid();
-  CacheService.getScriptCache().put(
-    ADMIN_TOKEN_PREFIX_ + token,
-    JSON.stringify({
-      id: admin.id || "",
-      username: admin.username || "",
-      name: admin.name || "",
-      role: admin.role || "",
-      email: admin.email || "",
-    }),
-    ADMIN_TOKEN_TTL_SECONDS_
-  );
+  const payload = refreshAdminSessionPayloadExpiry_({
+    id: admin.id || "",
+    username: admin.username || "",
+    name: admin.name || "",
+    role: admin.role || "",
+    email: admin.email || "",
+  });
+  storeAdminSessionPayload_(token, payload);
   return token;
+}
+
+function getAdminSessionStorageKey_(token) {
+  return ADMIN_TOKEN_PREFIX_ + String(token || "").trim();
+}
+
+function getAdminSessionStore_() {
+  try {
+    return PropertiesService.getScriptProperties();
+  } catch (error) {
+    return null;
+  }
+}
+
+function refreshAdminSessionPayloadExpiry_(payload) {
+  const nextPayload = Object.assign({}, payload);
+  nextPayload.expiresAt = Date.now() + ADMIN_TOKEN_TTL_SECONDS_ * 1000;
+  return nextPayload;
+}
+
+function sanitizeAdminSessionPayload_(payload) {
+  const nextPayload = Object.assign({}, payload);
+  delete nextPayload.expiresAt;
+  return nextPayload;
+}
+
+function isAdminSessionExpired_(payload) {
+  const expiresAt = Number(payload && payload.expiresAt);
+  return !expiresAt || expiresAt <= Date.now();
+}
+
+function readAdminSessionPayloadFromCache_(token) {
+  try {
+    const raw = CacheService.getScriptCache().get(getAdminSessionStorageKey_(token));
+    return raw ? parseJsonField_(raw) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function readAdminSessionPayloadFromStore_(token) {
+  const store = getAdminSessionStore_();
+  if (!store) {
+    return null;
+  }
+
+  try {
+    const raw = store.getProperty(getAdminSessionStorageKey_(token));
+    return raw ? parseJsonField_(raw) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function storeAdminSessionPayload_(token, payload) {
+  const key = getAdminSessionStorageKey_(token);
+
+  try {
+    CacheService.getScriptCache().put(key, JSON.stringify(payload), ADMIN_TOKEN_TTL_SECONDS_);
+  } catch (error) {
+    // Ignore cache write failures.
+  }
+
+  const store = getAdminSessionStore_();
+  if (!store) {
+    return;
+  }
+
+  try {
+    store.setProperty(key, JSON.stringify(payload));
+  } catch (error) {
+    // Ignore property write failures.
+  }
+}
+
+function deleteAdminSessionPayload_(token) {
+  const key = getAdminSessionStorageKey_(token);
+
+  try {
+    CacheService.getScriptCache().remove(key);
+  } catch (error) {
+    // Ignore cache delete failures.
+  }
+
+  const store = getAdminSessionStore_();
+  if (!store) {
+    return;
+  }
+
+  try {
+    store.deleteProperty(key);
+  } catch (error) {
+    // Ignore property delete failures.
+  }
 }
 
 function buildAdminPayload_(spreadsheet, adminSession) {

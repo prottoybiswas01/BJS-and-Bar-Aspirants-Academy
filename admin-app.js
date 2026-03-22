@@ -8,6 +8,7 @@ const APP_CONFIG = Object.freeze({
 const STORAGE_KEYS = Object.freeze({
   adminToken: "ain-pathshala.adminToken",
   adminDashboardCache: "ain-pathshala.adminDashboardCache",
+  adminScrollY: "ain-pathshala.adminScrollY",
 });
 
 const LOCALIZED_DIGIT_RANGES = Object.freeze([
@@ -198,6 +199,30 @@ function writeStoredJson(key, value) {
   }
 
   writeStoredValue(key, JSON.stringify(value));
+}
+
+function readStoredNumber(key) {
+  const value = Number(readStoredValue(key));
+  return Number.isFinite(value) ? value : 0;
+}
+
+function persistAdminScrollPosition() {
+  if (!state.token || dom.adminDashboard.classList.contains("hidden")) {
+    return;
+  }
+
+  writeStoredValue(STORAGE_KEYS.adminScrollY, Math.max(window.scrollY || window.pageYOffset || 0, 0));
+}
+
+function restoreAdminScrollPosition() {
+  const targetScrollY = Math.max(readStoredNumber(STORAGE_KEYS.adminScrollY), 0);
+  if (!targetScrollY) {
+    return;
+  }
+
+  const restore = () => window.scrollTo({ top: targetScrollY, left: 0, behavior: "auto" });
+  window.requestAnimationFrame(restore);
+  window.setTimeout(restore, 60);
 }
 
 function normalizeLocalizedDigits(value) {
@@ -682,6 +707,7 @@ function clearAdminSession() {
   state.visibleStudentIds = [];
   removeStoredValue(STORAGE_KEYS.adminToken);
   removeStoredValue(STORAGE_KEYS.adminDashboardCache);
+  removeStoredValue(STORAGE_KEYS.adminScrollY);
   renderSelectionState();
   toggleAuthView(false);
 }
@@ -1649,6 +1675,7 @@ async function bootstrap() {
       "info"
     );
     toggleAuthView(true);
+    restoreAdminScrollPosition();
   }
 
   try {
@@ -1658,6 +1685,7 @@ async function bootstrap() {
       "info"
     );
     await loadDashboard("Admin session restored.");
+    restoreAdminScrollPosition();
   } catch (error) {
     if (!state.token) {
       return;
@@ -1713,6 +1741,7 @@ dom.courseForm.addEventListener("submit", handleCourseSave);
 dom.clearCourseFormBtn.addEventListener("click", clearCourseForm);
 dom.courseListPanel.addEventListener("click", handleCourseListClick);
 dom.registrationQueue.addEventListener("click", handleRegistrationQueueClick);
+window.addEventListener("scroll", persistAdminScrollPosition, { passive: true });
 window.addEventListener("scroll", syncFloatingSelectionBarVisibility, { passive: true });
 window.addEventListener("resize", syncFloatingSelectionBarVisibility);
 
