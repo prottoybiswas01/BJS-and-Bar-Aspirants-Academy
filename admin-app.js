@@ -73,10 +73,6 @@ const dom = {
   selectedStudentsSummary: document.getElementById("selectedStudentsSummary"),
   selectedStudentsMeta: document.getElementById("selectedStudentsMeta"),
   studentQuickActionBar: document.getElementById("studentQuickActionBar"),
-  floatingSelectionBar: document.getElementById("floatingSelectionBar"),
-  floatingSelectedSummary: document.getElementById("floatingSelectedSummary"),
-  floatingSelectedMeta: document.getElementById("floatingSelectedMeta"),
-  floatingQuickActionBar: document.getElementById("floatingQuickActionBar"),
   studentEditorLabel: document.getElementById("studentEditorLabel"),
   studentEditorForm: document.getElementById("studentEditorForm"),
   editorStudentId: document.getElementById("editorStudentId"),
@@ -453,28 +449,6 @@ function setButtonDisabled(button, disabled) {
   button.classList.toggle("cursor-not-allowed", !!disabled);
 }
 
-function shouldShowFloatingSelectionBar() {
-  if (!getSelectedStudentIds().length || !dom.studentSelectionBar || dom.studentSelectionBar.classList.contains("hidden")) {
-    return false;
-  }
-
-  const rect = dom.studentSelectionBar.getBoundingClientRect();
-  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-  const visibilityThreshold = 24;
-  const isVisibleInViewport =
-    rect.bottom > visibilityThreshold && rect.top < Math.max(viewportHeight - visibilityThreshold, visibilityThreshold);
-
-  return !isVisibleInViewport;
-}
-
-function syncFloatingSelectionBarVisibility() {
-  if (!dom.floatingSelectionBar) {
-    return;
-  }
-
-  dom.floatingSelectionBar.classList.toggle("hidden", !shouldShowFloatingSelectionBar());
-}
-
 function createCourseMap(courses) {
   return new Map(courses.map((course) => [course.id, course]));
 }
@@ -639,13 +613,6 @@ function renderSelectionState() {
   dom.selectedStudentsWorkspaceMeta.textContent = hasSelection
     ? `Managing ${selectedNames}. You can update approval, preview access, course access, and messages from this block.`
     : "Select one or more students to update approval, preview access, assign courses, and send messages.";
-  dom.floatingSelectedSummary.textContent = hasSelection
-    ? `${selectedCount} student${selectedCount === 1 ? "" : "s"} selected`
-    : "0 students selected";
-  dom.floatingSelectedMeta.textContent = hasSelection
-    ? `${selectedNames}. Use quick actions here without leaving this view.`
-    : "Use quick actions here.";
-
   dom.selectAllStudents.disabled = !state.visibleStudentIds.length;
   dom.bulkActionSelect.disabled = !hasSelection;
   setButtonDisabled(dom.applyBulkActionBtn, !hasSelection);
@@ -655,11 +622,6 @@ function renderSelectionState() {
   [...dom.studentQuickActionBar.querySelectorAll("button")].forEach((button) => {
     setButtonDisabled(button, !hasSelection);
   });
-  [...dom.floatingQuickActionBar.querySelectorAll("button")].forEach((button) => {
-    setButtonDisabled(button, !hasSelection);
-  });
-
-  syncFloatingSelectionBarVisibility();
 }
 
 function buildStudentSearchHaystack(student) {
@@ -1820,7 +1782,6 @@ dom.studentMobileList.addEventListener("click", handleStudentTableClick);
 dom.studentMobileList.addEventListener("change", handleStudentTableChange);
 dom.selectAllStudents.addEventListener("change", handleSelectAllToggle);
 dom.studentQuickActionBar.addEventListener("click", handleStudentQuickActionClick);
-dom.floatingQuickActionBar.addEventListener("click", handleStudentQuickActionClick);
 dom.applyBulkActionBtn.addEventListener("click", handleBulkActionApply);
 dom.assignCoursesBtn.addEventListener("click", handleAssignCourses);
 dom.sendMessageBtn.addEventListener("click", handleSendMessage);
@@ -1829,7 +1790,5 @@ dom.clearCourseFormBtn.addEventListener("click", clearCourseForm);
 dom.courseListPanel.addEventListener("click", handleCourseListClick);
 dom.registrationQueue.addEventListener("click", handleRegistrationQueueClick);
 window.addEventListener("scroll", persistAdminScrollPosition, { passive: true });
-window.addEventListener("scroll", syncFloatingSelectionBarVisibility, { passive: true });
-window.addEventListener("resize", syncFloatingSelectionBarVisibility);
 
 bootstrap();

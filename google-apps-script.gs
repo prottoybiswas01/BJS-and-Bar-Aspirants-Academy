@@ -334,6 +334,7 @@ function doPost(e) {
     if (action === "adminlogin") return handleAdminLogin_(request);
     if (action === "registerstudent") return handleStudentRegistration_(request);
     if (action === "requeststudentcourses") return handleStudentCourseRequest_(request);
+    if (action === "studentgetinbox") return handleStudentGetInbox_(request);
     if (action === "admingetdashboard") return handleAdminGetDashboard_(request);
     if (action === "adminupdatestudent") return handleAdminUpdateStudent_(request);
     if (action === "adminbulkstudentaction") return handleAdminBulkStudentAction_(request);
@@ -796,6 +797,35 @@ function handleStudentCourseRequest_(request) {
         : "Course requests sent to the admin queue.",
     registrationId: registrationId,
     requestedCourseIds: buildPipeList_(mergedRequestedCourseIds),
+  });
+}
+
+function handleStudentGetInbox_(request) {
+  const spreadsheet = getSpreadsheet_();
+  const studentId = String(request.studentId || "").trim();
+
+  if (!studentId) {
+    return jsonOutput_({
+      ok: false,
+      message: "Student ID is required to load inbox messages.",
+    });
+  }
+
+  const students = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students));
+  const matchedStudent = students.find(function (student) {
+    return getStudentId_(student) === studentId;
+  });
+
+  if (!matchedStudent) {
+    return jsonOutput_({
+      ok: false,
+      message: "Student account was not found.",
+    });
+  }
+
+  return jsonOutput_({
+    ok: true,
+    messages: getStudentInboxMessages_(spreadsheet, studentId),
   });
 }
 

@@ -485,6 +485,8 @@ const dom = {
   studentStatus: document.getElementById("studentStatus"),
   studentBatch: document.getElementById("studentBatch"),
   studentSession: document.getElementById("studentSession"),
+  messageInbox: document.getElementById("messageInbox"),
+  messageInboxList: document.getElementById("messageInboxList"),
   courseList: document.getElementById("courseList"),
   videoModal: document.getElementById("videoModal"),
   videoBackdrop: document.getElementById("videoBackdrop"),
@@ -1391,6 +1393,90 @@ function getStudentPendingMessages(student) {
   });
 }
 
+async function fetchStudentInbox(studentId) {
+  if (!studentId) {
+    throw new Error("Student ID is required to load inbox messages.");
+  }
+
+  if (APP_CONFIG.dataMode !== "remote" || !APP_CONFIG.remoteEndpoint) {
+    return {
+      ok: true,
+      messages: getStudentInboxMessages({ id: studentId }),
+    };
+  }
+
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timeoutHandle = controller
+    ? setTimeout(() => controller.abort(), APP_CONFIG.remoteRequestTimeoutMs)
+    : null;
+
+  try {
+    const response = await fetch(APP_CONFIG.remoteEndpoint, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      },
+      body: new URLSearchParams({
+        action: "studentgetinbox",
+        studentId,
+      }),
+      signal: controller ? controller.signal : undefined,
+    });
+
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+
+    if (!response.ok) {
+      throw new Error("Unable to load inbox messages right now.");
+    }
+
+    const result = await response.json();
+    if (!result.ok) {
+      throw new Error(result.message || "Inbox could not be loaded.");
+    }
+
+    return result;
+  } catch (error) {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+
+    if (error && error.name === "AbortError") {
+      throw new Error("Inbox loading took too long. Please try again.");
+    }
+
+    throw error;
+  }
+}
+
+async function refreshStudentInboxInBackground(studentId = state.activeStudentId, options = {}) {
+  if (!studentId) {
+    return;
+  }
+
+  try {
+    const result = await fetchStudentInbox(studentId);
+    if (studentId !== state.activeStudentId) {
+      return;
+    }
+
+    replaceStudentInboxMessages(result.messages || []);
+    const activeStudent = getActiveStudent();
+    if (!activeStudent) {
+      return;
+    }
+
+    renderMessageInbox(activeStudent);
+    if (options.openModal !== false && getStudentPendingMessages(activeStudent).length) {
+      openStudentMessageModal(activeStudent);
+    }
+  } catch (error) {
+    console.warn("Unable to refresh student inbox.", error);
+  }
+}
+
 function syncPortalSession() {
   const portalStores = getPortalStores();
   if (!portalStores.length) {
@@ -1489,6 +1575,7 @@ function restorePortalSession() {
   togglePage("profile");
   setFeedback(`${student.name} session restored after refresh.`, "success");
   openStudentMessageModal(student);
+  refreshStudentInboxInBackground(student.id, { openModal: true });
   return true;
 }
 
@@ -2518,6 +2605,90 @@ function renderStudentHeader(student, stats) {
   dom.studentSession.textContent = student.session || "-";
 }
 
+function renderMessageInbox(student) {
+  if (!dom.messageInbox || !dom.messageInboxList) {
+    return;
+  }
+
+  const inboxMessages = getStudentInboxMessages(student);
+  dom.messageInbox.classList.remove("hidden");
+
+  if (!inboxMessages.length) {
+    dom.messageInboxList.innerHTML = `
+      <div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-500">
+        No admin message is waiting for you right now.
+      </div>
+    `;
+    return;
+  }
+
+  dom.messageInboxList.innerHTML = inboxMessages
+    .slice(0, 6)
+    .map((message) => {
+      const recipientState = message.recipientState?.[student.id] || {
+        status: "Pending",
+        reply: "",
+        respondedOn: "",
+      };
+      const normalizedStatus = normalizeAccessModeValue(recipientState.status || "pending");
+      const statusClass =
+        normalizedStatus === "replied"
+          ? "bg-emerald-100 text-emerald-700"
+          : normalizedStatus === "skipped"
+          ? "bg-slate-200 text-slate-700"
+          : "bg-amber-100 text-amber-700";
+
+      return `
+        <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${statusClass}">
+                  ${normalizedStatus === "replied" ? "Replied" : normalizedStatus === "skipped" ? "Skipped" : "Pending"}
+                </span>
+                <span class="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                  ${formatDateTime(message.createdOn, "Just now")}
+                </span>
+              </div>
+              <h4 class="mt-3 text-lg font-bold text-blue-950">${escapeHtml(message.title || "Admin Message")}</h4>
+              <p class="mt-3 text-sm leading-6 text-slate-600">${escapeHtml(message.message || "")}</p>
+              ${
+                recipientState.reply
+                  ? `<p class="mt-4 rounded-2xl border border-emerald-100 bg-white px-4 py-3 text-sm text-emerald-700"><span class="font-bold">Your reply:</span> ${escapeHtml(
+                      recipientState.reply
+                    )}</p>`
+                  : ""
+              }
+            </div>
+            <div class="w-full sm:w-auto">
+              ${
+                normalizedStatus === "pending"
+                  ? `<button
+                      type="button"
+                      data-open-message="${escapeHtml(message.id)}"
+                      class="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 sm:w-auto"
+                    >
+                      Open Message
+                    </button>`
+                  : `<div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600">
+                      ${normalizedStatus === "replied" ? "Reply sent" : "Skipped"}
+                    </div>`
+              }
+            </div>
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+
+  dom.messageInboxList.querySelectorAll("[data-open-message]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.activeMessageId = button.dataset.openMessage || "";
+      openStudentMessageModal(student);
+    });
+  });
+}
+
 function renderProfileModal(student, courseEntries) {
   const avatarInitials = getAvatarInitials(student.name);
 
@@ -3531,6 +3702,7 @@ function renderDashboard(student) {
   const stats = getStudentStats(student, enrolledCourseEntries);
 
   renderStudentHeader(student, stats);
+  renderMessageInbox(student);
   renderCourseList(student, catalogCourseEntries);
   renderProfileModal(student, enrolledCourseEntries);
 }
@@ -3656,6 +3828,7 @@ async function performLogin(query = dom.query.value) {
     setFeedback(`${nextStudent.name} logged in successfully.`, "success");
     showToast("Logged in successfully!");
     openStudentMessageModal(nextStudent);
+    refreshStudentInboxInBackground(nextStudent.id, { openModal: true });
     window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (error) {
     console.error("Login completion failed.", error, authResult);
@@ -3790,6 +3963,18 @@ document.addEventListener("keydown", (event) => {
     }
 
     closeVideo();
+  }
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && state.activeStudentId) {
+    refreshStudentInboxInBackground(state.activeStudentId, { openModal: true });
+  }
+});
+
+window.addEventListener("focus", () => {
+  if (state.activeStudentId) {
+    refreshStudentInboxInBackground(state.activeStudentId, { openModal: true });
   }
 });
 
