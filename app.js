@@ -6,6 +6,7 @@ const APP_CONFIG = Object.freeze({
   remoteEndpoint: `https://script.google.com/macros/s/${APPS_SCRIPT_DEPLOYMENT_ID}/exec`,
   remoteRequestTimeoutMs: 15000,
   portalDataCacheTtlMs: 5 * 60 * 1000,
+  studentInboxPollIntervalMs: 15000,
 });
 
 const SESSION_STORAGE_KEYS = Object.freeze({
@@ -453,7 +454,9 @@ const state = {
   pendingCourseRequestIds: new Set(),
   courseRequestBusyIds: new Set(),
   activeMessageId: "",
+  dismissedMessageIds: new Set(),
   messageReplyBusy: false,
+  messageInboxPollHandle: 0,
   loginBusy: false,
 };
 
@@ -1393,6 +1396,24 @@ function getStudentPendingMessages(student) {
   });
 }
 
+function getNextAutoOpenStudentMessage(student) {
+  return getStudentPendingMessages(student).find((message) => {
+    return !state.dismissedMessageIds.has(message.id);
+  }) || null;
+}
+
+function dismissStudentMessage(messageId = state.activeMessageId) {
+  if (messageId) {
+    state.dismissedMessageIds.add(messageId);
+  }
+}
+
+function clearDismissedStudentMessage(messageId) {
+  if (messageId) {
+    state.dismissedMessageIds.delete(messageId);
+  }
+}
+
 async function fetchStudentInbox(studentId) {
   if (!studentId) {
     throw new Error("Student ID is required to load inbox messages.");
@@ -1469,12 +1490,47 @@ async function refreshStudentInboxInBackground(studentId = state.activeStudentId
     }
 
     renderMessageInbox(activeStudent);
-    if (options.openModal !== false && getStudentPendingMessages(activeStudent).length) {
+    const nextAutoOpenMessage = getNextAutoOpenStudentMessage(activeStudent);
+    if (options.openModal !== false && nextAutoOpenMessage) {
+      state.activeMessageId = nextAutoOpenMessage.id;
       openStudentMessageModal(activeStudent);
     }
   } catch (error) {
     console.warn("Unable to refresh student inbox.", error);
   }
+}
+
+function stopStudentInboxPolling() {
+  if (state.messageInboxPollHandle) {
+    window.clearInterval(state.messageInboxPollHandle);
+    state.messageInboxPollHandle = 0;
+  }
+}
+
+function startStudentInboxPolling(studentId = state.activeStudentId) {
+  stopStudentInboxPolling();
+
+  if (
+    !studentId ||
+    APP_CONFIG.dataMode !== "remote" ||
+    !APP_CONFIG.remoteEndpoint ||
+    typeof window === "undefined"
+  ) {
+    return;
+  }
+
+  state.messageInboxPollHandle = window.setInterval(() => {
+    if (
+      !state.activeStudentId ||
+      state.activeStudentId !== studentId ||
+      state.messageReplyBusy ||
+      document.hidden
+    ) {
+      return;
+    }
+
+    refreshStudentInboxInBackground(studentId, { openModal: true });
+  }, APP_CONFIG.studentInboxPollIntervalMs);
 }
 
 function syncPortalSession() {
@@ -1574,7 +1630,12 @@ function restorePortalSession() {
   renderDashboard(student);
   togglePage("profile");
   setFeedback(`${student.name} session restored after refresh.`, "success");
-  openStudentMessageModal(student);
+  const nextAutoOpenMessage = getNextAutoOpenStudentMessage(student);
+  if (nextAutoOpenMessage) {
+    state.activeMessageId = nextAutoOpenMessage.id;
+    openStudentMessageModal(student);
+  }
+  startStudentInboxPolling(student.id);
   refreshStudentInboxInBackground(student.id, { openModal: true });
   return true;
 }
@@ -2636,41 +2697,24 @@ function renderMessageInbox(student) {
     return;
   }
 
-  const inboxMessages = getStudentInboxMessages(student);
-  dom.messageInbox.classList.remove("hidden");
-
-  if (!inboxMessages.length) {
-    dom.messageInboxList.innerHTML = `
-      <div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-500">
-        No admin message is waiting for you right now.
-      </div>
-    `;
+  const pendingMessages = getStudentPendingMessages(student);
+  if (!pendingMessages.length) {
+    dom.messageInbox.classList.add("hidden");
+    dom.messageInboxList.innerHTML = "";
     return;
   }
 
-  dom.messageInboxList.innerHTML = inboxMessages
+  dom.messageInbox.classList.remove("hidden");
+  dom.messageInboxList.innerHTML = pendingMessages
     .slice(0, 6)
     .map((message) => {
-      const recipientState = message.recipientState?.[student.id] || {
-        status: "Pending",
-        reply: "",
-        respondedOn: "",
-      };
-      const normalizedStatus = normalizeAccessModeValue(recipientState.status || "pending");
-      const statusClass =
-        normalizedStatus === "replied"
-          ? "bg-emerald-100 text-emerald-700"
-          : normalizedStatus === "skipped"
-          ? "bg-slate-200 text-slate-700"
-          : "bg-amber-100 text-amber-700";
-
       return `
         <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
           <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
-                <span class="rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] ${statusClass}">
-                  ${normalizedStatus === "replied" ? "Replied" : normalizedStatus === "skipped" ? "Skipped" : "Pending"}
+                <span class="rounded-full bg-amber-100 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.18em] text-amber-700">
+                  Pending
                 </span>
                 <span class="text-[11px] font-bold uppercase tracking-[0.16em] text-slate-400">
                   ${formatDateTime(message.createdOn, "Just now")}
@@ -2678,28 +2722,15 @@ function renderMessageInbox(student) {
               </div>
               <h4 class="mt-3 text-lg font-bold text-blue-950">${escapeHtml(message.title || "Admin Message")}</h4>
               <p class="mt-3 text-sm leading-6 text-slate-600">${escapeHtml(message.message || "")}</p>
-              ${
-                recipientState.reply
-                  ? `<p class="mt-4 rounded-2xl border border-emerald-100 bg-white px-4 py-3 text-sm text-emerald-700"><span class="font-bold">Your reply:</span> ${escapeHtml(
-                      recipientState.reply
-                    )}</p>`
-                  : ""
-              }
             </div>
             <div class="w-full sm:w-auto">
-              ${
-                normalizedStatus === "pending"
-                  ? `<button
-                      type="button"
-                      data-open-message="${escapeHtml(message.id)}"
-                      class="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 sm:w-auto"
-                    >
-                      Open Message
-                    </button>`
-                  : `<div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-600">
-                      ${normalizedStatus === "replied" ? "Reply sent" : "Skipped"}
-                    </div>`
-              }
+              <button
+                type="button"
+                data-open-message="${escapeHtml(message.id)}"
+                class="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 sm:w-auto"
+              >
+                Open Message
+              </button>
             </div>
           </div>
         </article>
@@ -3100,6 +3131,12 @@ function replaceStudentInboxMessages(messages) {
 
   if (Array.isArray(normalized.messages)) {
     state.data.messages = normalized.messages;
+    const availableMessageIds = new Set(
+      normalized.messages.map((message) => String(message.id || "").trim()).filter(Boolean)
+    );
+    state.dismissedMessageIds = new Set(
+      [...state.dismissedMessageIds].filter((messageId) => availableMessageIds.has(messageId))
+    );
     persistPortalDataSnapshot({
       data: state.data,
       modeLabel: state.dataModeLabel,
@@ -3211,8 +3248,22 @@ async function handleStudentMessageAction(responseType) {
   syncStudentMessageButtons();
 
   try {
-    const result = await requestStudentMessageResponse(responseType);
     const activeStudent = getActiveStudent();
+    const pendingMessage = getCurrentPendingStudentMessage(activeStudent);
+
+    if (responseType === "skip") {
+      dismissStudentMessage(pendingMessage?.id);
+      state.activeMessageId = "";
+      closeStudentMessageModal();
+      if (activeStudent) {
+        renderMessageInbox(activeStudent);
+      }
+      showToast("Message kept for later. Reply when you are ready.", "info");
+      return;
+    }
+
+    const result = await requestStudentMessageResponse(responseType);
+    clearDismissedStudentMessage(pendingMessage?.id);
     state.activeMessageId = "";
     if (activeStudent) {
       renderDashboard(activeStudent);
@@ -3737,11 +3788,13 @@ function logout() {
   closeVideo();
   closeProfileModal();
   closeStudentMessageModal();
+  stopStudentInboxPolling();
   state.activeStudentId = "";
   state.openCourseId = "";
   state.pendingCourseRequestIds = new Set();
   state.courseRequestBusyIds = new Set();
   state.activeMessageId = "";
+  state.dismissedMessageIds = new Set();
   state.messageReplyBusy = false;
   syncPortalSession();
   dom.query.value = "";
@@ -3853,7 +3906,12 @@ async function performLogin(query = dom.query.value) {
     syncStudentPasswordToggle();
     setFeedback(`${nextStudent.name} logged in successfully.`, "success");
     showToast("Logged in successfully!");
-    openStudentMessageModal(nextStudent);
+    const nextAutoOpenMessage = getNextAutoOpenStudentMessage(nextStudent);
+    if (nextAutoOpenMessage) {
+      state.activeMessageId = nextAutoOpenMessage.id;
+      openStudentMessageModal(nextStudent);
+    }
+    startStudentInboxPolling(nextStudent.id);
     refreshStudentInboxInBackground(nextStudent.id, { openModal: true });
     window.scrollTo({ top: 0, behavior: "smooth" });
   } catch (error) {
@@ -3945,10 +4003,16 @@ dom.closeApprovalStatusBtn.addEventListener("click", closeApprovalStatusModal);
 dom.approvalStatusBackdrop.addEventListener("click", closeApprovalStatusModal);
 dom.approvalStatusOkBtn.addEventListener("click", closeApprovalStatusModal);
 if (dom.closeStudentMessageBtn) {
-  dom.closeStudentMessageBtn.addEventListener("click", () => closeStudentMessageModal({ preserveActiveId: true }));
+  dom.closeStudentMessageBtn.addEventListener("click", () => {
+    dismissStudentMessage();
+    closeStudentMessageModal({ preserveActiveId: true });
+  });
 }
 if (dom.studentMessageBackdrop) {
-  dom.studentMessageBackdrop.addEventListener("click", () => closeStudentMessageModal({ preserveActiveId: true }));
+  dom.studentMessageBackdrop.addEventListener("click", () => {
+    dismissStudentMessage();
+    closeStudentMessageModal({ preserveActiveId: true });
+  });
 }
 if (dom.studentMessageSkipBtn) {
   dom.studentMessageSkipBtn.addEventListener("click", async () => {
@@ -3974,6 +4038,7 @@ dom.profileResetLink.addEventListener("click", () => {
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
     if (!dom.studentMessageModal.classList.contains("hidden")) {
+      dismissStudentMessage();
       closeStudentMessageModal({ preserveActiveId: true });
       return;
     }
