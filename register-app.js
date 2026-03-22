@@ -34,7 +34,29 @@ const registerDom = {
   registerCourseList: document.getElementById("registerCourseList"),
   registrationFeedback: document.getElementById("registrationFeedback"),
   registrationResult: document.getElementById("registrationResult"),
+  registerPasswordToggle: document.getElementById("registerPasswordToggle"),
 };
+
+function syncRegisterPasswordToggle() {
+  if (!registerDom.registerPassword || !registerDom.registerPasswordToggle) {
+    return;
+  }
+
+  const isHidden = registerDom.registerPassword.type === "password";
+  registerDom.registerPasswordToggle.textContent = isHidden ? "Show" : "Hide";
+  registerDom.registerPasswordToggle.setAttribute("aria-pressed", isHidden ? "false" : "true");
+}
+
+function toggleRegisterPasswordVisibility() {
+  if (!registerDom.registerPassword) {
+    return;
+  }
+
+  registerDom.registerPassword.type =
+    registerDom.registerPassword.type === "password" ? "text" : "password";
+  syncRegisterPasswordToggle();
+  registerDom.registerPassword.focus();
+}
 
 function getRegisterCopyValue(key, fallback) {
   if (typeof window !== "undefined" && typeof window.getAinPortalCopy === "function") {
@@ -377,6 +399,8 @@ async function handleRegistrationSubmit(event) {
     `;
 
     registerDom.registrationForm.reset();
+    registerDom.registerPassword.type = "password";
+    syncRegisterPasswordToggle();
     renderRegisterCourses();
   } catch (error) {
     setRegisterFeedback(error.message || "Unable to submit the registration.", "error");
@@ -386,5 +410,9 @@ async function handleRegistrationSubmit(event) {
 registerDom.registrationForm.addEventListener("submit", handleRegistrationSubmit);
 registerDom.refreshCoursesBtn.addEventListener("click", () => loadRegisterCourses({ forceRefresh: true }));
 registerDom.registerCourseList.addEventListener("change", handleRegisterCourseSelection);
+if (registerDom.registerPasswordToggle) {
+  registerDom.registerPasswordToggle.addEventListener("click", toggleRegisterPasswordVisibility);
+  syncRegisterPasswordToggle();
+}
 
 loadRegisterCourses();

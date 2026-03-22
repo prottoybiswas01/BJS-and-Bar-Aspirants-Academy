@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://script.google.com" />
     <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin />
-    <link rel="stylesheet" href="./styles/app.css?v=20260323-1" />
+    <link rel="stylesheet" href="./styles/app.css?v=20260323-2" />
     <link
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
       rel="stylesheet"
@@ -219,7 +219,7 @@
                 class="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
             </div>
-            <div>
+            <div class="relative">
               <div class="mb-2 flex justify-between">
                 <label
                   class="block text-xs font-bold uppercase tracking-wider text-slate-500"
@@ -231,9 +231,19 @@
               <input
                 id="student-password"
                 type="password"
+                autocomplete="current-password"
                 placeholder="••••••••"
-                class="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+                class="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 pr-24 transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
               />
+              <button
+                id="studentPasswordToggle"
+                type="button"
+                class="absolute right-3 top-[3.4rem] rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
+                aria-controls="student-password"
+                aria-pressed="false"
+              >
+                Show
+              </button>
             </div>
             <button
               type="submit"
@@ -634,6 +644,6 @@
     </div>
 
     <script src="./portal-copy.js?v=20260315-1"></script>
-    <script src="./app.js?v=20260323-1"></script>
+    <script src="./app.js?v=20260323-2"></script>
   </body>
 </html>

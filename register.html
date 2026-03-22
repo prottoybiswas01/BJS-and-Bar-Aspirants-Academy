@@ -8,7 +8,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://script.google.com" />
     <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin />
-    <link rel="stylesheet" href="./styles/app.css?v=20260323-1" />
+    <link rel="stylesheet" href="./styles/app.css?v=20260323-2" />
     <link
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
@@ -52,6 +52,44 @@
     </header>
 
     <main class="mx-auto max-w-6xl px-4 py-8">
+      <section class="mb-8 overflow-hidden rounded-[2rem] border border-white/70 bg-white shadow-[0_24px_60px_-32px_rgba(15,23,42,0.35)]">
+        <div class="hero-shell px-6 py-7 text-white md:px-8">
+          <div class="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div class="max-w-3xl">
+              <p class="text-xs font-bold uppercase tracking-[0.28em] text-white/60">Registration Help</p>
+              <h2 class="mt-3 text-2xl font-extrabold md:text-3xl">See The Full Registration Process First</h2>
+              <p class="mt-3 text-sm leading-6 text-white/75">
+                Watch the registration guide before submitting the form. If anyone needs direct help,
+                the WhatsApp button will open your support number immediately.
+              </p>
+            </div>
+            <div class="grid gap-3 sm:grid-cols-2 lg:min-w-[360px]">
+              <a
+                href="https://youtu.be/iYoeBgFUmF4"
+                target="_blank"
+                rel="noreferrer"
+                class="inline-flex items-center justify-center rounded-2xl bg-white px-4 py-3 text-sm font-bold text-slate-950 transition hover:bg-slate-100"
+              >
+                Watch Registration Guide
+              </a>
+              <a
+                href="https://wa.me/8801978167016?text=Assalamu%20Alaikum%2C%20I%20need%20help%20with%20registration."
+                target="_blank"
+                rel="noreferrer"
+                class="inline-flex items-center justify-center gap-3 rounded-2xl bg-green-500 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-600"
+              >
+                <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.417-.003 6.557-5.338 11.892-11.893 11.892-1.997-.001-3.951-.5-5.688-1.448l-6.305 1.652zm6.599-3.835c1.405.836 2.948 1.278 4.531 1.28h.005c5.344 0 9.693-4.349 9.696-9.693.001-2.59-1.011-5.025-2.85-6.864s-4.275-2.852-6.866-2.853c-5.345 0-9.694 4.349-9.697 9.694-.001 1.709.449 3.377 1.303 4.832l-.93 3.395 3.477-.912zm9.852-5.415c-.273-.137-1.62-.8-1.871-.891-.252-.092-.435-.137-.617.137-.183.274-.708.891-.868 1.074-.159.183-.32.206-.593.068-.273-.137-1.154-.425-2.199-1.357-.812-.724-1.36-1.618-1.52-1.891-.159-.274-.017-.422.12-.558.123-.122.273-.32.411-.48.137-.16.183-.274.274-.457.091-.183.046-.343-.023-.48-.068-.137-.617-1.486-.845-2.035-.223-.537-.468-.464-.641-.473l-.548-.007c-.183 0-.48.068-.731.343-.251.274-.959.937-.959 2.285s.982 2.651 1.119 2.834c.137.183 1.933 2.951 4.682 4.141.654.283 1.165.452 1.562.578.657.208 1.255.179 1.728.108.527-.079 1.62-.662 1.848-1.302.228-.641.228-1.188.159-1.302-.07-.115-.251-.183-.524-.32z"
+                  />
+                </svg>
+                <span>Chat on WhatsApp</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="grid gap-8 lg:grid-cols-[minmax(0,1fr),380px]">
         <article class="overflow-hidden rounded-[2rem] border border-white/70 bg-white shadow-[0_24px_60px_-32px_rgba(15,23,42,0.35)]">
           <div class="hero-shell px-6 py-8 text-white md:px-8">
@@ -128,12 +166,25 @@
               <label class="mb-2 block text-xs font-bold uppercase tracking-[0.28em] text-slate-500" for="registerPassword">
                 <span data-copy-text="portalPasswordLabel">Portal Password</span>
               </label>
-              <input
-                id="registerPassword"
-                type="text"
-                class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 outline-none transition focus:border-blue-400 focus:bg-white"
-                placeholder="Choose a login password"
-              />
+              <div class="relative">
+                <input
+                  id="registerPassword"
+                  type="password"
+                  autocomplete="new-password"
+                  class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-5 py-4 pr-24 outline-none transition focus:border-blue-400 focus:bg-white"
+                  placeholder="Choose a login password"
+                />
+                <button
+                  id="registerPasswordToggle"
+                  type="button"
+                  class="absolute right-3 top-1/2 -translate-y-1/2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
+                  aria-controls="registerPassword"
+                  aria-pressed="false"
+                >
+                  Show
+                </button>
+              </div>
+              <p class="mt-2 text-xs text-slate-500">Students can choose any password they want and use the same password later to log in.</p>
             </div>
 
             <div class="md:col-span-2">
@@ -167,36 +218,6 @@
 
         <aside class="space-y-6">
           <div class="rounded-[2rem] border border-white/70 bg-white p-6 shadow-[0_24px_60px_-32px_rgba(15,23,42,0.35)]">
-            <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Registration Help</p>
-            <p class="mt-4 text-sm leading-6 text-slate-600">
-              Watch the registration guide first if you want to see the full process before submitting your details.
-            </p>
-            <div class="mt-5 grid gap-3">
-              <a
-                href="https://youtu.be/iYoeBgFUmF4"
-                target="_blank"
-                rel="noreferrer"
-                class="inline-flex items-center justify-center rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
-              >
-                Watch Registration Guide
-              </a>
-              <a
-                href="https://wa.me/8801978167016?text=Assalamu%20Alaikum%2C%20I%20need%20help%20with%20registration."
-                target="_blank"
-                rel="noreferrer"
-                class="inline-flex items-center justify-center gap-3 rounded-2xl bg-green-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-green-700"
-              >
-                <svg class="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                  <path
-                    d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946.003-6.556 5.338-11.891 11.893-11.891 3.181.001 6.167 1.24 8.413 3.488 2.245 2.248 3.481 5.236 3.48 8.417-.003 6.557-5.338 11.892-11.893 11.892-1.997-.001-3.951-.5-5.688-1.448l-6.305 1.652zm6.599-3.835c1.405.836 2.948 1.278 4.531 1.28h.005c5.344 0 9.693-4.349 9.696-9.693.001-2.59-1.011-5.025-2.85-6.864s-4.275-2.852-6.866-2.853c-5.345 0-9.694 4.349-9.697 9.694-.001 1.709.449 3.377 1.303 4.832l-.93 3.395 3.477-.912zm9.852-5.415c-.273-.137-1.62-.8-1.871-.891-.252-.092-.435-.137-.617.137-.183.274-.708.891-.868 1.074-.159.183-.32.206-.593.068-.273-.137-1.154-.425-2.199-1.357-.812-.724-1.36-1.618-1.52-1.891-.159-.274-.017-.422.12-.558.123-.122.273-.32.411-.48.137-.16.183-.274.274-.457.091-.183.046-.343-.023-.48-.068-.137-.617-1.486-.845-2.035-.223-.537-.468-.464-.641-.473l-.548-.007c-.183 0-.48.068-.731.343-.251.274-.959.937-.959 2.285s.982 2.651 1.119 2.834c.137.183 1.933 2.951 4.682 4.141.654.283 1.165.452 1.562.578.657.208 1.255.179 1.728.108.527-.079 1.62-.662 1.848-1.302.228-.641.228-1.188.159-1.302-.07-.115-.251-.183-.524-.32z"
-                  />
-                </svg>
-                <span>Chat on WhatsApp</span>
-              </a>
-            </div>
-          </div>
-
-          <div class="rounded-[2rem] border border-white/70 bg-white p-6 shadow-[0_24px_60px_-32px_rgba(15,23,42,0.35)]">
             <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Registration Flow</p>
             <div class="mt-4 space-y-4 text-sm leading-6 text-slate-600">
               <p>1. Student submits details and requested courses from this page.</p>
@@ -217,6 +238,6 @@
     </main>
 
     <script src="./portal-copy.js?v=20260315-1"></script>
-    <script src="./register-app.js?v=20260323-1"></script>
+    <script src="./register-app.js?v=20260323-2"></script>
   </body>
 </html>

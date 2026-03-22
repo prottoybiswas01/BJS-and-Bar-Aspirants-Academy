@@ -7,6 +7,7 @@ const APP_CONFIG = Object.freeze({
 
 const STORAGE_KEYS = Object.freeze({
   adminToken: "ain-pathshala.adminToken",
+  adminDashboardCache: "ain-pathshala.adminDashboardCache",
 });
 
 const LOCALIZED_DIGIT_RANGES = Object.freeze([
@@ -174,6 +175,29 @@ function removeStoredValue(key) {
   }
 
   storage.removeItem(key);
+}
+
+function readStoredJson(key) {
+  const raw = readStoredValue(key).trim();
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    removeStoredValue(key);
+    return null;
+  }
+}
+
+function writeStoredJson(key, value) {
+  if (!value) {
+    removeStoredValue(key);
+    return;
+  }
+
+  writeStoredValue(key, JSON.stringify(value));
 }
 
 function normalizeLocalizedDigits(value) {
@@ -357,17 +381,6 @@ function setButtonDisabled(button, disabled) {
   button.classList.toggle("cursor-not-allowed", !!disabled);
 }
 
-function scrollSelectedWorkspaceIntoView() {
-  if (!dom.selectedStudentWorkspace) {
-    return;
-  }
-
-  dom.selectedStudentWorkspace.scrollIntoView({
-    behavior: "smooth",
-    block: "start",
-  });
-}
-
 function shouldShowFloatingSelectionBar() {
   if (!getSelectedStudentIds().length || !dom.studentSelectionBar || dom.studentSelectionBar.classList.contains("hidden")) {
     return false;
@@ -544,8 +557,8 @@ function renderSelectionState() {
     ? `${selectedCount} student${selectedCount === 1 ? "" : "s"} selected`
     : "0 students selected";
   dom.selectedStudentsMeta.textContent = hasSelection
-    ? `${selectedNames}. Quick actions are ready, or open the full controls section below.`
-    : "Quick actions and full controls are now ready.";
+    ? `${selectedNames}. Quick actions are ready now, and the full student tools stay available below.`
+    : "Quick actions and full student tools are ready.";
   dom.selectedStudentsCountBadge.textContent = hasSelection
     ? `${selectedCount} selected`
     : "No selection";
@@ -556,8 +569,8 @@ function renderSelectionState() {
     ? `${selectedCount} student${selectedCount === 1 ? "" : "s"} selected`
     : "0 students selected";
   dom.floatingSelectedMeta.textContent = hasSelection
-    ? `${selectedNames}. Use quick actions here or open the full controls section.`
-    : "Use quick actions or open the full controls section.";
+    ? `${selectedNames}. Use quick actions here without leaving this view.`
+    : "Use quick actions here.";
 
   dom.selectAllStudents.disabled = !state.visibleStudentIds.length;
   dom.bulkActionSelect.disabled = !hasSelection;
@@ -668,8 +681,18 @@ function clearAdminSession() {
   state.selectedStudentIds = new Set();
   state.visibleStudentIds = [];
   removeStoredValue(STORAGE_KEYS.adminToken);
+  removeStoredValue(STORAGE_KEYS.adminDashboardCache);
   renderSelectionState();
   toggleAuthView(false);
+}
+
+function getCachedDashboardPayload() {
+  const cached = readStoredJson(STORAGE_KEYS.adminDashboardCache);
+  if (!cached || !Array.isArray(cached.students)) {
+    return null;
+  }
+
+  return cached;
 }
 
 async function requestAction(action, payload = {}) {
@@ -726,6 +749,9 @@ function applyDashboardPayload(payload, feedbackMessage = "", tone = "success") 
   state.data = normalizeDashboard(payload);
   if (payload.admin) {
     state.admin = payload.admin;
+  }
+  if (payload?.ok) {
+    writeStoredJson(STORAGE_KEYS.adminDashboardCache, payload);
   }
 
   const validStudentIds = new Set(state.data.students.map((student) => student.id));
@@ -940,13 +966,6 @@ function renderStudentMobileList(students) {
               class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
             >
               Open Editor
-            </button>
-            <button
-              type="button"
-              data-open-selected-tools="${escapeHtml(student.id)}"
-              class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
-            >
-              Open Controls
             </button>
           </div>
         </article>
@@ -1524,18 +1543,6 @@ async function handleRegistrationReview(registrationId, action) {
 }
 
 function handleStudentTableClick(event) {
-  const openControlsButton = event.target.closest("[data-open-selected-tools]");
-  if (openControlsButton) {
-    const selectedStudentId = String(openControlsButton.dataset.openSelectedTools || "").trim();
-    if (selectedStudentId && selectedStudentId !== "true") {
-      state.selectedStudentIds = new Set([selectedStudentId]);
-      renderStudentTable();
-      renderBulkCourseSelector();
-    }
-    scrollSelectedWorkspaceIntoView();
-    return;
-  }
-
   const editButton = event.target.closest("[data-edit-student]");
   if (!editButton) {
     return;
@@ -1545,7 +1552,6 @@ function handleStudentTableClick(event) {
 }
 
 function handleStudentTableChange(event) {
-  const previousSelectionCount = getSelectedStudentIds().length;
   const checkbox = event.target.closest("[data-student-select]");
   if (!checkbox) {
     return;
@@ -1564,17 +1570,6 @@ function handleStudentTableChange(event) {
 
   renderStudentTable();
   renderBulkCourseSelector();
-
-  if (
-    previousSelectionCount === 0 &&
-    getSelectedStudentIds().length > 0 &&
-    window.matchMedia("(max-width: 1023px)").matches
-  ) {
-    dom.studentSelectionBar.scrollIntoView({
-      behavior: "smooth",
-      block: "nearest",
-    });
-  }
 }
 
 function handleSelectAllToggle() {
@@ -1602,12 +1597,6 @@ async function handleStudentQuickActionClick(event) {
 
     dom.bulkActionSelect.value = quickAction;
     await applyBulkActionToSelected(quickAction);
-    return;
-  }
-
-  const openControlsButton = event.target.closest("[data-open-selected-tools]");
-  if (openControlsButton) {
-    scrollSelectedWorkspaceIntoView();
   }
 }
 
@@ -1646,18 +1635,50 @@ async function bootstrap() {
   clearCourseForm();
 
   state.token = readStoredValue(STORAGE_KEYS.adminToken).trim();
+  const cachedPayload = getCachedDashboardPayload();
 
   if (!state.token) {
     toggleAuthView(false);
     return;
   }
 
+  if (cachedPayload) {
+    applyDashboardPayload(
+      cachedPayload,
+      "Dashboard restored from this device. Syncing live data now...",
+      "info"
+    );
+    toggleAuthView(true);
+  }
+
   try {
-    setFeedback(dom.adminLoginFeedback, "Restoring admin session...", "info");
+    setFeedback(
+      cachedPayload ? dom.adminTopFeedback : dom.adminLoginFeedback,
+      cachedPayload ? "Syncing live admin data..." : "Restoring admin session...",
+      "info"
+    );
     await loadDashboard("Admin session restored.");
   } catch (error) {
-    clearAdminSession();
-    setFeedback(dom.adminLoginFeedback, error.message || "Admin session could not be restored.", "error");
+    if (!state.token) {
+      return;
+    }
+
+    if (cachedPayload) {
+      toggleAuthView(true);
+      setFeedback(
+        dom.adminTopFeedback,
+        `${error.message || "Live data could not be refreshed right now."} Showing the last synced dashboard on this device.`,
+        "error"
+      );
+      return;
+    }
+
+    toggleAuthView(false);
+    setFeedback(
+      dom.adminLoginFeedback,
+      error.message || "Admin session could not be restored right now.",
+      "error"
+    );
   }
 }
 

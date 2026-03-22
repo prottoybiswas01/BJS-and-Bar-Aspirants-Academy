@@ -453,6 +453,7 @@ const dom = {
   form: document.getElementById("lookup-form"),
   query: document.getElementById("student-query"),
   password: document.getElementById("student-password"),
+  passwordToggle: document.getElementById("studentPasswordToggle"),
   submitBtn: document.querySelector('#lookup-form button[type="submit"]'),
   feedback: document.getElementById("loginFeedback"),
   dataModeBadge: document.getElementById("dataModeBadge"),
@@ -498,6 +499,26 @@ const dom = {
   profileCourseGrid: document.getElementById("profileCourseGrid"),
   profileResetLink: document.getElementById("profileResetLink"),
 };
+
+function syncStudentPasswordToggle() {
+  if (!dom.password || !dom.passwordToggle) {
+    return;
+  }
+
+  const isHidden = dom.password.type === "password";
+  dom.passwordToggle.textContent = isHidden ? "Show" : "Hide";
+  dom.passwordToggle.setAttribute("aria-pressed", isHidden ? "false" : "true");
+}
+
+function toggleStudentPasswordVisibility() {
+  if (!dom.password) {
+    return;
+  }
+
+  dom.password.type = dom.password.type === "password" ? "text" : "password";
+  syncStudentPasswordToggle();
+  dom.password.focus();
+}
 
 function formatNumber(value) {
   return String(value);
@@ -3200,6 +3221,8 @@ function logout() {
   syncPortalSession();
   dom.query.value = "";
   dom.password.value = "";
+  dom.password.type = "password";
+  syncStudentPasswordToggle();
   clearLoginDraft();
   togglePage("login");
   setFeedback("Enter your student credentials to log in again.");
@@ -3301,6 +3324,8 @@ async function performLogin(query = dom.query.value) {
     togglePage("profile");
     clearLoginDraft();
     dom.password.value = "";
+    dom.password.type = "password";
+    syncStudentPasswordToggle();
     setFeedback(`${nextStudent.name} logged in successfully.`, "success");
     showToast("Logged in successfully!");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -3320,6 +3345,7 @@ async function performLogin(query = dom.query.value) {
 
 async function initialize() {
   dom.password.placeholder = getPortalCopyValue("passwordPlaceholder", "Enter your password");
+  syncStudentPasswordToggle();
   setFeedback("");
   state.pendingCourseRequestIds = new Set(
     parseList(readStoredPortalValue(SESSION_STORAGE_KEYS.pendingCourseRequestIds))
@@ -3360,6 +3386,9 @@ dom.loginBtn.addEventListener("click", () => {
 
 dom.query.addEventListener("input", syncLoginDraft);
 dom.password.addEventListener("input", syncLoginDraft);
+if (dom.passwordToggle) {
+  dom.passwordToggle.addEventListener("click", toggleStudentPasswordVisibility);
+}
 
 dom.userProfile.addEventListener("click", () => {
   if (state.activeStudentId) {
