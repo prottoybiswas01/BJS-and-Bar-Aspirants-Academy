@@ -72,6 +72,14 @@ const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   year: "numeric",
 });
 
+const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
 const STUDENT_FIELD_KEYS = Object.freeze({
   id: ["id", "studentId", "studentID", "userId", "userID", "memberId", "registrationId", "roll", "rollNumber"],
   name: ["name", "fullName", "studentName", "userName"],
@@ -1831,6 +1839,20 @@ function formatDate(dateValue, fallback = "Date unavailable") {
   return DATE_FORMATTER.format(date);
 }
 
+function formatProfileSession(value, fallback = "-") {
+  const text = String(value || "").trim();
+  if (!text) {
+    return fallback;
+  }
+
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) {
+    return text;
+  }
+
+  return /[T\s]\d{1,2}:\d{2}/.test(text) ? DATE_TIME_FORMATTER.format(date) : DATE_FORMATTER.format(date);
+}
+
 function formatDateRange(startDate, endDate) {
   if (startDate && endDate) {
     return `${formatDate(startDate)} - ${formatDate(endDate)}`;
@@ -2170,7 +2192,7 @@ function renderProfileModal(student, courseEntries) {
   dom.profileStudentEmail.textContent = student.email || "Email not provided";
   dom.profileStudentId.textContent = student.id || "-";
   dom.profileStudentBatch.textContent = student.batch || "-";
-  dom.profileStudentSession.textContent = student.session || "-";
+  dom.profileStudentSession.textContent = formatProfileSession(student.session);
   dom.profileCourseCount.textContent = formatNumber(courseEntries.length);
   dom.profileAccessWindow.textContent = getProfileAccessSummary(courseEntries);
   dom.profileVideoAccessUntil.textContent = getProfileVideoAccessSummary(courseEntries);

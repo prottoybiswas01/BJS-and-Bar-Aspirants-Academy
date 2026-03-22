@@ -368,6 +368,28 @@ function scrollSelectedWorkspaceIntoView() {
   });
 }
 
+function shouldShowFloatingSelectionBar() {
+  if (!getSelectedStudentIds().length || !dom.studentSelectionBar || dom.studentSelectionBar.classList.contains("hidden")) {
+    return false;
+  }
+
+  const rect = dom.studentSelectionBar.getBoundingClientRect();
+  const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+  const visibilityThreshold = 24;
+  const isVisibleInViewport =
+    rect.bottom > visibilityThreshold && rect.top < Math.max(viewportHeight - visibilityThreshold, visibilityThreshold);
+
+  return !isVisibleInViewport;
+}
+
+function syncFloatingSelectionBarVisibility() {
+  if (!dom.floatingSelectionBar) {
+    return;
+  }
+
+  dom.floatingSelectionBar.classList.toggle("hidden", !shouldShowFloatingSelectionBar());
+}
+
 function createCourseMap(courses) {
   return new Map(courses.map((course) => [course.id, course]));
 }
@@ -530,7 +552,6 @@ function renderSelectionState() {
   dom.selectedStudentsWorkspaceMeta.textContent = hasSelection
     ? `Managing ${selectedNames}. You can update approval, preview access, course access, and messages from this block.`
     : "Select one or more students to update approval, preview access, assign courses, and send messages.";
-  dom.floatingSelectionBar.classList.toggle("hidden", !hasSelection);
   dom.floatingSelectedSummary.textContent = hasSelection
     ? `${selectedCount} student${selectedCount === 1 ? "" : "s"} selected`
     : "0 students selected";
@@ -550,6 +571,8 @@ function renderSelectionState() {
   [...dom.floatingQuickActionBar.querySelectorAll("button")].forEach((button) => {
     setButtonDisabled(button, !hasSelection);
   });
+
+  syncFloatingSelectionBarVisibility();
 }
 
 function buildStudentSearchHaystack(student) {
@@ -1669,5 +1692,7 @@ dom.courseForm.addEventListener("submit", handleCourseSave);
 dom.clearCourseFormBtn.addEventListener("click", clearCourseForm);
 dom.courseListPanel.addEventListener("click", handleCourseListClick);
 dom.registrationQueue.addEventListener("click", handleRegistrationQueueClick);
+window.addEventListener("scroll", syncFloatingSelectionBarVisibility, { passive: true });
+window.addEventListener("resize", syncFloatingSelectionBarVisibility);
 
 bootstrap();
