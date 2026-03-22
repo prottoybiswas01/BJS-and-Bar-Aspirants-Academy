@@ -678,6 +678,44 @@ function setEditingStudent(studentId) {
   setFeedback(dom.messageFeedback, studentId ? "One student selected for access control." : "", "info");
 }
 
+function focusMessageComposer() {
+  dom.selectedStudentWorkspace?.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
+  window.setTimeout(() => {
+    dom.messageBodyInput?.focus();
+  }, 120);
+}
+
+function prefillReplyToStudent(studentId, sourceMessageId) {
+  const student = getStudentById(studentId);
+  const message = state.data.messages.find((entry) => entry.id === sourceMessageId) || null;
+
+  if (!student || !message) {
+    setFeedback(dom.messageFeedback, "Student reply context could not be loaded.", "error");
+    return;
+  }
+
+  const recipientEntry = message.recipientState?.[studentId] || {};
+  const baseTitle = message.title || "Admin Message";
+  const normalizedTitle = normalizeLookupText(baseTitle).startsWith("re:")
+    ? baseTitle
+    : `Re: ${baseTitle}`;
+
+  setEditingStudent(studentId);
+  dom.messageTitleInput.value = normalizedTitle;
+  dom.messageBodyInput.value = recipientEntry.reply
+    ? `Regarding your reply:\n"${recipientEntry.reply}"\n\n`
+    : "";
+  setFeedback(
+    dom.messageFeedback,
+    `Reply mode is ready for ${student.name}. Write your message and send it as a popup.`,
+    "info"
+  );
+  focusMessageComposer();
+}
+
 function clearCourseForm() {
   state.editingCourseId = "";
   dom.courseForm.reset();
@@ -1242,7 +1280,21 @@ function renderMessageLog() {
               const studentLabel = student?.name || entry.respondedBy || "Student";
               return `
                 <div class="rounded-2xl border border-white bg-white px-4 py-3">
-                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-600">${escapeHtml(studentLabel)}</p>
+                  <div class="flex flex-wrap items-start justify-between gap-3">
+                    <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-600">${escapeHtml(studentLabel)}</p>
+                    ${
+                      student?.id
+                        ? `<button
+                            type="button"
+                            data-message-reply-student="${escapeHtml(student.id)}"
+                            data-message-reply-source="${escapeHtml(message.id)}"
+                            class="rounded-2xl border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
+                          >
+                            Reply
+                          </button>`
+                        : ""
+                    }
+                  </div>
                   <p class="mt-2 text-sm leading-6 text-slate-700">${escapeHtml(entry.reply || "Reply received.")}</p>
                   <p class="mt-2 text-xs text-slate-400">${escapeHtml(formatDateTime(entry.respondedOn, "Just now"))}</p>
                 </div>
@@ -1263,7 +1315,16 @@ function renderMessageLog() {
                 <span>Skipped: ${skippedCount}</span>
               </p>
             </div>
-            ${renderPill(message.status)}
+            <div class="flex flex-wrap items-center gap-2">
+              ${renderPill(message.status)}
+              <button
+                type="button"
+                data-message-delete="${escapeHtml(message.id)}"
+                class="rounded-2xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-bold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100"
+              >
+                Delete
+              </button>
+            </div>
           </div>
           <p class="mt-3 text-sm leading-6 text-slate-600">${escapeHtml(message.message)}</p>
           ${
@@ -1593,6 +1654,33 @@ async function handleCourseDelete(courseId) {
   }
 }
 
+async function handleMessageDelete(messageId) {
+  const message = state.data.messages.find((entry) => entry.id === messageId) || null;
+  const confirmed = window.confirm(
+    `Delete "${message?.title || "this message"}"? This will remove it from the admin log and from the spreadsheet.`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    setFeedback(dom.messageFeedback, "Deleting popup message...", "info");
+    const response = await requestAction("admindeletemessage", {
+      messageId,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.message || "Unable to delete the popup message.");
+    }
+
+    applyDashboardPayload(response, "Popup message deleted.");
+    setFeedback(dom.messageFeedback, "Popup message deleted.", "success");
+  } catch (error) {
+    setFeedback(dom.messageFeedback, error.message || "Unable to delete the popup message.", "error");
+  }
+}
+
 async function handleRegistrationReview(registrationId, action) {
   const noteField = dom.registrationQueue.querySelector(`[data-registration-note="${registrationId}"]`);
   const reviewNote = noteField?.value.trim() || "";
@@ -1703,6 +1791,22 @@ function handleRegistrationQueueClick(event) {
   }
 }
 
+function handleMessageLogClick(event) {
+  const deleteButton = event.target.closest("[data-message-delete]");
+  if (deleteButton) {
+    handleMessageDelete(String(deleteButton.dataset.messageDelete || "").trim());
+    return;
+  }
+
+  const replyButton = event.target.closest("[data-message-reply-student]");
+  if (replyButton) {
+    prefillReplyToStudent(
+      String(replyButton.dataset.messageReplyStudent || "").trim(),
+      String(replyButton.dataset.messageReplySource || "").trim()
+    );
+  }
+}
+
 async function bootstrap() {
   resetStudentEditor();
   clearCourseForm();
@@ -1789,6 +1893,7 @@ dom.courseForm.addEventListener("submit", handleCourseSave);
 dom.clearCourseFormBtn.addEventListener("click", clearCourseForm);
 dom.courseListPanel.addEventListener("click", handleCourseListClick);
 dom.registrationQueue.addEventListener("click", handleRegistrationQueueClick);
+dom.messageLogPanel.addEventListener("click", handleMessageLogClick);
 window.addEventListener("scroll", persistAdminScrollPosition, { passive: true });
 
 bootstrap();

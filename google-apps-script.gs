@@ -344,6 +344,7 @@ function doPost(e) {
     if (action === "adminapproveregistration") return handleAdminApproveRegistration_(request);
     if (action === "adminrejectregistration") return handleAdminRejectRegistration_(request);
     if (action === "adminsendmessage") return handleAdminSendMessage_(request);
+    if (action === "admindeletemessage") return handleAdminDeleteMessage_(request);
     if (action === "studentrespondmessage") return handleStudentRespondMessage_(request);
 
     return jsonOutput_({
@@ -1672,6 +1673,38 @@ function handleAdminSendMessage_(request) {
         recipientStateJson: serializeMessageRecipientState_(recipientState),
       },
     ])
+  );
+
+  return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
+}
+
+function handleAdminDeleteMessage_(request) {
+  const auth = getAuthorizedAdminSession_(request);
+  if (!auth) {
+    return unauthorizedOutput_();
+  }
+
+  const messageId = String(request.messageId || request.id || "").trim();
+  if (!messageId) {
+    return jsonOutput_({ ok: false, message: "Message ID is required." });
+  }
+
+  const spreadsheet = getSpreadsheet_();
+  const messagesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.messages);
+  const existingMessage = messagesData.records.find(function (entry) {
+    return String(entry.id || "").trim() === messageId;
+  });
+
+  if (!existingMessage) {
+    return jsonOutput_({ ok: false, message: "Message was not found." });
+  }
+
+  writeSheetEntries_(
+    messagesData.sheet,
+    messagesData.headers,
+    messagesData.records.filter(function (entry) {
+      return String(entry.id || "").trim() !== messageId;
+    })
   );
 
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
