@@ -112,6 +112,29 @@ const PREVIEW_ACCESS_VALUES = Object.freeze([
   "outline",
 ]);
 
+const COURSE_RULE_FIELDS = Object.freeze([
+  Object.freeze({ key: "accessStartDate", label: "Access Start Date", type: "date" }),
+  Object.freeze({ key: "accessEndDate", label: "Access End Date", type: "date" }),
+  Object.freeze({ key: "videoAccessUntil", label: "Video Access Until", type: "date" }),
+  Object.freeze({ key: "lastPaymentDate", label: "Last Payment Date", type: "date" }),
+  Object.freeze({ key: "paymentDueDate", label: "Payment Due Date", type: "date" }),
+  Object.freeze({ key: "monthlyFee", label: "Monthly Fee", type: "text", placeholder: "1500" }),
+  Object.freeze({
+    key: "status",
+    label: "Enrollment Status",
+    type: "select",
+    options: [
+      Object.freeze({ value: "", label: "Keep Current Status" }),
+      Object.freeze({ value: "Active", label: "Active" }),
+      Object.freeze({ value: "Pending", label: "Pending" }),
+      Object.freeze({ value: "Blocked", label: "Blocked" }),
+      Object.freeze({ value: "Suspended", label: "Suspended" }),
+      Object.freeze({ value: "Expired", label: "Expired" }),
+    ],
+  }),
+  Object.freeze({ key: "paidMonths", label: "Paid Months", type: "text", placeholder: "2026-01|2026-03", wide: true }),
+]);
+
 const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
   month: "short",
@@ -129,6 +152,7 @@ const state = {
   editingCourseId: "",
   selectedStudentIds: new Set(),
   visibleStudentIds: [],
+  bulkCourseRuleDrafts: {},
 };
 
 const dom = {
@@ -173,14 +197,7 @@ const dom = {
   studentCourseSelector: document.getElementById("studentCourseSelector"),
   studentEditorFeedback: document.getElementById("studentEditorFeedback"),
   bulkCourseSelector: document.getElementById("bulkCourseSelector"),
-  bulkAccessStartInput: document.getElementById("bulkAccessStartInput"),
-  bulkAccessEndInput: document.getElementById("bulkAccessEndInput"),
-  bulkVideoAccessUntilInput: document.getElementById("bulkVideoAccessUntilInput"),
-  bulkLastPaymentDateInput: document.getElementById("bulkLastPaymentDateInput"),
-  bulkPaymentDueDateInput: document.getElementById("bulkPaymentDueDateInput"),
-  bulkMonthlyFeeInput: document.getElementById("bulkMonthlyFeeInput"),
-  bulkEnrollmentStatusInput: document.getElementById("bulkEnrollmentStatusInput"),
-  bulkPaidMonthsInput: document.getElementById("bulkPaidMonthsInput"),
+  bulkCourseRuleCards: document.getElementById("bulkCourseRuleCards"),
   assignCoursesBtn: document.getElementById("assignCoursesBtn"),
   selectedStudentWorkspace: document.getElementById("selectedStudentWorkspace"),
   selectedStudentsCountBadge: document.getElementById("selectedStudentsCountBadge"),
@@ -816,6 +833,7 @@ function resetStudentEditor() {
   dom.editorStudentStatus.value = "Active";
   dom.editorStudentApproval.value = "Approved";
   dom.editorStudentAccessMode.value = "";
+  resetBulkCourseRuleDrafts();
   renderStudentEditor();
   setFeedback(dom.studentEditorFeedback, "");
 }
@@ -823,6 +841,7 @@ function resetStudentEditor() {
 function setEditingStudent(studentId) {
   state.editingStudentId = studentId;
   state.selectedStudentIds = new Set(studentId ? [studentId] : []);
+  resetBulkCourseRuleDrafts();
   renderStudentTable();
   renderStudentEditor();
   renderBulkCourseSelector();
@@ -878,19 +897,178 @@ function clearCourseForm() {
   }
 }
 
-function setCourseRuleInputsFromEnrollment(enrollment) {
-  dom.bulkAccessStartInput.value = enrollment?.accessStartDate || "";
-  dom.bulkAccessEndInput.value = enrollment?.accessEndDate || "";
-  dom.bulkVideoAccessUntilInput.value = enrollment?.videoAccessUntil || "";
-  dom.bulkLastPaymentDateInput.value = enrollment?.lastPaymentDate || "";
-  dom.bulkPaymentDueDateInput.value = enrollment?.paymentDueDate || "";
-  dom.bulkMonthlyFeeInput.value = enrollment?.monthlyFee || "";
-  dom.bulkEnrollmentStatusInput.value = enrollment?.status || "";
-  dom.bulkPaidMonthsInput.value = (enrollment?.paidMonths || []).join("|");
+function createEmptyCourseRuleDraft() {
+  return COURSE_RULE_FIELDS.reduce((result, field) => {
+    result[field.key] = "";
+    return result;
+  }, {});
 }
 
-function resetCourseRuleInputs() {
-  setCourseRuleInputsFromEnrollment(null);
+function resetBulkCourseRuleDrafts() {
+  state.bulkCourseRuleDrafts = {};
+}
+
+function getEnrollmentRecord(studentId, courseId) {
+  return (
+    state.data.enrollments.find(
+      (enrollment) => enrollment.studentId === studentId && enrollment.courseId === courseId
+    ) || null
+  );
+}
+
+function getCourseRuleValueFromEnrollment(enrollment, fieldKey) {
+  if (!enrollment) {
+    return "";
+  }
+
+  if (fieldKey === "paidMonths") {
+    return (enrollment.paidMonths || []).join("|");
+  }
+
+  return String(enrollment[fieldKey] || "").trim();
+}
+
+function getCommonCourseRuleValue(selectedStudents, courseId, fieldKey) {
+  if (!selectedStudents.length) {
+    return "";
+  }
+
+  const values = selectedStudents.map((student) =>
+    getCourseRuleValueFromEnrollment(getEnrollmentRecord(student.id, courseId), fieldKey)
+  );
+  const normalizedValues = [...new Set(values.map((value) => String(value || "").trim()))];
+  return normalizedValues.length === 1 ? normalizedValues[0] : "";
+}
+
+function getMixedCourseRuleFields(selectedStudents, courseId) {
+  if (selectedStudents.length <= 1) {
+    return [];
+  }
+
+  return COURSE_RULE_FIELDS.filter((field) => {
+    const values = selectedStudents.map((student) =>
+      getCourseRuleValueFromEnrollment(getEnrollmentRecord(student.id, courseId), field.key)
+    );
+    return [...new Set(values.map((value) => String(value || "").trim()))].length > 1;
+  }).map((field) => field.label);
+}
+
+function getCourseRuleDraft(courseId, selectedStudents = getSelectedStudents()) {
+  if (!state.bulkCourseRuleDrafts[courseId]) {
+    state.bulkCourseRuleDrafts[courseId] = COURSE_RULE_FIELDS.reduce((result, field) => {
+      result[field.key] = getCommonCourseRuleValue(selectedStudents, courseId, field.key);
+      return result;
+    }, createEmptyCourseRuleDraft());
+  }
+
+  return state.bulkCourseRuleDrafts[courseId];
+}
+
+function renderCourseRuleField(courseId, field, draft) {
+  const value = String(draft[field.key] || "").trim();
+  const baseAttributes = [
+    `data-course-rule-course="${escapeHtml(courseId)}"`,
+    `data-course-rule-field="${escapeHtml(field.key)}"`,
+    'class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"',
+  ];
+
+  let controlMarkup = "";
+  if (field.type === "select") {
+    controlMarkup = `
+      <select ${baseAttributes.join(" ")}>
+        ${field.options
+          .map(
+            (option) => `
+              <option value="${escapeHtml(option.value)}" ${option.value === value ? "selected" : ""}>${escapeHtml(
+                option.label
+              )}</option>
+            `
+          )
+          .join("")}
+      </select>
+    `;
+  } else {
+    controlMarkup = `
+      <input
+        ${baseAttributes.join(" ")}
+        type="${escapeHtml(field.type)}"
+        value="${escapeHtml(value)}"
+        ${field.placeholder ? `placeholder="${escapeHtml(field.placeholder)}"` : ""}
+      />
+    `;
+  }
+
+  return `
+    <label class="block ${field.wide ? "sm:col-span-2 xl:col-span-2" : ""}">
+      <span class="mb-2 block text-xs font-semibold tracking-[0.08em] text-slate-500">${escapeHtml(field.label)}</span>
+      ${controlMarkup}
+    </label>
+  `;
+}
+
+function renderBulkCourseRuleCards() {
+  const selectedStudents = getSelectedStudents();
+  const selectedCourseIds = readCheckedCourseIds(dom.bulkCourseSelector, "bulk");
+
+  if (!selectedStudents.length) {
+    dom.bulkCourseRuleCards.innerHTML =
+      '<div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">Select student first to edit course-wise access rules.</div>';
+    return;
+  }
+
+  if (!selectedCourseIds.length) {
+    dom.bulkCourseRuleCards.innerHTML =
+      '<div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">Check one or more courses above. Only checked courses will show their own access rules here.</div>';
+    return;
+  }
+
+  dom.bulkCourseRuleCards.innerHTML = selectedCourseIds
+    .map((courseId) => {
+      const course = state.data.courseMap.get(courseId) || null;
+      const draft = getCourseRuleDraft(courseId, selectedStudents);
+      const mixedFields = getMixedCourseRuleFields(selectedStudents, courseId);
+      const courseMeta = [
+        course?.category ? course.category : "",
+        course?.batch ? `Batch: ${course.batch}` : "",
+        course?.session ? `Session: ${course.session}` : "",
+      ]
+        .filter(Boolean)
+        .join(" | ");
+
+      return `
+        <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 sm:p-5">
+          <div class="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+            <div class="min-w-0">
+              <p class="text-xs font-bold uppercase tracking-[0.24em] text-blue-600">${escapeHtml(
+                course?.shortTitle || course?.title || courseId
+              )}</p>
+              <h5 class="mt-2 break-words text-lg font-extrabold text-slate-950">${escapeHtml(
+                course?.title || courseId
+              )}</h5>
+              ${
+                courseMeta
+                  ? `<p class="mt-2 text-xs text-slate-500">${escapeHtml(courseMeta)}</p>`
+                  : ""
+              }
+            </div>
+            <div class="rounded-full bg-white px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500">
+              ${selectedStudents.length === 1 ? "Per Course Rule" : `${selectedStudents.length} Students`}
+            </div>
+          </div>
+          ${
+            mixedFields.length
+              ? `<p class="mt-3 text-xs leading-5 text-amber-700">Mixed current values detected for ${escapeHtml(
+                  mixedFields.join(", ")
+                )}. Blank fields will keep each student's current course rule.</p>`
+              : `<p class="mt-3 text-xs leading-5 text-slate-500">This course keeps its own access window, payment dates, fee, and status.</p>`
+          }
+          <div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            ${COURSE_RULE_FIELDS.map((field) => renderCourseRuleField(courseId, field, draft)).join("")}
+          </div>
+        </article>
+      `;
+    })
+    .join("");
 }
 
 function toggleAuthView(isLoggedIn) {
@@ -905,6 +1083,7 @@ function clearAdminSession() {
   state.data = createEmptyDashboard();
   state.selectedStudentIds = new Set();
   state.visibleStudentIds = [];
+  resetBulkCourseRuleDrafts();
   removeStoredValue(STORAGE_KEYS.adminToken);
   removeStoredValue(STORAGE_KEYS.adminDashboardCache);
   removeStoredValue(STORAGE_KEYS.adminScrollY);
@@ -975,6 +1154,7 @@ async function requestPublicData() {
 
 function applyDashboardPayload(payload, feedbackMessage = "", tone = "success") {
   state.data = normalizeDashboard(payload);
+  resetBulkCourseRuleDrafts();
   if (payload.admin) {
     state.admin = normalizeAdminSession(payload.admin);
   }
@@ -1104,7 +1284,7 @@ function renderBulkCourseSelector() {
   if (!selectedStudents.length) {
     dom.bulkCourseSelector.innerHTML =
       '<p class="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">Select one or more students to manage their course access.</p>';
-    resetCourseRuleInputs();
+    renderBulkCourseRuleCards();
     return;
   }
 
@@ -1117,14 +1297,7 @@ function renderBulkCourseSelector() {
     .map((course) => course.id);
 
   renderCourseCheckboxes(dom.bulkCourseSelector, selectedCourseIds, "bulk");
-
-  if (selectedStudents.length === 1) {
-    const [student] = selectedStudents;
-    const firstEnrollment = getEnrollmentRecordsForStudent(student.id)[0] || null;
-    setCourseRuleInputsFromEnrollment(firstEnrollment);
-  } else {
-    resetCourseRuleInputs();
-  }
+  renderBulkCourseRuleCards();
 }
 
 function renderStudentMobileList(students) {
@@ -1530,21 +1703,54 @@ function populateCourseForm(course) {
   }
 }
 
-function getCourseRulePayload() {
+function normalizeCourseRuleDraftForRequest(draft = {}) {
   return {
-    accessStartDate: dom.bulkAccessStartInput.value.trim(),
-    accessEndDate: dom.bulkAccessEndInput.value.trim(),
-    videoAccessUntil: dom.bulkVideoAccessUntilInput.value.trim(),
-    lastPaymentDate: dom.bulkLastPaymentDateInput.value.trim(),
-    paymentDueDate: dom.bulkPaymentDueDateInput.value.trim(),
-    monthlyFee: dom.bulkMonthlyFeeInput.value.trim(),
-    status: dom.bulkEnrollmentStatusInput.value.trim(),
-    paidMonths: buildPipeList(dom.bulkPaidMonthsInput.value),
+    accessStartDate: String(draft.accessStartDate || "").trim(),
+    accessEndDate: String(draft.accessEndDate || "").trim(),
+    videoAccessUntil: String(draft.videoAccessUntil || "").trim(),
+    lastPaymentDate: String(draft.lastPaymentDate || "").trim(),
+    paymentDueDate: String(draft.paymentDueDate || "").trim(),
+    monthlyFee: String(draft.monthlyFee || "").trim(),
+    status: String(draft.status || "").trim(),
+    paidMonths: buildPipeList(String(draft.paidMonths || "").trim()),
   };
 }
 
-function hasCourseRuleOverride(payload) {
-  return Object.values(payload).some((value) => String(value || "").trim() !== "");
+function getSelectedCourseRulePayload(courseIds) {
+  return courseIds.reduce((result, courseId) => {
+    result[courseId] = normalizeCourseRuleDraftForRequest(
+      state.bulkCourseRuleDrafts[courseId] || createEmptyCourseRuleDraft()
+    );
+    return result;
+  }, {});
+}
+
+function handleBulkCourseRuleInput(event) {
+  const field = event.target.closest("[data-course-rule-field]");
+  if (!field) {
+    return;
+  }
+
+  const courseId = String(field.dataset.courseRuleCourse || "").trim();
+  const fieldKey = String(field.dataset.courseRuleField || "").trim();
+  if (!courseId || !fieldKey) {
+    return;
+  }
+
+  const nextDraft = {
+    ...createEmptyCourseRuleDraft(),
+    ...(state.bulkCourseRuleDrafts[courseId] || {}),
+  };
+  nextDraft[fieldKey] = String(field.value || "").trim();
+  state.bulkCourseRuleDrafts[courseId] = nextDraft;
+}
+
+function handleBulkCourseSelectionChange(event) {
+  if (!event.target.matches('[data-course-checkbox="bulk"]')) {
+    return;
+  }
+
+  renderBulkCourseRuleCards();
 }
 
 async function handleAdminLoginSubmit(event) {
@@ -1685,15 +1891,15 @@ async function handleAssignCourses() {
     return;
   }
 
-  const accessPayload = getCourseRulePayload();
+  const courseRulesByCourse = getSelectedCourseRulePayload(courseIds);
 
   try {
     setFeedback(dom.messageFeedback, "Saving course access...", "info");
     const response = await requestAction("adminassigncourses", {
       studentIds: buildPipeList(selectedStudentIds),
       courseIds: buildPipeList(courseIds),
-      replaceExisting: hasCourseRuleOverride(accessPayload) ? "true" : "false",
-      ...accessPayload,
+      replaceExisting: "true",
+      courseRulesJson: JSON.stringify(courseRulesByCourse),
     });
 
     if (!response.ok) {
@@ -1880,6 +2086,7 @@ function handleStudentTableChange(event) {
     state.selectedStudentIds.delete(studentId);
   }
 
+  resetBulkCourseRuleDrafts();
   renderStudentTable();
   renderBulkCourseSelector();
 }
@@ -1895,6 +2102,7 @@ function handleSelectAllToggle() {
     state.visibleStudentIds.forEach((studentId) => state.selectedStudentIds.delete(studentId));
   }
 
+  resetBulkCourseRuleDrafts();
   renderStudentTable();
   renderBulkCourseSelector();
 }
@@ -2027,6 +2235,7 @@ dom.studentSearchInput.addEventListener("input", () => {
 dom.newStudentBtn.addEventListener("click", () => {
   resetStudentEditor();
   state.selectedStudentIds = new Set();
+  resetBulkCourseRuleDrafts();
   renderStudentTable();
   renderBulkCourseSelector();
 });
@@ -2036,6 +2245,9 @@ dom.studentTableBody.addEventListener("change", handleStudentTableChange);
 dom.studentMobileList.addEventListener("click", handleStudentTableClick);
 dom.studentMobileList.addEventListener("change", handleStudentTableChange);
 dom.selectAllStudents.addEventListener("change", handleSelectAllToggle);
+dom.bulkCourseSelector.addEventListener("change", handleBulkCourseSelectionChange);
+dom.bulkCourseRuleCards.addEventListener("input", handleBulkCourseRuleInput);
+dom.bulkCourseRuleCards.addEventListener("change", handleBulkCourseRuleInput);
 dom.studentQuickActionBar.addEventListener("click", handleStudentQuickActionClick);
 dom.applyBulkActionBtn.addEventListener("click", handleBulkActionApply);
 dom.assignCoursesBtn.addEventListener("click", handleAssignCourses);

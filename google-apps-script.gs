@@ -1332,6 +1332,7 @@ function handleAdminAssignCourses_(request) {
   const spreadsheet = getSpreadsheet_();
   const courses = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses));
   const courseIds = buildCourseIdList_(request.courseIds || "", courses);
+  const courseRulesMap = parseJsonField_(request.courseRulesJson) || {};
 
   syncStudentCourses_(spreadsheet, studentIds, courseIds, {
     accessStartDate: request.accessStartDate || "",
@@ -1343,6 +1344,7 @@ function handleAdminAssignCourses_(request) {
     status: request.status || "",
     paidMonths: request.paidMonths || "",
     replaceExisting: request.replaceExisting === "true",
+    courseRulesMap: courseRulesMap,
   });
 
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
@@ -2739,6 +2741,10 @@ function syncStudentCourses_(spreadsheet, studentIds, courseIds, defaults) {
   const currentEnrollments = enrollmentsData.records || [];
   const preservedMap = {};
   const replaceExisting = !!(defaults && defaults.replaceExisting);
+  const courseRulesMap =
+    defaults && defaults.courseRulesMap && typeof defaults.courseRulesMap === "object"
+      ? defaults.courseRulesMap
+      : {};
 
   currentEnrollments.forEach(function (enrollment) {
     preservedMap[String(enrollment.studentId || "") + "::" + String(enrollment.courseId || "")] = enrollment;
@@ -2757,38 +2763,68 @@ function syncStudentCourses_(spreadsheet, studentIds, courseIds, defaults) {
     normalizedCourseIds.forEach(function (courseId) {
       const key = studentId + "::" + courseId;
       const existing = preservedMap[key] || {};
+      const courseDefaultsRaw =
+        courseRulesMap[courseId] && typeof courseRulesMap[courseId] === "object"
+          ? courseRulesMap[courseId]
+          : {};
+      const courseDefaults = {
+        accessStartDate: hasProvidedValue_(courseDefaultsRaw.accessStartDate)
+          ? courseDefaultsRaw.accessStartDate
+          : defaults.accessStartDate || "",
+        accessEndDate: hasProvidedValue_(courseDefaultsRaw.accessEndDate)
+          ? courseDefaultsRaw.accessEndDate
+          : defaults.accessEndDate || "",
+        videoAccessUntil: hasProvidedValue_(courseDefaultsRaw.videoAccessUntil)
+          ? courseDefaultsRaw.videoAccessUntil
+          : defaults.videoAccessUntil || "",
+        lastPaymentDate: hasProvidedValue_(courseDefaultsRaw.lastPaymentDate)
+          ? courseDefaultsRaw.lastPaymentDate
+          : defaults.lastPaymentDate || "",
+        paymentDueDate: hasProvidedValue_(courseDefaultsRaw.paymentDueDate)
+          ? courseDefaultsRaw.paymentDueDate
+          : defaults.paymentDueDate || "",
+        monthlyFee: hasProvidedValue_(courseDefaultsRaw.monthlyFee)
+          ? courseDefaultsRaw.monthlyFee
+          : defaults.monthlyFee || "",
+        status: hasProvidedValue_(courseDefaultsRaw.status)
+          ? courseDefaultsRaw.status
+          : defaults.status || "",
+        paidMonths: hasProvidedValue_(courseDefaultsRaw.paidMonths)
+          ? courseDefaultsRaw.paidMonths
+          : defaults.paidMonths || "",
+      };
       const accessStartDate =
-        replaceExisting && hasProvidedValue_(defaults.accessStartDate)
-          ? defaults.accessStartDate
-          : existing.accessStartDate || defaults.accessStartDate || getTodayIso_();
+        replaceExisting && hasProvidedValue_(courseDefaults.accessStartDate)
+          ? courseDefaults.accessStartDate
+          : existing.accessStartDate || courseDefaults.accessStartDate || getTodayIso_();
       const accessEndDate =
-        replaceExisting && hasProvidedValue_(defaults.accessEndDate)
-          ? defaults.accessEndDate
-          : existing.accessEndDate || defaults.accessEndDate || "";
+        replaceExisting && hasProvidedValue_(courseDefaults.accessEndDate)
+          ? courseDefaults.accessEndDate
+          : existing.accessEndDate || courseDefaults.accessEndDate || "";
       const videoAccessUntil =
-        replaceExisting && hasProvidedValue_(defaults.videoAccessUntil)
-          ? defaults.videoAccessUntil
-          : existing.videoAccessUntil || defaults.videoAccessUntil || "";
+        replaceExisting && hasProvidedValue_(courseDefaults.videoAccessUntil)
+          ? courseDefaults.videoAccessUntil
+          : existing.videoAccessUntil || courseDefaults.videoAccessUntil || "";
       const lastPaymentDate =
-        replaceExisting && hasProvidedValue_(defaults.lastPaymentDate)
-          ? defaults.lastPaymentDate
-          : existing.lastPaymentDate || defaults.lastPaymentDate || "";
+        replaceExisting && hasProvidedValue_(courseDefaults.lastPaymentDate)
+          ? courseDefaults.lastPaymentDate
+          : existing.lastPaymentDate || courseDefaults.lastPaymentDate || "";
       const paymentDueDate =
-        replaceExisting && hasProvidedValue_(defaults.paymentDueDate)
-          ? defaults.paymentDueDate
-          : existing.paymentDueDate || defaults.paymentDueDate || "";
+        replaceExisting && hasProvidedValue_(courseDefaults.paymentDueDate)
+          ? courseDefaults.paymentDueDate
+          : existing.paymentDueDate || courseDefaults.paymentDueDate || "";
       const monthlyFee =
-        replaceExisting && hasProvidedValue_(defaults.monthlyFee)
-          ? defaults.monthlyFee
-          : existing.monthlyFee || defaults.monthlyFee || "";
+        replaceExisting && hasProvidedValue_(courseDefaults.monthlyFee)
+          ? courseDefaults.monthlyFee
+          : existing.monthlyFee || courseDefaults.monthlyFee || "";
       const status =
-        replaceExisting && hasProvidedValue_(defaults.status)
-          ? defaults.status
-          : existing.status || defaults.status || "Active";
+        replaceExisting && hasProvidedValue_(courseDefaults.status)
+          ? courseDefaults.status
+          : existing.status || courseDefaults.status || "Active";
       const paidMonths =
-        replaceExisting && hasProvidedValue_(defaults.paidMonths)
-          ? defaults.paidMonths
-          : existing.paidMonths || defaults.paidMonths || "";
+        replaceExisting && hasProvidedValue_(courseDefaults.paidMonths)
+          ? courseDefaults.paidMonths
+          : existing.paidMonths || courseDefaults.paidMonths || "";
 
       nextEnrollments.push({
         id: existing.id || Utilities.getUuid(),
