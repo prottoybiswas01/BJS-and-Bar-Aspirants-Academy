@@ -13,6 +13,15 @@ const REGISTER_LOCALIZED_DIGIT_RANGES = Object.freeze([
   Object.freeze({ start: 0x06f0, end: 0x06f9 }),
 ]);
 
+const REGISTER_COURSE_FIELD_KEYS = Object.freeze({
+  id: ["id", "courseId", "courseID"],
+  title: ["title", "name", "courseName"],
+  category: ["category", "type", "courseCategory"],
+  batch: ["batch", "batchName", "group", "groupName"],
+  session: ["session", "sessionName", "shift"],
+  schedule: ["schedule", "routine", "time", "classSchedule"],
+});
+
 const REGISTER_STORAGE_KEYS = Object.freeze({
   courseCatalog: "ain-pathshala.register.courseCatalog",
 });
@@ -111,6 +120,35 @@ function parseRegisterList(value) {
 
 function buildRegisterPipeList(values) {
   return parseRegisterList(values).join("|");
+}
+
+function getFirstAvailableRegisterValue(record, keys, fallback = "") {
+  if (!record || typeof record !== "object" || !Array.isArray(keys) || !keys.length) {
+    return fallback;
+  }
+
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) {
+      continue;
+    }
+
+    const value = record[key];
+    if (value === null || value === undefined) {
+      continue;
+    }
+
+    if (typeof value === "string" && !value.trim()) {
+      continue;
+    }
+
+    if (Array.isArray(value) && !value.length) {
+      continue;
+    }
+
+    return value;
+  }
+
+  return fallback;
 }
 
 function getRegisterStore() {
@@ -289,12 +327,12 @@ async function loadRegisterCourses(options = {}) {
     const payload = await response.json();
     registerState.courses = (payload.courses || [])
       .map((course) => ({
-        id: String(course.id || course.courseId || "").trim(),
-        title: String(course.title || "").trim(),
-        category: String(course.category || "").trim(),
-        batch: String(course.batch || course.batchName || "").trim(),
-        session: String(course.session || course.sessionName || "").trim(),
-        schedule: String(course.schedule || "").trim(),
+        id: String(getFirstAvailableRegisterValue(course, REGISTER_COURSE_FIELD_KEYS.id, "")).trim(),
+        title: String(getFirstAvailableRegisterValue(course, REGISTER_COURSE_FIELD_KEYS.title, "")).trim(),
+        category: String(getFirstAvailableRegisterValue(course, REGISTER_COURSE_FIELD_KEYS.category, "")).trim(),
+        batch: String(getFirstAvailableRegisterValue(course, REGISTER_COURSE_FIELD_KEYS.batch, "")).trim(),
+        session: String(getFirstAvailableRegisterValue(course, REGISTER_COURSE_FIELD_KEYS.session, "")).trim(),
+        schedule: String(getFirstAvailableRegisterValue(course, REGISTER_COURSE_FIELD_KEYS.schedule, "")).trim(),
       }))
       .filter((course) => course.id && course.title)
       .sort((left, right) => left.title.localeCompare(right.title));

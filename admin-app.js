@@ -17,6 +17,90 @@ const LOCALIZED_DIGIT_RANGES = Object.freeze([
   Object.freeze({ start: 0x06f0, end: 0x06f9 }),
 ]);
 
+const STUDENT_FIELD_KEYS = Object.freeze({
+  id: ["id", "studentId", "studentID", "userId", "userID", "memberId", "registrationId", "roll", "rollNumber"],
+  name: ["name", "fullName", "studentName", "userName"],
+  phone: ["phone", "phoneNumber", "mobile", "mobileNumber", "contact", "contactNumber", "whatsapp", "whatsappNumber"],
+  email: ["email", "emailAddress", "mail", "gmail"],
+  batch: ["batch", "batchName", "group", "groupName"],
+  session: ["session", "sessionName", "shift"],
+  joinedOn: ["joinedOn", "joinDate", "createdOn", "admittedOn", "admissionDate", "enrolledOn"],
+  status: ["status", "studentStatus", "accountStatus", "activeStatus"],
+  password: ["password", "loginPassword", "portalPassword", "studentPassword", "passcode", "pin", "loginPin"],
+  loginApproval: ["loginApproval", "approval", "loginApproved", "portalApproval", "approvalStatus", "accessApproval"],
+  portalAccessMode: ["portalAccessMode", "accessMode", "studentAccessMode", "videoAccessMode", "portalMode"],
+  highlight: ["highlight", "note", "remarks", "message"],
+  enrolledCourseIds: ["enrolledCourseIds", "courseIds", "courses", "assignedCourses", "enrolledCourses"],
+});
+
+const COURSE_FIELD_KEYS = Object.freeze({
+  id: ["id", "courseId", "courseID"],
+  title: ["title", "name", "courseName"],
+  shortTitle: ["shortTitle", "shortName", "shortLabel"],
+  faculty: ["faculty", "instructor", "teacher", "mentor"],
+  category: ["category", "type", "courseCategory"],
+  batch: ["batch", "batchName", "group", "groupName"],
+  session: ["session", "sessionName", "shift"],
+  schedule: ["schedule", "routine", "time", "classSchedule"],
+  nextLive: ["nextLive", "nextClass", "nextLiveClass", "upcomingClass"],
+  description: ["description", "details", "summary", "note"],
+});
+
+const ENROLLMENT_FIELD_KEYS = Object.freeze({
+  id: ["id", "enrollmentId"],
+  studentId: ["studentId", "studentIds", "studentID", "studentIDList"],
+  courseId: ["courseId", "courseIds", "courseID", "courseIDList"],
+  accessStartDate: ["accessStartDate", "startDate", "activeFrom", "accessFrom"],
+  accessEndDate: ["accessEndDate", "endDate", "validUntil", "accessUntil"],
+  videoAccessUntil: [
+    "videoAccessUntil",
+    "approvedUntil",
+    "lessonAccessUntil",
+    "accessApprovedUntil",
+    "videoUnlockDate",
+    "releaseAccessUntil",
+  ],
+  lastPaymentDate: ["lastPaymentDate", "paymentApprovedOn", "paidOn", "latestPaymentDate"],
+  paymentDueDate: ["paymentDueDate", "nextPaymentDueDate", "lastPaymentDueDate", "paymentDate"],
+  monthlyFee: ["monthlyFee", "fee", "amount", "monthlyAmount"],
+  status: ["status", "enrollmentStatus", "accessStatus"],
+  paidMonths: ["paidMonths", "paymentMonths", "paidMonthList", "allowedMonths"],
+});
+
+const REGISTRATION_FIELD_KEYS = Object.freeze({
+  id: ["id", "registrationId", "requestId"],
+  studentId: ["studentId", "studentID", "approvedStudentId"],
+  name: ["name", "fullName", "studentName", "userName"],
+  phone: ["phone", "phoneNumber", "mobile", "mobileNumber", "contact", "contactNumber", "whatsapp", "whatsappNumber"],
+  email: ["email", "emailAddress", "mail", "gmail"],
+  batch: ["batch", "batchName", "group", "groupName"],
+  session: ["session", "sessionName", "shift"],
+  password: ["password", "loginPassword", "portalPassword", "studentPassword", "passcode", "pin", "loginPin"],
+  requestedCourseIds: ["requestedCourseIds", "courseIds", "courses", "requestedCourses", "requestedCourseList"],
+  status: ["status", "registrationStatus", "approvalStatus"],
+  submittedOn: ["submittedOn", "createdOn", "requestedOn", "appliedOn"],
+  reviewedOn: ["reviewedOn", "updatedOn", "approvedOn"],
+  reviewedBy: ["reviewedBy", "approvedBy", "handledBy"],
+  reviewNote: ["reviewNote", "note", "remarks", "comment"],
+});
+
+const MESSAGE_FIELD_KEYS = Object.freeze({
+  id: ["id", "messageId"],
+  studentIds: ["studentIds", "studentId", "recipientIds", "recipients"],
+  title: ["title", "subject", "messageTitle"],
+  message: ["message", "body", "content", "text"],
+  status: ["status", "messageStatus"],
+  createdOn: ["createdOn", "sentOn", "publishedOn"],
+  createdBy: ["createdBy", "sender", "sentBy"],
+  audience: ["audience", "visibility", "channel"],
+  recipientState: ["recipientStateJson", "recipientState", "recipientStatus"],
+});
+
+const ADMIN_FIELD_KEYS = Object.freeze({
+  name: ["name", "fullName", "adminName"],
+  username: ["username", "userName", "login", "adminLogin"],
+});
+
 const PREVIEW_ACCESS_VALUES = Object.freeze([
   "preview",
   "viewonly",
@@ -263,6 +347,35 @@ function buildPipeList(values) {
   return parseList(values).join("|");
 }
 
+function getFirstAvailableValue(record, keys, fallback = "") {
+  if (!record || typeof record !== "object" || !Array.isArray(keys) || !keys.length) {
+    return fallback;
+  }
+
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(record, key)) {
+      continue;
+    }
+
+    const value = record[key];
+    if (value === null || value === undefined) {
+      continue;
+    }
+
+    if (typeof value === "string" && !value.trim()) {
+      continue;
+    }
+
+    if (Array.isArray(value) && !value.length) {
+      continue;
+    }
+
+    return value;
+  }
+
+  return fallback;
+}
+
 function parseRecipientState(value, studentIds = []) {
   let parsed = null;
 
@@ -456,16 +569,23 @@ function createCourseMap(courses) {
 function normalizeDashboard(payload = {}) {
   const courses = (payload.courses || [])
     .map((course) => ({
-      id: String(course.id || course.courseId || "").trim(),
-      title: String(course.title || "").trim() || "Untitled Course",
-      shortTitle: String(course.shortTitle || course.title || "").trim() || "Course",
-      faculty: String(course.faculty || "").trim(),
-      category: String(course.category || "").trim(),
-      batch: String(course.batch || course.batchName || "").trim(),
-      session: String(course.session || course.sessionName || "").trim(),
-      schedule: String(course.schedule || "").trim(),
-      nextLive: String(course.nextLive || "").trim(),
-      description: String(course.description || "").trim(),
+      id: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.id, "")).trim(),
+      title: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.title, "Untitled Course")).trim() || "Untitled Course",
+      shortTitle:
+        String(
+          getFirstAvailableValue(
+            course,
+            COURSE_FIELD_KEYS.shortTitle,
+            getFirstAvailableValue(course, COURSE_FIELD_KEYS.title, "Course")
+          )
+        ).trim() || "Course",
+      faculty: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.faculty, "")).trim(),
+      category: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.category, "")).trim(),
+      batch: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.batch, "")).trim(),
+      session: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.session, "")).trim(),
+      schedule: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.schedule, "")).trim(),
+      nextLive: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.nextLive, "")).trim(),
+      description: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.description, "")).trim(),
     }))
     .filter((course) => course.id)
     .sort((left, right) => left.title.localeCompare(right.title));
@@ -474,69 +594,88 @@ function normalizeDashboard(payload = {}) {
 
   const students = (payload.students || [])
     .map((student) => ({
-      id: String(student.id || student.studentId || "").trim(),
-      name: String(student.name || "").trim(),
-      phone: String(student.phone || "").trim(),
-      email: String(student.email || "").trim(),
-      batch: String(student.batch || "").trim(),
-      session: String(student.session || "").trim(),
-      joinedOn: String(student.joinedOn || "").trim(),
-      status: String(student.status || "Active").trim(),
-      password: String(student.password || "").trim(),
-      loginApproval: String(student.loginApproval || "Pending").trim(),
-      portalAccessMode: String(student.portalAccessMode || "").trim(),
-      highlight: String(student.highlight || "").trim(),
-      enrolledCourseIds: parseList(student.enrolledCourseIds || student.courseIds || student.courses || ""),
+      id: String(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.id, "")).trim(),
+      name: String(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.name, "")).trim(),
+      phone: String(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.phone, "")).trim(),
+      email: String(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.email, "")).trim(),
+      batch: String(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.batch, "")).trim(),
+      session: String(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.session, "")).trim(),
+      joinedOn: String(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.joinedOn, "")).trim(),
+      status: String(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.status, "Active")).trim() || "Active",
+      password: String(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.password, "")).trim(),
+      loginApproval: String(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.loginApproval, "Pending")).trim() || "Pending",
+      portalAccessMode: String(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.portalAccessMode, "")).trim(),
+      highlight: String(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.highlight, "")).trim(),
+      enrolledCourseIds: parseList(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.enrolledCourseIds, "")),
     }))
     .filter((student) => student.id)
     .sort((left, right) => left.name.localeCompare(right.name));
 
   const enrollments = (payload.enrollments || [])
-    .map((enrollment) => ({
-      id: String(enrollment.id || "").trim(),
-      studentId: String(enrollment.studentId || "").trim(),
-      courseId: String(enrollment.courseId || "").trim(),
-      accessStartDate: String(enrollment.accessStartDate || "").trim(),
-      accessEndDate: String(enrollment.accessEndDate || "").trim(),
-      videoAccessUntil: String(enrollment.videoAccessUntil || "").trim(),
-      lastPaymentDate: String(enrollment.lastPaymentDate || "").trim(),
-      paymentDueDate: String(enrollment.paymentDueDate || "").trim(),
-      monthlyFee: String(enrollment.monthlyFee || "").trim(),
-      status: String(enrollment.status || "Active").trim(),
-      paidMonths: parseList(enrollment.paidMonths || ""),
-    }))
+    .flatMap((enrollment, index) => {
+      const studentIds = parseList(getFirstAvailableValue(enrollment, ENROLLMENT_FIELD_KEYS.studentId, ""));
+      const courseIds = parseList(getFirstAvailableValue(enrollment, ENROLLMENT_FIELD_KEYS.courseId, ""));
+
+      return studentIds.flatMap((studentId) =>
+        courseIds.map((courseId, courseIndex) => ({
+          id:
+            String(getFirstAvailableValue(enrollment, ENROLLMENT_FIELD_KEYS.id, "")).trim() ||
+            `enrollment-${index + 1}-${courseIndex + 1}`,
+          studentId,
+          courseId,
+          accessStartDate: String(getFirstAvailableValue(enrollment, ENROLLMENT_FIELD_KEYS.accessStartDate, "")).trim(),
+          accessEndDate: String(getFirstAvailableValue(enrollment, ENROLLMENT_FIELD_KEYS.accessEndDate, "")).trim(),
+          videoAccessUntil:
+            String(
+              getFirstAvailableValue(
+                enrollment,
+                ENROLLMENT_FIELD_KEYS.videoAccessUntil,
+                getFirstAvailableValue(enrollment, ENROLLMENT_FIELD_KEYS.accessEndDate, "")
+              )
+            ).trim(),
+          lastPaymentDate: String(getFirstAvailableValue(enrollment, ENROLLMENT_FIELD_KEYS.lastPaymentDate, "")).trim(),
+          paymentDueDate: String(getFirstAvailableValue(enrollment, ENROLLMENT_FIELD_KEYS.paymentDueDate, "")).trim(),
+          monthlyFee: String(getFirstAvailableValue(enrollment, ENROLLMENT_FIELD_KEYS.monthlyFee, "")).trim(),
+          status: String(getFirstAvailableValue(enrollment, ENROLLMENT_FIELD_KEYS.status, "Active")).trim() || "Active",
+          paidMonths: parseList(getFirstAvailableValue(enrollment, ENROLLMENT_FIELD_KEYS.paidMonths, "")),
+        }))
+      );
+    })
     .filter((enrollment) => enrollment.studentId && enrollment.courseId);
 
   const registrations = (payload.registrations || [])
     .map((registration) => ({
-      id: String(registration.id || "").trim(),
-      studentId: String(registration.studentId || "").trim(),
-      name: String(registration.name || "").trim(),
-      phone: String(registration.phone || "").trim(),
-      email: String(registration.email || "").trim(),
-      batch: String(registration.batch || "").trim(),
-      session: String(registration.session || "").trim(),
-      password: String(registration.password || "").trim(),
-      requestedCourseIds: parseList(registration.requestedCourseIds || ""),
-      status: String(registration.status || "Pending").trim(),
-      submittedOn: String(registration.submittedOn || "").trim(),
-      reviewedOn: String(registration.reviewedOn || "").trim(),
-      reviewedBy: String(registration.reviewedBy || "").trim(),
-      reviewNote: String(registration.reviewNote || "").trim(),
+      id: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.id, "")).trim(),
+      studentId: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.studentId, "")).trim(),
+      name: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.name, "")).trim(),
+      phone: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.phone, "")).trim(),
+      email: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.email, "")).trim(),
+      batch: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.batch, "")).trim(),
+      session: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.session, "")).trim(),
+      password: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.password, "")).trim(),
+      requestedCourseIds: parseList(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.requestedCourseIds, "")),
+      status: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.status, "Pending")).trim() || "Pending",
+      submittedOn: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.submittedOn, "")).trim(),
+      reviewedOn: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.reviewedOn, "")).trim(),
+      reviewedBy: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.reviewedBy, "")).trim(),
+      reviewNote: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.reviewNote, "")).trim(),
     }))
     .sort((left, right) => new Date(right.submittedOn || 0) - new Date(left.submittedOn || 0));
 
   const messages = (payload.messages || [])
     .map((message) => ({
-      id: String(message.id || "").trim(),
-      studentIds: parseList(message.studentIds || ""),
-      title: String(message.title || "Admin Message").trim(),
-      message: String(message.message || "").trim(),
-      status: String(message.status || "Sent").trim(),
-      createdOn: String(message.createdOn || "").trim(),
-      createdBy: String(message.createdBy || "").trim(),
+      id: String(getFirstAvailableValue(message, MESSAGE_FIELD_KEYS.id, "")).trim(),
+      studentIds: parseList(getFirstAvailableValue(message, MESSAGE_FIELD_KEYS.studentIds, "")),
+      title: String(getFirstAvailableValue(message, MESSAGE_FIELD_KEYS.title, "Admin Message")).trim() || "Admin Message",
+      message: String(getFirstAvailableValue(message, MESSAGE_FIELD_KEYS.message, "")).trim(),
+      status: String(getFirstAvailableValue(message, MESSAGE_FIELD_KEYS.status, "Sent")).trim() || "Sent",
+      createdOn: String(getFirstAvailableValue(message, MESSAGE_FIELD_KEYS.createdOn, "")).trim(),
+      createdBy: String(getFirstAvailableValue(message, MESSAGE_FIELD_KEYS.createdBy, "")).trim(),
       audience: getMessageAudience(message),
-      recipientState: parseRecipientState(message.recipientStateJson || message.recipientState || "", message.studentIds),
+      recipientState: parseRecipientState(
+        getFirstAvailableValue(message, MESSAGE_FIELD_KEYS.recipientState, ""),
+        getFirstAvailableValue(message, MESSAGE_FIELD_KEYS.studentIds, "")
+      ),
     }))
     .sort((left, right) => new Date(right.createdOn || 0) - new Date(left.createdOn || 0));
 
@@ -551,6 +690,18 @@ function normalizeDashboard(payload = {}) {
     registrations,
     messages,
     courseMap,
+  };
+}
+
+function normalizeAdminSession(admin = null) {
+  if (!admin || typeof admin !== "object") {
+    return null;
+  }
+
+  return {
+    ...admin,
+    name: String(getFirstAvailableValue(admin, ADMIN_FIELD_KEYS.name, admin.name || "")).trim(),
+    username: String(getFirstAvailableValue(admin, ADMIN_FIELD_KEYS.username, admin.username || "")).trim(),
   };
 }
 
@@ -825,7 +976,7 @@ async function requestPublicData() {
 function applyDashboardPayload(payload, feedbackMessage = "", tone = "success") {
   state.data = normalizeDashboard(payload);
   if (payload.admin) {
-    state.admin = payload.admin;
+    state.admin = normalizeAdminSession(payload.admin);
   }
   if (payload?.ok) {
     writeStoredJson(STORAGE_KEYS.adminDashboardCache, payload);
