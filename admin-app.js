@@ -1946,6 +1946,7 @@ async function handleSendMessage() {
 
 async function handleCourseSave(event) {
   event.preventDefault();
+  const wasEditingExistingCourse = !!state.editingCourseId;
 
   const payload = {
     id: (state.editingCourseId || dom.courseIdInput.value).trim(),
@@ -1975,9 +1976,14 @@ async function handleCourseSave(event) {
       throw new Error(response.message || "Unable to save the course.");
     }
 
-    applyDashboardPayload(response, "Course saved.");
+    const successMessage = wasEditingExistingCourse ? "Course updated." : "Course saved.";
+    try {
+      await loadDashboard(successMessage);
+    } catch (refreshError) {
+      applyDashboardPayload(response, successMessage);
+    }
     clearCourseForm();
-    setFeedback(dom.courseFeedback, "Course saved.", "success");
+    setFeedback(dom.courseFeedback, successMessage, "success");
   } catch (error) {
     setFeedback(dom.courseFeedback, error.message || "Unable to save the course.", "error");
   }

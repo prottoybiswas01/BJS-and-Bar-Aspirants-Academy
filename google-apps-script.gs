@@ -2700,6 +2700,7 @@ function writeSheetEntries_(sheet, headers, records) {
 
   if (!records.length || !headers.length) {
     invalidatePublicReadCaches_();
+    flushSpreadsheetChanges_();
     return;
   }
 
@@ -2711,6 +2712,15 @@ function writeSheetEntries_(sheet, headers, records) {
 
   sheet.getRange(2, 1, values.length, headers.length).setValues(values);
   invalidatePublicReadCaches_();
+  flushSpreadsheetChanges_();
+}
+
+function flushSpreadsheetChanges_() {
+  try {
+    SpreadsheetApp.flush();
+  } catch (error) {
+    // Ignore flush failures and allow the write to continue.
+  }
 }
 
 function serializeRowValue_(value) {
