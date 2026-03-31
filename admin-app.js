@@ -133,6 +133,13 @@ const UNLIMITED_ACCESS_VALUES = Object.freeze([
   "permanent",
 ]);
 
+const UNLIMITED_LOCKED_FIELD_KEYS = Object.freeze([
+  "lastPaymentDate",
+  "paymentDueDate",
+  "monthlyFee",
+  "paidMonths",
+]);
+
 const COURSE_RULE_FIELDS = Object.freeze([
   Object.freeze({
     key: "unlimitedAccess",
@@ -389,6 +396,13 @@ function normalizeLookupText(value) {
 
 function isUnlimitedAccessEnabled(value) {
   return UNLIMITED_ACCESS_VALUES.includes(normalizeLookupText(value));
+}
+
+function isCourseRuleFieldLocked(fieldKey, draft = {}) {
+  return (
+    UNLIMITED_LOCKED_FIELD_KEYS.includes(String(fieldKey || "").trim()) &&
+    isUnlimitedAccessEnabled(draft.unlimitedAccess)
+  );
 }
 
 function normalizePhoneValue(value) {
@@ -1140,10 +1154,14 @@ function getCourseRuleDraft(courseId, selectedStudents = getSelectedStudents()) 
 
 function renderCourseRuleField(courseId, field, draft) {
   const value = String(draft[field.key] || "").trim();
+  const isLockedByUnlimited = isCourseRuleFieldLocked(field.key, draft);
+  const controlClassName = isLockedByUnlimited
+    ? "w-full cursor-not-allowed rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-sm text-slate-400 outline-none"
+    : "w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none";
   const baseAttributes = [
     `data-course-rule-course="${escapeHtml(courseId)}"`,
     `data-course-rule-field="${escapeHtml(field.key)}"`,
-    'class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"',
+    `class="${controlClassName}"`,
   ];
   const toggleAttributes = [
     `data-course-rule-course="${escapeHtml(courseId)}"`,
@@ -1189,7 +1207,7 @@ function renderCourseRuleField(courseId, field, draft) {
     `;
   } else if (field.type === "select") {
     controlMarkup = `
-      <select ${baseAttributes.join(" ")}>
+      <select ${baseAttributes.join(" ")} ${isLockedByUnlimited ? "disabled" : ""}>
         ${field.options
           .map(
             (option) => `
@@ -1208,6 +1226,7 @@ function renderCourseRuleField(courseId, field, draft) {
         type="${escapeHtml(field.type)}"
         value="${escapeHtml(value)}"
         ${field.placeholder ? `placeholder="${escapeHtml(field.placeholder)}"` : ""}
+        ${isLockedByUnlimited ? "disabled" : ""}
       />
     `;
   }
@@ -1216,6 +1235,11 @@ function renderCourseRuleField(courseId, field, draft) {
     <label class="block ${field.wide ? "sm:col-span-2 xl:col-span-2" : ""}">
       <span class="mb-2 block text-xs font-semibold tracking-[0.08em] text-slate-500">${escapeHtml(field.label)}</span>
       ${controlMarkup}
+      ${
+        isLockedByUnlimited
+          ? '<span class="mt-2 block text-[11px] font-medium text-amber-700">Locked while Unlimited Access is on.</span>'
+          : ""
+      }
     </label>
   `;
 }
@@ -2262,20 +2286,21 @@ function populateCourseForm(course) {
 
 function normalizeCourseRuleDraftForRequest(draft = {}) {
   const normalizedUnlimitedValue = String(draft.unlimitedAccess || "").trim();
+  const unlimitedEnabled = isUnlimitedAccessEnabled(normalizedUnlimitedValue);
   return {
     unlimitedAccess: normalizedUnlimitedValue
-      ? isUnlimitedAccessEnabled(normalizedUnlimitedValue)
+      ? unlimitedEnabled
         ? "true"
         : "false"
       : "",
     accessStartDate: String(draft.accessStartDate || "").trim(),
     accessEndDate: String(draft.accessEndDate || "").trim(),
     videoAccessUntil: String(draft.videoAccessUntil || "").trim(),
-    lastPaymentDate: String(draft.lastPaymentDate || "").trim(),
-    paymentDueDate: String(draft.paymentDueDate || "").trim(),
-    monthlyFee: String(draft.monthlyFee || "").trim(),
+    lastPaymentDate: unlimitedEnabled ? "" : String(draft.lastPaymentDate || "").trim(),
+    paymentDueDate: unlimitedEnabled ? "" : String(draft.paymentDueDate || "").trim(),
+    monthlyFee: unlimitedEnabled ? "" : String(draft.monthlyFee || "").trim(),
     status: String(draft.status || "").trim(),
-    paidMonths: buildPipeList(String(draft.paidMonths || "").trim()),
+    paidMonths: unlimitedEnabled ? "" : buildPipeList(String(draft.paidMonths || "").trim()),
   };
 }
 
