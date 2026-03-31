@@ -4,94 +4,21 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ain Pathshala Admin Panel</title>
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230f172a'/%3E%3Cpath d='M16 23 32 15l16 8-16 8-16-8Zm6 5v9.5C22 44 27.4 48 32 48s10-4 10-10.5V28l-10 5-10-5Z' fill='%23c5a059'/%3E%3C/svg%3E"
+    />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://script.google.com" />
     <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin />
-    <link rel="stylesheet" href="./styles/app.css?v=20260323-3" />
+    <link rel="stylesheet" href="./styles/app.css?v=20260331-1" />
     <link
-      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
     />
-    <style>
-      :root {
-        --admin-deep: #102542;
-        --admin-accent: #d97706;
-      }
-
-      body {
-        font-family: "Plus Jakarta Sans", sans-serif;
-        background:
-          radial-gradient(circle at top right, rgba(217, 119, 6, 0.12), transparent 28%),
-          linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
-      }
-
-      .admin-hero {
-        background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 55%, #0f766e 100%);
-      }
-
-      .panel-card {
-        box-shadow: 0 22px 60px -30px rgba(15, 23, 42, 0.35);
-      }
-
-      .soft-grid {
-        background-image:
-          linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px);
-        background-size: 22px 22px;
-      }
-
-      .scroll-slim::-webkit-scrollbar {
-        width: 8px;
-        height: 8px;
-      }
-
-      .scroll-slim::-webkit-scrollbar-thumb {
-        background: rgba(30, 64, 175, 0.35);
-        border-radius: 999px;
-      }
-
-      .admin-header-shell {
-        gap: 1rem;
-      }
-
-      .admin-header-actions,
-      .admin-hero-actions {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.75rem;
-      }
-
-      .admin-header-actions {
-        justify-content: flex-end;
-      }
-
-      @media (max-width: 767px) {
-        .admin-header-shell {
-          align-items: flex-start;
-        }
-
-        .admin-header-actions,
-        .admin-hero-actions {
-          width: 100%;
-        }
-
-        .admin-header-actions > a,
-        .admin-header-actions > button,
-        .admin-hero-actions > a,
-        .admin-hero-actions > button {
-          flex: 1 1 140px;
-          text-align: center;
-        }
-
-        #adminLoginSection .admin-hero,
-        #adminDashboard .admin-hero {
-          padding: 1.5rem;
-        }
-
-      }
-    </style>
   </head>
-  <body class="min-h-screen text-slate-900">
+  <body class="admin-page min-h-screen text-slate-900">
     <header class="admin-hero border-b border-white/10 text-white">
       <div class="admin-header-shell mx-auto flex w-full max-w-[1680px] items-center justify-between gap-4 px-4 py-5 sm:px-6 lg:px-8">
         <div>
@@ -517,7 +444,7 @@
       </section>
     </main>
 
-    <script src="./portal-copy.js?v=20260315-1"></script>
-    <script src="./admin-app.js?v=20260323-6"></script>
+    <script src="./portal-copy.js?v=20260315-1" defer></script>
+    <script src="./admin-app.js?v=20260323-6" defer></script>
   </body>
 </html>

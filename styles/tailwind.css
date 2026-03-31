@@ -1,3 +1,209 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+@layer base {
+  :root {
+    --law-blue: #1a365d;
+    --law-gold: #c5a059;
+    --admin-deep: #102542;
+    --admin-accent: #d97706;
+  }
+
+  body {
+    font-family: "Plus Jakarta Sans", sans-serif;
+  }
+
+  body.portal-page {
+    background-color: #f3f4f6;
+    scroll-behavior: smooth;
+  }
+
+  body.register-page {
+    background:
+      radial-gradient(circle at top left, rgba(29, 78, 216, 0.12), transparent 28%),
+      radial-gradient(circle at bottom right, rgba(13, 148, 136, 0.14), transparent 22%),
+      linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+  }
+
+  body.admin-page {
+    background:
+      radial-gradient(circle at top right, rgba(217, 119, 6, 0.12), transparent 28%),
+      linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+  }
+
+  ::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #f1f1f1;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #1e3a8a;
+    border-radius: 10px;
+  }
+}
+
+@layer components {
+  .law-gradient {
+    background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%);
+  }
+
+  .gold-text {
+    color: var(--law-gold);
+  }
+
+  .gold-bg {
+    background-color: var(--law-gold);
+  }
+
+  .accordion-content {
+    max-height: 0;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    opacity: 0;
+  }
+
+  .accordion-active .accordion-content {
+    max-height: 2000px;
+    opacity: 1;
+    padding-bottom: 1rem;
+  }
+
+  .glass-nav {
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .card-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .card-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+  }
+
+  #profileModal h2,
+  #profileModal h3,
+  #profileModal h4,
+  #profileModal p,
+  #profileModal span,
+  #courseList h3,
+  #courseList h4,
+  #courseList p {
+    overflow-wrap: anywhere;
+  }
+
+  .portal-nav-shell,
+  .register-header-shell,
+  .admin-header-shell {
+    gap: 1rem;
+  }
+
+  .portal-nav-actions,
+  .register-header-actions,
+  .admin-header-actions,
+  .admin-hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+
+  .portal-nav-actions {
+    align-items: center;
+    justify-content: flex-end;
+  }
+
+  .admin-header-actions {
+    justify-content: flex-end;
+  }
+
+  .portal-hero {
+    padding: 2.5rem;
+  }
+
+  .hero-shell,
+  .admin-hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 55%, #0f766e 100%);
+  }
+
+  .panel-card {
+    box-shadow: 0 22px 60px -30px rgba(15, 23, 42, 0.35);
+  }
+
+  .soft-grid {
+    background-image:
+      linear-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(148, 163, 184, 0.12) 1px, transparent 1px);
+    background-size: 22px 22px;
+  }
+
+  .scroll-slim::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .scroll-slim::-webkit-scrollbar-thumb {
+    background: rgba(30, 64, 175, 0.35);
+    border-radius: 999px;
+  }
+}
+
+@media (max-width: 767px) {
+  .portal-nav-shell,
+  .register-header-shell,
+  .admin-header-shell {
+    align-items: flex-start;
+  }
+
+  .portal-nav-actions,
+  .register-header-actions,
+  .admin-header-actions,
+  .admin-hero-actions {
+    width: 100%;
+  }
+
+  .portal-nav-actions > a,
+  .portal-nav-actions > button,
+  .register-header-actions > a,
+  .admin-header-actions > a,
+  .admin-header-actions > button,
+  .admin-hero-actions > a,
+  .admin-hero-actions > button {
+    flex: 1 1 140px;
+    text-align: center;
+  }
+
+  .portal-nav-actions > #userProfile {
+    flex: 1 1 100%;
+    justify-content: flex-end;
+  }
+
+  #loginSection {
+    margin-top: 1rem;
+    padding: 1.5rem;
+    border-radius: 1.75rem;
+  }
+
+  .portal-hero,
+  #adminLoginSection .admin-hero,
+  #adminDashboard .admin-hero {
+    padding: 1.5rem;
+  }
+
+  .portal-hero {
+    border-radius: 2rem;
+  }
+
+  #dashboardMeta > div {
+    padding: 1.25rem;
+  }
+
+  #dashboardSection {
+    gap: 1.25rem;
+  }
+}

@@ -101,335 +101,59 @@ const STUDENT_FIELD_KEYS = Object.freeze({
   completedLessonIds: ["completedLessonIds", "completed", "completedLessons"],
 });
 
-const demoData = {
-  students: [
-    {
-      id: "LAW-2026-014",
-      name: "Aritra Rahman",
-      phone: "01712000014",
-      email: "aritra.rahman@example.com",
-      batch: "Judiciary 2026",
-      session: "Weekend Intensive",
-      joinedOn: "2025-12-15",
-      status: "Active",
-      profileImage: "https://i.pravatar.cc/240?img=12",
-      password: "law014",
-      loginApproval: "Approved",
-      passwordResetUrl:
-        "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20LAW-2026-014",
-      enrolledCourseIds: [
-        "judiciary-foundation",
-        "criminal-procedure-mastery",
-        "legal-drafting-lab",
-      ],
-      completedLessonIds: ["jud-01", "jud-02", "crim-01", "draft-01", "draft-02"],
-      highlight: "Preparing for judicial service with drafting support.",
-    },
-    {
-      id: "BAR-2026-008",
-      name: "Nafisa Tabassum",
-      phone: "01712000008",
-      email: "nafisa.tabassum@example.com",
-      batch: "Bar Council 2026",
-      session: "Evening Program",
-      joinedOn: "2025-11-01",
-      status: "Active",
-      profileImage: "https://i.pravatar.cc/240?img=32",
-      password: "bar008",
-      loginApproval: "Approved",
-      passwordResetUrl:
-        "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20BAR-2026-008",
-      enrolledCourseIds: ["bar-viva-clinic", "criminal-procedure-mastery"],
-      completedLessonIds: ["bar-01", "crim-01", "crim-02"],
-      highlight: "Focused on viva confidence and criminal procedure.",
-    },
-    {
-      id: "LIT-2026-031",
-      name: "Sajid Al Mahmud",
-      phone: "01712000031",
-      email: "sajid.mahmud@example.com",
-      batch: "Mixed Litigation Track",
-      session: "Morning Batch",
-      joinedOn: "2026-01-18",
-      status: "Active",
-      profileImage: "https://i.pravatar.cc/240?img=15",
-      password: "lit031",
-      loginApproval: "Pending",
-      passwordResetUrl:
-        "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20LIT-2026-031",
-      enrolledCourseIds: ["legal-drafting-lab", "criminal-procedure-mastery"],
-      completedLessonIds: ["draft-01"],
-      highlight: "Wants practical drafting and procedure side by side.",
-    },
-  ],
-  courses: [
-    {
-      id: "judiciary-foundation",
-      title: "Judiciary Foundation",
-      shortTitle: "Judiciary",
-      faculty: "Adv. Mahmudul Hasan",
-      category: "Core Preparation",
-      schedule: "Sun, Tue, Thu at 8:30 PM",
-      nextLive: "2026-03-14T20:30:00+06:00",
-      description:
-        "A structured path for constitutional principles, civil-criminal basics, and high-yield MCQ preparation for judiciary examinees.",
-    },
-    {
-      id: "criminal-procedure-mastery",
-      title: "Criminal Procedure Mastery",
-      shortTitle: "Criminal Procedure",
-      faculty: "Barrister Samiha Karim",
-      category: "Procedure Track",
-      schedule: "Mon, Wed at 9:00 PM",
-      nextLive: "2026-03-15T21:00:00+06:00",
-      description:
-        "Detailed breakdown of CrPC flow, arrest-to-trial sequence, framing of charge, and practical problem-solving for law students.",
-    },
-    {
-      id: "legal-drafting-lab",
-      title: "Legal Drafting Lab",
-      shortTitle: "Drafting",
-      faculty: "Adv. Tahsin Sarker",
-      category: "Practical Skills",
-      schedule: "Fri at 7:30 PM",
-      nextLive: "2026-03-13T19:30:00+06:00",
-      description:
-        "Draft plaints, written statements, bail petitions, affidavits, and legal notices with practical templates and review guidance.",
-    },
-    {
-      id: "bar-viva-clinic",
-      title: "Bar Viva Clinic",
-      shortTitle: "Bar Viva",
-      faculty: "Adv. Sharmin Sultana",
-      category: "Viva Coaching",
-      schedule: "Sat at 8:00 PM",
-      nextLive: "2026-03-16T20:00:00+06:00",
-      description:
-        "Short oral drills, legal ethics, and rapid-fire viva practice to prepare bar candidates for structured questioning.",
-    },
-  ],
-  lessons: [
-    {
-      id: "jud-01",
-      courseId: "judiciary-foundation",
-      module: "Constitutional Framework",
-      title: "State structure, separation of powers, and court hierarchy",
-      duration: "48 min",
-      youtubeUrl: "https://www.youtube.com/watch?v=M7lc1UVf-VE",
-      releaseDate: "2026-01-05",
-      resources: ["PDF outline", "MCQ drill set"],
-      note: "Start here if the student is new to judiciary preparation.",
-    },
-    {
-      id: "jud-02",
-      courseId: "judiciary-foundation",
-      module: "Core Principles",
-      title: "Natural justice and judicial review essentials",
-      duration: "44 min",
-      youtubeUrl: "https://www.youtube.com/watch?v=ysz5S6PUM-U",
-      releaseDate: "2026-02-08",
-      resources: ["Case digest", "Revision notes"],
-      note: "Pairs well with constitutional case memorization.",
-    },
-    {
-      id: "jud-03",
-      courseId: "judiciary-foundation",
-      module: "MCQ Strategy",
-      title: "How to extract high-yield points from past papers",
-      duration: "36 min",
-      youtubeUrl: "https://www.youtube.com/watch?v=ScMzIvxBSi4",
-      releaseDate: "2026-03-11",
-      resources: ["Past paper map", "Score tracker"],
-      note: "Ideal before weekly model tests.",
-    },
-    {
-      id: "crim-01",
-      courseId: "criminal-procedure-mastery",
-      module: "Investigation Flow",
-      title: "From FIR to police report: the criminal process map",
-      duration: "41 min",
-      youtubeUrl: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
-      releaseDate: "2026-02-04",
-      resources: ["Flowchart", "Section list"],
-      note: "Covers the entire process in one class.",
-    },
-    {
-      id: "crim-02",
-      courseId: "criminal-procedure-mastery",
-      module: "Trial Mechanics",
-      title: "Charge, cognizance, and trial stages simplified",
-      duration: "52 min",
-      youtubeUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-      releaseDate: "2026-03-09",
-      resources: ["Procedure chart", "MCQ bank"],
-      note: "Strong revision class for bar and judiciary learners.",
-    },
-    {
-      id: "crim-03",
-      courseId: "criminal-procedure-mastery",
-      module: "Bail and Appeals",
-      title: "Bail grounds, revision, and appellate pathways",
-      duration: "46 min",
-      youtubeUrl: "https://www.youtube.com/watch?v=ysz5S6PUM-U",
-      releaseDate: "2026-03-12",
-      resources: ["Bail grounds note", "Quick recall sheet"],
-      note: "Good companion lesson before live doubt clearing.",
-    },
-    {
-      id: "draft-01",
-      courseId: "legal-drafting-lab",
-      module: "Civil Drafting",
-      title: "How to draft a plaint with proper heading and cause title",
-      duration: "39 min",
-      youtubeUrl: "https://www.youtube.com/watch?v=M7lc1UVf-VE",
-      releaseDate: "2026-02-02",
-      resources: ["Plaint template", "Checklist"],
-      note: "Foundational class for new drafting students.",
-    },
-    {
-      id: "draft-02",
-      courseId: "legal-drafting-lab",
-      module: "Criminal Drafting",
-      title: "Drafting a bail petition with concise legal grounds",
-      duration: "34 min",
-      youtubeUrl: "https://www.youtube.com/watch?v=ScMzIvxBSi4",
-      releaseDate: "2026-03-07",
-      resources: ["Petition sample", "Common mistakes"],
-      note: "Short but practical session that students revisit often.",
-    },
-    {
-      id: "draft-03",
-      courseId: "legal-drafting-lab",
-      module: "Professional Writing",
-      title: "Client notice and affidavit drafting workflow",
-      duration: "43 min",
-      youtubeUrl: "https://www.youtube.com/watch?v=aqz-KE-bpKQ",
-      releaseDate: "2026-03-10",
-      resources: ["Notice format", "Affidavit guide"],
-      note: "Useful for both examination and chamber practice.",
-    },
-    {
-      id: "bar-01",
-      courseId: "bar-viva-clinic",
-      module: "Viva Basics",
-      title: "Legal ethics and courtroom etiquette drill",
-      duration: "28 min",
-      youtubeUrl: "https://www.youtube.com/watch?v=M7lc1UVf-VE",
-      releaseDate: "2026-01-06",
-      resources: ["Ethics flashcards", "Quick answer sheet"],
-      note: "Short warm-up session for viva readiness.",
-    },
-    {
-      id: "bar-02",
-      courseId: "bar-viva-clinic",
-      module: "Oral Confidence",
-      title: "How to answer direct statutory questions in viva",
-      duration: "31 min",
-      youtubeUrl: "https://www.youtube.com/watch?v=ScMzIvxBSi4",
-      releaseDate: "2026-02-12",
-      resources: ["Question bank", "Voice practice cues"],
-      note: "Best used right before mock viva.",
-    },
-  ],
-  enrollments: [
-    {
-      studentId: "LAW-2026-014",
-      courseId: "judiciary-foundation",
-      accessStartDate: "2026-01-01",
-      accessEndDate: "2026-07-31",
-      videoAccessUntil: "",
-      lastPaymentDate: "2026-03-15",
-      paymentDueDate: "2026-04-15",
-      monthlyFee: "1500",
-      paidMonths: ["2026-01", "2026-03"],
-      status: "Active",
-    },
-    {
-      studentId: "LAW-2026-014",
-      courseId: "criminal-procedure-mastery",
-      accessStartDate: "2026-02-10",
-      accessEndDate: "2026-08-10",
-      videoAccessUntil: "",
-      lastPaymentDate: "2026-03-15",
-      paymentDueDate: "2026-04-15",
-      monthlyFee: "1500",
-      paidMonths: ["2026-03"],
-      status: "Active",
-    },
-    {
-      studentId: "LAW-2026-014",
-      courseId: "legal-drafting-lab",
-      accessStartDate: "2026-02-20",
-      accessEndDate: "2026-06-30",
-      videoAccessUntil: "",
-      lastPaymentDate: "2026-02-28",
-      paymentDueDate: "2026-03-30",
-      monthlyFee: "1500",
-      paidMonths: ["2026-02"],
-      status: "Active",
-    },
-    {
-      studentId: "BAR-2026-008",
-      courseId: "bar-viva-clinic",
-      accessStartDate: "2026-01-15",
-      accessEndDate: "2026-05-30",
-      videoAccessUntil: "2026-03-06",
-      lastPaymentDate: "2026-02-27",
-      paymentDueDate: "2026-03-28",
-      monthlyFee: "1500",
-      status: "Pending",
-    },
-    {
-      studentId: "BAR-2026-008",
-      courseId: "criminal-procedure-mastery",
-      accessStartDate: "2026-02-01",
-      accessEndDate: "2026-06-15",
-      videoAccessUntil: "",
-      lastPaymentDate: "2026-03-02",
-      paymentDueDate: "2026-04-02",
-      monthlyFee: "1500",
-      paidMonths: ["2026-02", "2026-03"],
-      status: "Active",
-    },
-    {
-      studentId: "LIT-2026-031",
-      courseId: "legal-drafting-lab",
-      accessStartDate: "2026-02-18",
-      accessEndDate: "2026-07-15",
-      videoAccessUntil: "2026-03-02",
-      lastPaymentDate: "2026-02-18",
-      paymentDueDate: "2026-04-08",
-      monthlyFee: "1500",
-      status: "Pending",
-    },
-    {
-      studentId: "LIT-2026-031",
-      courseId: "criminal-procedure-mastery",
-      accessStartDate: "2026-02-25",
-      accessEndDate: "2026-08-05",
-      videoAccessUntil: "2026-03-12",
-      lastPaymentDate: "2026-03-04",
-      paymentDueDate: "2026-04-12",
-      monthlyFee: "1500",
-      status: "Active",
-    },
-  ],
-  messages: [
-    {
-      id: "msg-demo-01",
-      studentIds: ["LAW-2026-014", "BAR-2026-008"],
-      title: "Check Your Weekly Schedule",
-      message:
-        "Please review the updated weekly class routine before tonight. If you need help, reply here and the admin panel will receive your message.",
-      status: "Sent",
-      createdOn: "2026-03-22T18:30:00+06:00",
-      createdBy: "Portal Admin",
-      audience: "Student",
-      recipientStateJson:
-        '{"LAW-2026-014":{"status":"Pending","reply":"","respondedOn":"","respondedBy":""},"BAR-2026-008":{"status":"Pending","reply":"","respondedOn":"","respondedBy":""}}',
-    },
-  ],
-};
+const DEMO_DATA_SCRIPT_URL = "./data/portal-demo-data.js?v=20260331-1";
+let demoDataPromise = null;
+
+function getLoadedDemoData() {
+  if (typeof window !== "undefined" && window.AIN_PATHSHALA_DEMO_DATA) {
+    return window.AIN_PATHSHALA_DEMO_DATA;
+  }
+
+  throw new Error("Demo data is not available.");
+}
+
+async function loadDemoData() {
+  if (typeof window !== "undefined" && window.AIN_PATHSHALA_DEMO_DATA) {
+    return window.AIN_PATHSHALA_DEMO_DATA;
+  }
+
+  if (typeof document === "undefined") {
+    throw new Error("Demo data can only be loaded in a browser environment.");
+  }
+
+  if (!demoDataPromise) {
+    demoDataPromise = new Promise((resolve, reject) => {
+      const handleLoad = () => {
+        try {
+          resolve(getLoadedDemoData());
+        } catch (error) {
+          reject(error);
+        }
+      };
+      const handleError = () => reject(new Error("Unable to load demo data."));
+      const existingScript = document.querySelector('script[data-demo-data="ain-pathshala"]');
+
+      if (existingScript) {
+        existingScript.addEventListener("load", handleLoad, { once: true });
+        existingScript.addEventListener("error", handleError, { once: true });
+        return;
+      }
+
+      const script = document.createElement("script");
+      script.src = DEMO_DATA_SCRIPT_URL;
+      script.async = true;
+      script.dataset.demoData = "ain-pathshala";
+      script.addEventListener("load", handleLoad, { once: true });
+      script.addEventListener("error", handleError, { once: true });
+      (document.head || document.documentElement).appendChild(script);
+    }).catch((error) => {
+      demoDataPromise = null;
+      throw error;
+    });
+  }
+
+  return demoDataPromise;
+}
 
 function createEmptyPortalData() {
   return {
@@ -1322,6 +1046,7 @@ async function loadData() {
     }
   }
 
+  const demoData = await loadDemoData();
   return {
     data: normalizeData(demoData),
     modeLabel: "Demo Data",
@@ -2655,14 +2380,14 @@ function openVideo(videoId, title) {
   }
 
   dom.videoTitle.textContent = title || "Class Video";
-  dom.videoPlayer.src = `https://www.youtube.com/embed/${resolvedVideoId}?autoplay=1&rel=0`;
+  dom.videoPlayer.setAttribute("src", `https://www.youtube.com/embed/${resolvedVideoId}?autoplay=1&rel=0`);
   dom.videoModal.classList.remove("hidden");
   dom.videoModal.classList.add("flex");
   syncBodyOverflow();
 }
 
 function closeVideo() {
-  dom.videoPlayer.src = "";
+  dom.videoPlayer.removeAttribute("src");
   dom.videoModal.classList.add("hidden");
   dom.videoModal.classList.remove("flex");
   syncBodyOverflow();
