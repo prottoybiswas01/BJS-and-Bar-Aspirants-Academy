@@ -221,6 +221,13 @@ const dom = {
   closeVideoBtn: document.getElementById("closeVideoBtn"),
   videoPlayer: document.getElementById("videoPlayer"),
   videoTitle: document.getElementById("videoTitle"),
+  videoMeta: document.getElementById("videoMeta"),
+  videoPosterLayer: document.getElementById("videoPosterLayer"),
+  videoPosterImage: document.getElementById("videoPosterImage"),
+  videoWatermark: document.getElementById("videoWatermark"),
+  videoLiveWatermark: document.getElementById("videoLiveWatermark"),
+  videoStatusText: document.getElementById("videoStatusText"),
+  startVideoBtn: document.getElementById("startVideoBtn"),
   profileModal: document.getElementById("profileModal"),
   profileBackdrop: document.getElementById("profileBackdrop"),
   closeProfileBtn: document.getElementById("closeProfileBtn"),
@@ -827,9 +834,118 @@ function extractYouTubeVideoId(value) {
   return "";
 }
 
-function buildYouTubeWatchUrl(value) {
-  const videoId = extractYouTubeVideoId(value);
-  return videoId ? `https://www.youtube.com/watch?v=${videoId}` : "";
+function buildYouTubePosterUrl(videoId) {
+  return videoId ? `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg` : "";
+}
+
+function buildYouTubeEmbedUrl(videoId) {
+  if (!videoId) {
+    return "";
+  }
+
+  const params = new URLSearchParams({
+    autoplay: "1",
+    rel: "0",
+    playsinline: "1",
+    controls: "1",
+    disablekb: "1",
+    fs: "0",
+    iv_load_policy: "3",
+    cc_load_policy: "0",
+    modestbranding: "1",
+  });
+
+  if (window.location.origin) {
+    params.set("origin", window.location.origin);
+  }
+
+  return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
+}
+
+function buildVideoMetaLabel(moduleName, duration) {
+  const metaParts = [moduleName, duration].map((value) => String(value || "").trim()).filter(Boolean);
+  return metaParts.length ? metaParts.join(" | ") : "Authorized student playback";
+}
+
+function getVideoWatermarkLabel() {
+  const activeStudent = getActiveStudent();
+  if (!activeStudent) {
+    return "Authorized Portal Session";
+  }
+
+  return `${activeStudent.name || "Student"} | ID ${activeStudent.id || "-"}`;
+}
+
+function updateVideoWatermarks() {
+  const watermarkLabel = getVideoWatermarkLabel();
+
+  if (dom.videoWatermark) {
+    dom.videoWatermark.textContent = watermarkLabel;
+  }
+
+  if (dom.videoLiveWatermark) {
+    dom.videoLiveWatermark.textContent = watermarkLabel;
+  }
+}
+
+function setVideoPoster(videoId, title) {
+  if (!dom.videoPosterImage) {
+    return;
+  }
+
+  const fallbackPosterUrl = videoId ? `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg` : "";
+  dom.videoPosterImage.onerror = () => {
+    dom.videoPosterImage.onerror = null;
+    if (fallbackPosterUrl) {
+      dom.videoPosterImage.src = fallbackPosterUrl;
+    }
+  };
+  dom.videoPosterImage.src = buildYouTubePosterUrl(videoId);
+  dom.videoPosterImage.alt = title ? `${title} poster` : "Class poster";
+}
+
+function resetVideoPlayerState(options = {}) {
+  const preserveSession = options.preserveSession === true;
+
+  if (dom.videoPlayer) {
+    dom.videoPlayer.removeAttribute("src");
+    dom.videoPlayer.classList.add("hidden");
+    if (!preserveSession) {
+      delete dom.videoPlayer.dataset.videoId;
+    }
+  }
+
+  if (dom.videoPosterLayer) {
+    dom.videoPosterLayer.classList.remove("hidden");
+  }
+
+  if (dom.videoLiveWatermark) {
+    dom.videoLiveWatermark.classList.add("hidden");
+  }
+
+  if (dom.videoStatusText) {
+    dom.videoStatusText.textContent = "Ready to play";
+  }
+}
+
+function startVideoPlayback() {
+  const resolvedVideoId = dom.videoPlayer?.dataset.videoId || "";
+  if (!resolvedVideoId) {
+    showToast("This lesson is not ready for playback yet.", "error");
+    return;
+  }
+
+  dom.videoPlayer.setAttribute("src", buildYouTubeEmbedUrl(resolvedVideoId));
+  dom.videoPlayer.classList.remove("hidden");
+  dom.videoPosterLayer.classList.add("hidden");
+
+  if (dom.videoLiveWatermark) {
+    dom.videoLiveWatermark.classList.remove("hidden");
+  }
+
+  if (dom.videoStatusText) {
+    dom.videoStatusText.textContent = "Streaming in secure view";
+  }
 }
 
 function buildLessonsByCourseId(lessons) {
@@ -894,6 +1010,7 @@ function normalizeData(raw) {
   const lessons = (raw.lessons || []).map((lesson) => {
     const lessonVideoSource =
       lesson.youtubeUrl || lesson.youtubeLink || lesson.videoUrl || lesson.youtubeId || lesson.videoId || "";
+    const lessonVideoId = extractYouTubeVideoId(lessonVideoSource);
 
     return {
       id: lesson.id || lesson.lessonId || "",
@@ -901,8 +1018,7 @@ function normalizeData(raw) {
       module: lesson.module || lesson.moduleTitle || "Module",
       title: lesson.title || lesson.lessonTitle || "Untitled Lesson",
       duration: lesson.duration || "N/A",
-      youtubeId: extractYouTubeVideoId(lessonVideoSource),
-      youtubeUrl: buildYouTubeWatchUrl(lessonVideoSource),
+      youtubeId: lessonVideoId,
       releaseDate: lesson.releaseDate || lesson.date || "",
       resources: parseList(lesson.resources || lesson.resourceList || ""),
       note: lesson.note || "Sheet-linked lesson",
@@ -2399,22 +2515,28 @@ function showToast(message, type = "success") {
   }, 2500);
 }
 
-function openVideo(videoId, title) {
-  const resolvedVideoId = extractYouTubeVideoId(videoId);
+function openVideo(videoConfig, title) {
+  const payload = typeof videoConfig === "object" && videoConfig !== null ? videoConfig : { videoId: videoConfig, title };
+  const resolvedVideoId = extractYouTubeVideoId(payload.videoId);
   if (!resolvedVideoId) {
     showToast("This lesson does not have a video link yet.", "error");
     return;
   }
 
-  dom.videoTitle.textContent = title || "Class Video";
-  dom.videoPlayer.setAttribute("src", `https://www.youtube.com/embed/${resolvedVideoId}?autoplay=1&rel=0`);
+  const resolvedTitle = payload.title || title || "Class Video";
+  dom.videoTitle.textContent = resolvedTitle;
+  dom.videoMeta.textContent = buildVideoMetaLabel(payload.module, payload.duration);
+  dom.videoPlayer.dataset.videoId = resolvedVideoId;
+  resetVideoPlayerState({ preserveSession: true });
+  setVideoPoster(resolvedVideoId, resolvedTitle);
+  updateVideoWatermarks();
   dom.videoModal.classList.remove("hidden");
   dom.videoModal.classList.add("flex");
   syncBodyOverflow();
 }
 
 function closeVideo() {
-  dom.videoPlayer.removeAttribute("src");
+  resetVideoPlayerState();
   dom.videoModal.classList.add("hidden");
   dom.videoModal.classList.remove("flex");
   syncBodyOverflow();
@@ -2767,18 +2889,20 @@ function renderCourseListLegacy(student, courseEntries) {
                                 <p class="mt-1 text-xs text-slate-500">${lesson.module} • ${
                                   lesson.duration
                                 }</p>
-                                <button
-                                  type="button"
-                                  data-video-src="${encodeDataValue(lesson.youtubeUrl || lesson.youtubeId)}"
-                                  data-video-title="${encodeDataValue(lesson.title)}"
-                                  data-video-locked="${accessState.canWatch ? "false" : "true"}"
-                                  data-lock-reason="${encodeDataValue(accessState.reason)}"
-                                  class="mt-2 flex items-center text-xs font-bold transition ${
-                                    accessState.canWatch
-                                      ? "text-blue-600 hover:text-blue-800"
-                                      : "text-slate-400 hover:text-slate-500"
-                                  }"
-                                >
+                                  <button
+                                    type="button"
+                                    data-video-id="${encodeDataValue(lesson.youtubeId)}"
+                                    data-video-title="${encodeDataValue(lesson.title)}"
+                                    data-video-module="${encodeDataValue(lesson.module)}"
+                                    data-video-duration="${encodeDataValue(lesson.duration)}"
+                                    data-video-locked="${accessState.canWatch ? "false" : "true"}"
+                                    data-lock-reason="${encodeDataValue(accessState.reason)}"
+                                    class="mt-2 flex items-center text-xs font-bold transition ${
+                                      accessState.canWatch
+                                        ? "text-blue-600 hover:text-blue-800"
+                                        : "text-slate-400 hover:text-slate-500"
+                                    }"
+                                  >
                                   <span>${
                                     accessState.canWatch
                                       ? "Play Video"
@@ -2852,7 +2976,7 @@ function renderCourseListLegacy(student, courseEntries) {
     });
   });
 
-  dom.courseList.querySelectorAll("[data-video-src]").forEach((button) => {
+  dom.courseList.querySelectorAll("[data-video-id]").forEach((button) => {
     button.addEventListener("click", () => {
       if (button.dataset.videoLocked === "true") {
         showToast(
@@ -2862,7 +2986,12 @@ function renderCourseListLegacy(student, courseEntries) {
         return;
       }
 
-      openVideo(decodeDataValue(button.dataset.videoSrc), decodeDataValue(button.dataset.videoTitle));
+      openVideo({
+        videoId: decodeDataValue(button.dataset.videoId),
+        title: decodeDataValue(button.dataset.videoTitle),
+        module: decodeDataValue(button.dataset.videoModule),
+        duration: decodeDataValue(button.dataset.videoDuration),
+      });
     });
   });
 }
@@ -3366,18 +3495,20 @@ function renderCourseList(student, courseEntries) {
                                   Class ${formatNumber(String(lessonIndex + 1).padStart(2, "0"))}: ${lesson.title}
                                 </h4>
                                 <p class="mt-1 text-xs text-slate-500">${lesson.module} | ${lesson.duration}</p>
-                                <button
-                                  type="button"
-                                  data-video-src="${encodeDataValue(lesson.youtubeUrl || lesson.youtubeId)}"
-                                  data-video-title="${encodeDataValue(lesson.title)}"
-                                  data-video-locked="${accessState.canWatch ? "false" : "true"}"
-                                  data-lock-reason="${encodeDataValue(accessState.reason)}"
-                                  class="mt-2 flex items-center text-xs font-bold transition ${
-                                    accessState.canWatch
-                                      ? "text-blue-600 hover:text-blue-800"
-                                      : "text-slate-400 hover:text-slate-500"
-                                  }"
-                                >
+                                  <button
+                                    type="button"
+                                    data-video-id="${encodeDataValue(lesson.youtubeId)}"
+                                    data-video-title="${encodeDataValue(lesson.title)}"
+                                    data-video-module="${encodeDataValue(lesson.module)}"
+                                    data-video-duration="${encodeDataValue(lesson.duration)}"
+                                    data-video-locked="${accessState.canWatch ? "false" : "true"}"
+                                    data-lock-reason="${encodeDataValue(accessState.reason)}"
+                                    class="mt-2 flex items-center text-xs font-bold transition ${
+                                      accessState.canWatch
+                                        ? "text-blue-600 hover:text-blue-800"
+                                        : "text-slate-400 hover:text-slate-500"
+                                    }"
+                                  >
                                   <span>${
                                     accessState.canWatch
                                       ? "Play Video"
@@ -3461,7 +3592,7 @@ function renderCourseList(student, courseEntries) {
     });
   });
 
-  dom.courseList.querySelectorAll("[data-video-src]").forEach((button) => {
+  dom.courseList.querySelectorAll("[data-video-id]").forEach((button) => {
     button.addEventListener("click", () => {
       if (button.dataset.videoLocked === "true") {
         showToast(
@@ -3471,7 +3602,12 @@ function renderCourseList(student, courseEntries) {
         return;
       }
 
-      openVideo(decodeDataValue(button.dataset.videoSrc), decodeDataValue(button.dataset.videoTitle));
+      openVideo({
+        videoId: decodeDataValue(button.dataset.videoId),
+        title: decodeDataValue(button.dataset.videoTitle),
+        module: decodeDataValue(button.dataset.videoModule),
+        duration: decodeDataValue(button.dataset.videoDuration),
+      });
     });
   });
 
@@ -3751,6 +3887,19 @@ document.querySelectorAll("[data-student-pill]").forEach((button) => {
 
 dom.closeVideoBtn.addEventListener("click", closeVideo);
 dom.videoBackdrop.addEventListener("click", closeVideo);
+if (dom.startVideoBtn) {
+  dom.startVideoBtn.addEventListener("click", startVideoPlayback);
+}
+if (dom.videoPosterImage) {
+  dom.videoPosterImage.addEventListener("dragstart", (event) => event.preventDefault());
+}
+if (dom.videoModal) {
+  dom.videoModal.addEventListener("contextmenu", (event) => {
+    if (!dom.videoModal.classList.contains("hidden")) {
+      event.preventDefault();
+    }
+  });
+}
 dom.closeProfileBtn.addEventListener("click", closeProfileModal);
 dom.profileBackdrop.addEventListener("click", closeProfileModal);
 dom.closeApprovalStatusBtn.addEventListener("click", closeApprovalStatusModal);

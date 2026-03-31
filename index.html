@@ -316,12 +316,12 @@
         class="absolute inset-0 bg-slate-950/95 backdrop-blur-md"
       ></div>
       <div
-        class="relative aspect-video w-full max-w-4xl overflow-hidden rounded-[2rem] border border-white/10 bg-black shadow-2xl"
+        class="academy-player-shell relative w-full max-w-5xl overflow-hidden rounded-[2rem] border border-white/10 shadow-2xl"
       >
         <button
           id="closeVideoBtn"
           type="button"
-          class="absolute right-4 top-4 z-10 rounded-full bg-white/10 p-2 text-white/50 transition hover:bg-red-600 hover:text-white"
+          class="absolute right-4 top-4 z-20 rounded-full bg-white/10 p-2 text-white/60 transition hover:bg-red-600 hover:text-white"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -338,19 +338,61 @@
             />
           </svg>
         </button>
-        <div class="absolute left-4 top-4 z-10 rounded-full bg-slate-950/60 px-4 py-2 text-xs font-bold text-white">
-          <span id="videoTitle">Class Video</span>
+        <div class="academy-player-chrome">
+          <div>
+            <p class="academy-player-kicker">BJS Academy Secure Stream</p>
+            <p class="academy-player-subtitle">Authorized portal playback only</p>
+          </div>
+          <div class="academy-player-chip">
+            <span id="videoStatusText">Ready to play</span>
+          </div>
         </div>
-        <iframe
-          id="videoPlayer"
-          class="h-full w-full"
-          title="Class video player"
-          frameborder="0"
-          loading="lazy"
-          referrerpolicy="strict-origin-when-cross-origin"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowfullscreen
-        ></iframe>
+        <div class="academy-player-stage">
+          <div id="videoPosterLayer" class="academy-player-poster">
+            <img
+              id="videoPosterImage"
+              class="academy-player-poster-image"
+              alt=""
+              loading="lazy"
+              draggable="false"
+            />
+            <div class="academy-player-scrim"></div>
+            <div class="academy-player-grid"></div>
+            <div id="videoWatermark" class="academy-player-watermark"></div>
+            <div class="academy-player-poster-copy">
+              <p class="academy-player-overline">Class Video</p>
+              <h2 id="videoTitle" class="academy-player-title">Class Video</h2>
+              <p id="videoMeta" class="academy-player-meta">
+                Stream opens only inside your logged-in academy portal.
+              </p>
+              <button
+                id="startVideoBtn"
+                type="button"
+                class="academy-player-start"
+              >
+                Start Class
+              </button>
+            </div>
+          </div>
+          <iframe
+            id="videoPlayer"
+            class="academy-player-iframe hidden"
+            title="Class video player"
+            frameborder="0"
+            loading="lazy"
+            referrerpolicy="strict-origin-when-cross-origin"
+            allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+          ></iframe>
+          <div
+            id="videoLiveWatermark"
+            class="academy-player-watermark academy-player-watermark-live hidden"
+          ></div>
+        </div>
+        <div class="academy-player-footer">
+          <span>Screen recording, link sharing, and third-party extraction are prohibited.</span>
+          <span class="academy-player-footer-dot"></span>
+          <span>Visible only inside your active BJS Academy session.</span>
+        </div>
       </div>
     </div>
 
