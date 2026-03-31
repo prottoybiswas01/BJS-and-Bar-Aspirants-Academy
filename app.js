@@ -101,8 +101,9 @@ const STUDENT_FIELD_KEYS = Object.freeze({
   completedLessonIds: ["completedLessonIds", "completed", "completedLessons"],
 });
 
-const DEMO_DATA_SCRIPT_URL = "./data/portal-demo-data.js?v=20260331-1";
+const DEMO_DATA_SCRIPT_URL = "./data/portal-demo-data.js?v=20260331-2";
 let demoDataPromise = null;
+let courseAccordionSyncFrame = 0;
 
 function getLoadedDemoData() {
   if (typeof window !== "undefined" && window.AIN_PATHSHALA_DEMO_DATA) {
@@ -2235,6 +2236,32 @@ function syncBodyOverflow() {
   dom.body.style.overflow = hasVisibleModal ? "hidden" : "";
 }
 
+function syncCourseAccordionHeights() {
+  if (!dom.courseList) {
+    return;
+  }
+
+  dom.courseList.querySelectorAll("[data-course-card]").forEach((card) => {
+    const content = card.querySelector(".accordion-content");
+    if (!content) {
+      return;
+    }
+
+    content.style.maxHeight = card.classList.contains("accordion-active") ? `${content.scrollHeight}px` : "0px";
+  });
+}
+
+function scheduleCourseAccordionSync() {
+  if (courseAccordionSyncFrame) {
+    cancelAnimationFrame(courseAccordionSyncFrame);
+  }
+
+  courseAccordionSyncFrame = requestAnimationFrame(() => {
+    courseAccordionSyncFrame = 0;
+    syncCourseAccordionHeights();
+  });
+}
+
 function closeProfileModal() {
   dom.profileModal.classList.add("hidden");
   dom.profileModal.classList.remove("flex");
@@ -3496,6 +3523,8 @@ function renderCourseList(student, courseEntries) {
       }
     });
   });
+
+  scheduleCourseAccordionSync();
 }
 
 function renderDashboard(student) {
@@ -3791,6 +3820,12 @@ document.addEventListener("visibilitychange", () => {
 window.addEventListener("focus", () => {
   if (state.activeStudentId) {
     refreshStudentInboxInBackground(state.activeStudentId, { openModal: true });
+  }
+});
+
+window.addEventListener("resize", () => {
+  if (state.activeStudentId) {
+    scheduleCourseAccordionSync();
   }
 });
 
