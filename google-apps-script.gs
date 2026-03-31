@@ -54,6 +54,7 @@ const SHEET_HEADERS = {
     "monthlyFee",
     "status",
     "paidMonths",
+    "unlimitedAccess",
   ],
   admins: ["id", "username", "name", "email", "password", "status", "role"],
   registrations: [
@@ -77,6 +78,7 @@ const SHEET_HEADERS = {
 
 const APPROVED_LOGIN_VALUES = ["approved", "yes", "true", "allow", "allowed", "active", "1"];
 const PREVIEW_LOGIN_VALUES = ["preview", "viewonly", "readonly", "audit", "curriculum", "classlist", "listonly", "outline"];
+const UNLIMITED_ACCESS_VALUES_ = ["true", "1", "yes", "on", "enable", "enabled", "unlimited", "lifetime", "forever", "permanent"];
 const BLOCKED_STATUS_VALUES = ["inactive", "blocked", "suspended", "expired", "rejected"];
 // Use "approved" for instant login, "preview" for class-list-only access, or "pending" for manual approval.
 const SELF_REGISTRATION_ACCESS_MODE_ = "preview";
@@ -1243,6 +1245,7 @@ function handleAdminUpdateStudent_(request) {
       monthlyFee: request.monthlyFee || "",
       status: request.enrollmentStatus || request.status || "",
       paidMonths: request.paidMonths || "",
+      unlimitedAccess: request.unlimitedAccess || "",
       replaceExisting: request.replaceExisting === "true",
     });
   }
@@ -1343,6 +1346,7 @@ function handleAdminAssignCourses_(request) {
     monthlyFee: request.monthlyFee || "",
     status: request.status || "",
     paidMonths: request.paidMonths || "",
+    unlimitedAccess: request.unlimitedAccess || "",
     replaceExisting: request.replaceExisting === "true",
     courseRulesMap: courseRulesMap,
   });
@@ -2168,6 +2172,10 @@ function normalizeValue_(value) {
   return normalizeLookupText_(value).trim().toLowerCase();
 }
 
+function normalizeUnlimitedAccessValue_(value) {
+  return UNLIMITED_ACCESS_VALUES_.indexOf(normalizeValue_(value)) !== -1 ? "true" : "false";
+}
+
 function normalizeLocalizedDigit_(character) {
   const charCode = character.charCodeAt(0);
 
@@ -2784,6 +2792,9 @@ function syncStudentCourses_(spreadsheet, studentIds, courseIds, defaults) {
         accessEndDate: hasProvidedValue_(courseDefaultsRaw.accessEndDate)
           ? courseDefaultsRaw.accessEndDate
           : defaults.accessEndDate || "",
+        unlimitedAccess: hasProvidedValue_(courseDefaultsRaw.unlimitedAccess)
+          ? courseDefaultsRaw.unlimitedAccess
+          : defaults.unlimitedAccess || "",
         videoAccessUntil: hasProvidedValue_(courseDefaultsRaw.videoAccessUntil)
           ? courseDefaultsRaw.videoAccessUntil
           : defaults.videoAccessUntil || "",
@@ -2811,6 +2822,14 @@ function syncStudentCourses_(spreadsheet, studentIds, courseIds, defaults) {
         replaceExisting && hasProvidedValue_(courseDefaults.accessEndDate)
           ? courseDefaults.accessEndDate
           : existing.accessEndDate || courseDefaults.accessEndDate || "";
+      const unlimitedAccess =
+        replaceExisting && hasProvidedValue_(courseDefaults.unlimitedAccess)
+          ? normalizeUnlimitedAccessValue_(courseDefaults.unlimitedAccess)
+          : hasProvidedValue_(existing.unlimitedAccess)
+          ? normalizeUnlimitedAccessValue_(existing.unlimitedAccess)
+          : hasProvidedValue_(courseDefaults.unlimitedAccess)
+          ? normalizeUnlimitedAccessValue_(courseDefaults.unlimitedAccess)
+          : "false";
       const videoAccessUntil =
         replaceExisting && hasProvidedValue_(courseDefaults.videoAccessUntil)
           ? courseDefaults.videoAccessUntil
@@ -2842,6 +2861,7 @@ function syncStudentCourses_(spreadsheet, studentIds, courseIds, defaults) {
         courseId: courseId,
         accessStartDate: accessStartDate,
         accessEndDate: accessEndDate,
+        unlimitedAccess: unlimitedAccess,
         videoAccessUntil: videoAccessUntil,
         lastPaymentDate: lastPaymentDate,
         paymentDueDate: paymentDueDate,

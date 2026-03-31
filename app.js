@@ -68,6 +68,19 @@ const PREVIEW_LOGIN_VALUES = Object.freeze([
   "outline",
 ]);
 
+const UNLIMITED_ACCESS_VALUES = Object.freeze([
+  "true",
+  "1",
+  "yes",
+  "on",
+  "enable",
+  "enabled",
+  "unlimited",
+  "lifetime",
+  "forever",
+  "permanent",
+]);
+
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   day: "2-digit",
   month: "2-digit",
@@ -513,6 +526,10 @@ function getFirstAvailableValue(record, keys, fallback = "") {
 
 function getNormalizedLookupValue(value) {
   return normalizeLookupCharacters(value).trim().toLowerCase();
+}
+
+function isUnlimitedAccessEnabled(value) {
+  return UNLIMITED_ACCESS_VALUES.includes(getNormalizedLookupValue(value));
 }
 
 function getCanonicalLookupValue(value) {
@@ -1128,6 +1145,15 @@ function normalizeData(raw) {
             enrollment.validUntil ||
             enrollment.accessUntil ||
             "",
+          unlimitedAccess: isUnlimitedAccessEnabled(
+            enrollment.unlimitedAccess ||
+              enrollment.unlimited ||
+              enrollment.isUnlimited ||
+              enrollment.lifetimeAccess ||
+              enrollment.permanentAccess ||
+              enrollment.alwaysOpen ||
+              ""
+          ),
           videoAccessUntil:
             enrollment.videoAccessUntil ||
             enrollment.approvedUntil ||
@@ -1775,6 +1801,7 @@ function buildFallbackEnrollments(student) {
     courseId: resolveCourseReference(courseId, courseId),
     accessStartDate: student.joinedOn || "",
     accessEndDate: "",
+    unlimitedAccess: false,
     paymentDueDate: "",
     paidMonths: [],
     status: student.status || "Active",
@@ -1880,6 +1907,7 @@ function getCourseCatalogEntries(student) {
         pendingRequest: pendingCourseIds.has(course.id),
         accessStartDate: "",
         accessEndDate: "",
+        unlimitedAccess: false,
         videoAccessUntil: "",
         lastPaymentDate: "",
         paymentDueDate: "",
@@ -1949,7 +1977,9 @@ function getCourseEntryStatusMeta(entry) {
   return {
     label: formatStatus(entry.status),
     className: getStatusBadgeClass(entry.status),
-    summary: entry.course.description || "You have active access to this course.",
+    summary: hasUnlimitedCourseAccess(entry)
+      ? "Unlimited access is enabled for this course. Access and payment deadlines no longer lock videos while this switch stays on."
+      : entry.course.description || "You have active access to this course.",
     accessSummary: formatDateRange(entry.accessStartDate, entry.accessEndDate),
     videoSummary: getEnrollmentVideoAccessSummary(entry),
   };
@@ -1958,6 +1988,10 @@ function getCourseEntryStatusMeta(entry) {
 function isEnrollmentBlocked(entry) {
   const normalized = String(entry.status || "").trim().toLowerCase();
   return normalized === "blocked" || normalized === "suspended";
+}
+
+function hasUnlimitedCourseAccess(entry) {
+  return !!entry && isUnlimitedAccessEnabled(entry.unlimitedAccess);
 }
 
 function getLatestValidDateValue(values) {
@@ -1998,6 +2032,10 @@ function getEnrollmentVideoAccessSummary(entry) {
     return "Preview only";
   }
 
+  if (hasUnlimitedCourseAccess(entry)) {
+    return "Unlimited access";
+  }
+
   if (hasPaidMonthAccess(entry)) {
     return formatPaidMonthList(entry.paidMonths);
   }
@@ -2032,6 +2070,22 @@ function getLessonAccessState(entry, lesson) {
 
   const releaseTimestamp = parseTimestamp(lesson.releaseDate);
   if (releaseTimestamp === null) {
+    return {
+      canWatch: true,
+      reason: "",
+      status: "open",
+    };
+  }
+
+  if (hasUnlimitedCourseAccess(entry)) {
+    if (releaseTimestamp > Date.now()) {
+      return {
+        canWatch: false,
+        reason: `This lesson will unlock on ${formatDate(lesson.releaseDate, "the scheduled date")}.`,
+        status: "scheduled",
+      };
+    }
+
     return {
       canWatch: true,
       reason: "",
@@ -2249,6 +2303,11 @@ function getProfileVideoAccessSummary(courseEntries) {
     return "Preview only";
   }
 
+  const unlimitedCount = courseEntries.filter((entry) => hasUnlimitedCourseAccess(entry)).length;
+  if (unlimitedCount) {
+    return unlimitedCount === courseEntries.length ? "Unlimited access" : "Varies by course";
+  }
+
   if (courseEntries.some((entry) => hasPaidMonthAccess(entry))) {
     if (!courseEntries.every((entry) => hasPaidMonthAccess(entry))) {
       return "Varies by course";
@@ -2273,6 +2332,10 @@ function getProfileVideoAccessSummary(courseEntries) {
 }
 
 function getProfileLastPaymentSummary(courseEntries) {
+  if (courseEntries.length && courseEntries.every((entry) => hasUnlimitedCourseAccess(entry))) {
+    return "Not required";
+  }
+
   const paymentDates = getSortedDateItems(courseEntries.map((entry) => entry.lastPaymentDate));
   if (paymentDates.length) {
     const selected = paymentDates[paymentDates.length - 1];
@@ -2286,6 +2349,10 @@ function getProfileLastPaymentSummary(courseEntries) {
 }
 
 function getProfilePaymentSummary(courseEntries) {
+  if (courseEntries.length && courseEntries.every((entry) => hasUnlimitedCourseAccess(entry))) {
+    return "Not required";
+  }
+
   const paymentDates = getSortedDateItems(courseEntries.map((entry) => entry.paymentDueDate));
   if (paymentDates.length) {
     const now = Date.now();
@@ -2773,7 +2840,7 @@ function renderProfileModal(student, courseEntries) {
                     Last Payment
                   </p>
                   <p class="mt-2 break-words text-sm font-semibold leading-snug text-slate-800">
-                    ${formatDate(entry.lastPaymentDate, "Not set")}
+                    ${hasUnlimitedCourseAccess(entry) ? "Not required" : formatDate(entry.lastPaymentDate, "Not set")}
                   </p>
                 </div>
                 <div class="min-w-0 rounded-2xl border border-white bg-white p-4">
@@ -2781,7 +2848,7 @@ function renderProfileModal(student, courseEntries) {
                     Payment Due
                   </p>
                   <p class="mt-2 break-words text-sm font-semibold leading-snug text-slate-800">
-                    ${formatDate(entry.paymentDueDate, "Not set")}
+                    ${hasUnlimitedCourseAccess(entry) ? "Not required" : formatDate(entry.paymentDueDate, "Not set")}
                   </p>
                 </div>
                 <div class="min-w-0 rounded-2xl border border-white bg-white p-4">
@@ -3490,6 +3557,11 @@ function renderCourseList(student, courseEntries) {
                       <span class="rounded-full bg-slate-100 px-3 py-1 text-[10px] font-bold text-slate-700">
                         Video Access: ${statusMeta.videoSummary}
                       </span>
+                      ${
+                        hasUnlimitedCourseAccess(entry)
+                          ? '<span class="rounded-full bg-emerald-50 px-3 py-1 text-[10px] font-bold text-emerald-700">Lifetime Unlock</span>'
+                          : ""
+                      }
                       <span class="rounded-full bg-violet-50 px-3 py-1 text-[10px] font-bold text-violet-700">
                         Next Live: ${nextLiveLabel}
                       </span>

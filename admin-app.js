@@ -52,6 +52,14 @@ const ENROLLMENT_FIELD_KEYS = Object.freeze({
   courseId: ["courseId", "courseIds", "courseID", "courseIDList"],
   accessStartDate: ["accessStartDate", "startDate", "activeFrom", "accessFrom"],
   accessEndDate: ["accessEndDate", "endDate", "validUntil", "accessUntil"],
+  unlimitedAccess: [
+    "unlimitedAccess",
+    "unlimited",
+    "isUnlimited",
+    "lifetimeAccess",
+    "permanentAccess",
+    "alwaysOpen",
+  ],
   videoAccessUntil: [
     "videoAccessUntil",
     "approvedUntil",
@@ -112,7 +120,28 @@ const PREVIEW_ACCESS_VALUES = Object.freeze([
   "outline",
 ]);
 
+const UNLIMITED_ACCESS_VALUES = Object.freeze([
+  "true",
+  "1",
+  "yes",
+  "on",
+  "enable",
+  "enabled",
+  "unlimited",
+  "lifetime",
+  "forever",
+  "permanent",
+]);
+
 const COURSE_RULE_FIELDS = Object.freeze([
+  Object.freeze({
+    key: "unlimitedAccess",
+    label: "Unlimited Access",
+    type: "toggle",
+    wide: true,
+    helper:
+      "Turn this on to keep the course unlocked for life. Start and end dates stay visible for reference, but access and payment deadlines stop locking videos until you switch this off.",
+  }),
   Object.freeze({ key: "accessStartDate", label: "Access Start Date", type: "date" }),
   Object.freeze({ key: "accessEndDate", label: "Access End Date", type: "date" }),
   Object.freeze({ key: "videoAccessUntil", label: "Video Access Until", type: "date" }),
@@ -356,6 +385,10 @@ function normalizeLocalizedDigits(value) {
 
 function normalizeLookupText(value) {
   return normalizeLocalizedDigits(value).trim().toLowerCase();
+}
+
+function isUnlimitedAccessEnabled(value) {
+  return UNLIMITED_ACCESS_VALUES.includes(normalizeLookupText(value));
 }
 
 function normalizePhoneValue(value) {
@@ -694,6 +727,9 @@ function normalizeDashboard(payload = {}) {
           courseId,
           accessStartDate: String(getFirstAvailableValue(enrollment, ENROLLMENT_FIELD_KEYS.accessStartDate, "")).trim(),
           accessEndDate: String(getFirstAvailableValue(enrollment, ENROLLMENT_FIELD_KEYS.accessEndDate, "")).trim(),
+          unlimitedAccess: isUnlimitedAccessEnabled(
+            getFirstAvailableValue(enrollment, ENROLLMENT_FIELD_KEYS.unlimitedAccess, "")
+          ),
           videoAccessUntil:
             String(
               getFirstAvailableValue(
@@ -1052,11 +1088,15 @@ function getEnrollmentRecord(studentId, courseId) {
 
 function getCourseRuleValueFromEnrollment(enrollment, fieldKey) {
   if (!enrollment) {
-    return "";
+    return fieldKey === "unlimitedAccess" ? "false" : "";
   }
 
   if (fieldKey === "paidMonths") {
     return (enrollment.paidMonths || []).join("|");
+  }
+
+  if (fieldKey === "unlimitedAccess") {
+    return isUnlimitedAccessEnabled(enrollment.unlimitedAccess) ? "true" : "false";
   }
 
   return String(enrollment[fieldKey] || "").trim();
@@ -1105,9 +1145,49 @@ function renderCourseRuleField(courseId, field, draft) {
     `data-course-rule-field="${escapeHtml(field.key)}"`,
     'class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"',
   ];
+  const toggleAttributes = [
+    `data-course-rule-course="${escapeHtml(courseId)}"`,
+    `data-course-rule-field="${escapeHtml(field.key)}"`,
+    'class="h-5 w-5 rounded border-slate-300 text-blue-700 focus:ring-2 focus:ring-blue-200"',
+  ];
 
   let controlMarkup = "";
-  if (field.type === "select") {
+  if (field.type === "toggle") {
+    const isMixed = !value;
+    const isChecked = isUnlimitedAccessEnabled(value);
+    const badgeClass = isMixed
+      ? "bg-slate-100 text-slate-600"
+      : isChecked
+      ? "bg-emerald-100 text-emerald-700"
+      : "bg-amber-100 text-amber-700";
+    const badgeLabel = isMixed ? "Keep Current" : isChecked ? "Unlimited On" : "Unlimited Off";
+
+    controlMarkup = `
+      <div class="rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="min-w-0">
+            <span class="block text-sm font-semibold text-slate-900">${escapeHtml(field.label)}</span>
+            ${
+              field.helper
+                ? `<span class="mt-1 block text-xs leading-5 text-slate-500">${escapeHtml(field.helper)}</span>`
+                : ""
+            }
+          </div>
+          <label class="inline-flex items-center gap-3 self-start rounded-full ${badgeClass} px-3 py-2 text-xs font-bold">
+            <input
+              ${toggleAttributes.join(" ")}
+              type="checkbox"
+              value="true"
+              data-course-rule-toggle="true"
+              data-course-rule-indeterminate="${isMixed ? "true" : "false"}"
+              ${isChecked ? "checked" : ""}
+            />
+            <span>${escapeHtml(badgeLabel)}</span>
+          </label>
+        </div>
+      </div>
+    `;
+  } else if (field.type === "select") {
     controlMarkup = `
       <select ${baseAttributes.join(" ")}>
         ${field.options
@@ -1161,6 +1241,7 @@ function renderBulkCourseRuleCards() {
       const course = state.data.courseMap.get(courseId) || null;
       const draft = getCourseRuleDraft(courseId, selectedStudents);
       const mixedFields = getMixedCourseRuleFields(selectedStudents, courseId);
+      const unlimitedEnabled = isUnlimitedAccessEnabled(draft.unlimitedAccess);
       const courseMeta = [
         course?.category ? course.category : "",
         course?.batch ? `Batch: ${course.batch}` : "",
@@ -1194,6 +1275,8 @@ function renderBulkCourseRuleCards() {
               ? `<p class="mt-3 text-xs leading-5 text-amber-700">Mixed current values detected for ${escapeHtml(
                   mixedFields.join(", ")
                 )}. Blank fields will keep each student's current course rule.</p>`
+              : unlimitedEnabled
+              ? '<p class="mt-3 text-xs leading-5 text-emerald-700">Unlimited access is on. Dates below stay visible for reference, but they will not lock this course until you turn the switch off.</p>'
               : `<p class="mt-3 text-xs leading-5 text-slate-500">This course keeps its own access window, payment dates, fee, and status.</p>`
           }
           <div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -1203,6 +1286,14 @@ function renderBulkCourseRuleCards() {
       `;
     })
     .join("");
+
+  syncCourseRuleToggleInputs();
+}
+
+function syncCourseRuleToggleInputs() {
+  dom.bulkCourseRuleCards.querySelectorAll('[data-course-rule-toggle="true"]').forEach((input) => {
+    input.indeterminate = input.dataset.courseRuleIndeterminate === "true";
+  });
 }
 
 function toggleAuthView(isLoggedIn) {
@@ -2170,7 +2261,13 @@ function populateCourseForm(course) {
 }
 
 function normalizeCourseRuleDraftForRequest(draft = {}) {
+  const normalizedUnlimitedValue = String(draft.unlimitedAccess || "").trim();
   return {
+    unlimitedAccess: normalizedUnlimitedValue
+      ? isUnlimitedAccessEnabled(normalizedUnlimitedValue)
+        ? "true"
+        : "false"
+      : "",
     accessStartDate: String(draft.accessStartDate || "").trim(),
     accessEndDate: String(draft.accessEndDate || "").trim(),
     videoAccessUntil: String(draft.videoAccessUntil || "").trim(),
@@ -2207,8 +2304,13 @@ function handleBulkCourseRuleInput(event) {
     ...createEmptyCourseRuleDraft(),
     ...(state.bulkCourseRuleDrafts[courseId] || {}),
   };
-  nextDraft[fieldKey] = String(field.value || "").trim();
+  nextDraft[fieldKey] =
+    field.type === "checkbox" ? (field.checked ? "true" : "false") : String(field.value || "").trim();
   state.bulkCourseRuleDrafts[courseId] = nextDraft;
+
+  if (field.type === "checkbox") {
+    renderBulkCourseRuleCards();
+  }
 }
 
 function handleBulkCourseSelectionChange(event) {
