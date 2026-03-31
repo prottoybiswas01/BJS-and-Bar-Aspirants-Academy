@@ -134,6 +134,8 @@ const UNLIMITED_ACCESS_VALUES = Object.freeze([
 ]);
 
 const UNLIMITED_LOCKED_FIELD_KEYS = Object.freeze([
+  "accessEndDate",
+  "videoAccessUntil",
   "lastPaymentDate",
   "paymentDueDate",
   "monthlyFee",
@@ -1300,7 +1302,7 @@ function renderBulkCourseRuleCards() {
                   mixedFields.join(", ")
                 )}. Blank fields will keep each student's current course rule.</p>`
               : unlimitedEnabled
-              ? '<p class="mt-3 text-xs leading-5 text-emerald-700">Unlimited access is on. Dates below stay visible for reference, but they will not lock this course until you turn the switch off.</p>'
+              ? '<p class="mt-3 text-xs leading-5 text-emerald-700">Unlimited access is on. Access End Date, Video Access Until, and payment-related fields are now reference only and will not lock this course until you turn the switch off.</p>'
               : `<p class="mt-3 text-xs leading-5 text-slate-500">This course keeps its own access window, payment dates, fee, and status.</p>`
           }
           <div class="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -2294,8 +2296,8 @@ function normalizeCourseRuleDraftForRequest(draft = {}) {
         : "false"
       : "",
     accessStartDate: String(draft.accessStartDate || "").trim(),
-    accessEndDate: String(draft.accessEndDate || "").trim(),
-    videoAccessUntil: String(draft.videoAccessUntil || "").trim(),
+    accessEndDate: unlimitedEnabled ? "" : String(draft.accessEndDate || "").trim(),
+    videoAccessUntil: unlimitedEnabled ? "" : String(draft.videoAccessUntil || "").trim(),
     lastPaymentDate: unlimitedEnabled ? "" : String(draft.lastPaymentDate || "").trim(),
     paymentDueDate: unlimitedEnabled ? "" : String(draft.paymentDueDate || "").trim(),
     monthlyFee: unlimitedEnabled ? "" : String(draft.monthlyFee || "").trim(),
