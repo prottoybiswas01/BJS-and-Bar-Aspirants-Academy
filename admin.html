@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://script.google.com" />
     <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin />
-    <link rel="stylesheet" href="./styles/app.css?v=20260331-4" />
+    <link rel="stylesheet" href="./styles/app.css?v=20260331-5" />
     <link
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
@@ -117,20 +117,20 @@
             </div>
 
             <div class="mt-6 grid gap-3 xl:grid-cols-[minmax(0,1fr),300px]">
-              <section class="rounded-[1.5rem] border border-white/[0.12] bg-slate-950/[0.18] p-4 backdrop-blur-sm">
+              <section class="rounded-[1.5rem] border border-white/70 bg-white/95 p-4 text-slate-950 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.55)]">
                 <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div class="min-w-0">
-                    <p class="text-[11px] font-bold uppercase tracking-[0.32em] text-cyan-100/60">Admissions Overview</p>
-                    <h3 class="mt-2 text-xl font-extrabold text-white">Enrollment Snapshot</h3>
-                    <p id="adminAnalyticsCaption" class="mt-2 max-w-2xl text-sm leading-6 text-white/[0.72]">
-                      Compact month-by-month admission trends with quick cohort comparison.
+                    <p class="text-[11px] font-bold uppercase tracking-[0.32em] text-slate-400">Admissions Overview</p>
+                    <h3 class="mt-2 text-xl font-extrabold text-slate-950">Monthly Enrollment</h3>
+                    <p id="adminAnalyticsCaption" class="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                      Review confirmed student joins across each month from one clean view.
                     </p>
                   </div>
                   <label class="w-full sm:w-auto">
-                    <span class="mb-2 block text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-100/[0.55]">Display Year</span>
+                    <span class="mb-2 block text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Year Filter</span>
                     <select
                       id="adminAnalyticsYear"
-                      class="w-full rounded-2xl border border-white/[0.12] bg-slate-950/35 px-4 py-2.5 text-sm font-semibold text-white outline-none transition focus:border-cyan-200/[0.45] sm:min-w-[150px]"
+                      class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-400 focus:bg-white sm:min-w-[150px]"
                     >
                       <option value="">Loading...</option>
                     </select>
@@ -141,13 +141,13 @@
                 <div id="adminAnalyticsChart" class="mt-4 grid grid-cols-4 gap-2 sm:grid-cols-6 xl:grid-cols-12"></div>
               </section>
 
-              <aside class="rounded-[1.5rem] border border-white/[0.12] bg-white/10 p-4 backdrop-blur-sm">
-                <p class="text-[11px] font-bold uppercase tracking-[0.32em] text-cyan-100/60">Operations Note</p>
-                <h3 class="mt-2 text-xl font-extrabold text-white">Quick Read</h3>
+              <aside class="rounded-[1.5rem] border border-white/70 bg-white/92 p-4 text-slate-950 shadow-[0_18px_40px_-30px_rgba(15,23,42,0.45)]">
+                <p class="text-[11px] font-bold uppercase tracking-[0.32em] text-slate-400">Operational Summary</p>
+                <h3 class="mt-2 text-xl font-extrabold text-slate-950">Quick Notes</h3>
                 <div id="adminAnalyticsHighlights" class="mt-4 space-y-2.5"></div>
 
-                <div class="mt-5 border-t border-white/10 pt-4">
-                  <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-100/[0.55]">Cohort Switcher</p>
+                <div class="mt-5 border-t border-slate-200 pt-4">
+                  <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Year Selector</p>
                   <div id="adminAnalyticsYears" class="mt-3 flex flex-wrap gap-2"></div>
                 </div>
               </aside>
@@ -480,6 +480,6 @@
     </main>
 
     <script src="./portal-copy.js?v=20260315-1" defer></script>
-    <script src="./admin-app.js?v=20260331-2" defer></script>
+    <script src="./admin-app.js?v=20260331-3" defer></script>
   </body>
 </html>
