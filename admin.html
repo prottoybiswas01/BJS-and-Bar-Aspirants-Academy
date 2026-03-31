@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://script.google.com" />
     <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin />
-    <link rel="stylesheet" href="./styles/app.css?v=20260331-6" />
+    <link rel="stylesheet" href="./styles/app.css?v=20260331-7" />
     <link
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
@@ -123,15 +123,26 @@
                       Review confirmed student joins across each month from one clean view.
                     </p>
                   </div>
-                  <label class="w-full sm:w-auto">
-                    <span class="mb-2 block text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Year Filter</span>
-                    <select
-                      id="adminAnalyticsYear"
-                      class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-400 focus:bg-white sm:min-w-[150px]"
-                    >
-                      <option value="">Loading...</option>
-                    </select>
-                  </label>
+                  <div class="grid w-full gap-3 sm:w-auto sm:grid-cols-2">
+                    <label class="w-full">
+                      <span class="mb-2 block text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Course Filter</span>
+                      <select
+                        id="adminAnalyticsCourse"
+                        class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-400 focus:bg-white sm:min-w-[220px]"
+                      >
+                        <option value="all">All Courses</option>
+                      </select>
+                    </label>
+                    <label class="w-full">
+                      <span class="mb-2 block text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Year Filter</span>
+                      <select
+                        id="adminAnalyticsYear"
+                        class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-sm font-semibold text-slate-900 outline-none transition focus:border-blue-400 focus:bg-white sm:min-w-[150px]"
+                      >
+                        <option value="">Loading...</option>
+                      </select>
+                    </label>
+                  </div>
                 </div>
 
                 <div id="adminAnalyticsMeta" class="mt-4 grid gap-2 md:grid-cols-3"></div>
@@ -173,17 +184,26 @@
         <div class="space-y-8">
           <section class="space-y-8">
             <article class="panel-card rounded-[2rem] border border-white/70 bg-white p-5 sm:p-6">
-              <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-                <div>
-                  <p class="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Student Control</p>
-                  <h3 class="mt-2 text-2xl font-extrabold text-slate-950">Student Access Manager</h3>
-                </div>
-                <div class="flex w-full max-w-sm flex-col gap-3 sm:flex-row sm:items-center">
-                  <input
-                    id="studentSearchInput"
-                    type="search"
-                    placeholder="Search by name, phone, ID, email"
-                    class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:bg-white"
+                <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <p class="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Student Control</p>
+                    <h3 class="mt-2 text-2xl font-extrabold text-slate-950">Student Access Manager</h3>
+                    <p id="studentFilterMeta" class="mt-2 text-sm text-slate-500">
+                      Showing all students across every course.
+                    </p>
+                  </div>
+                  <div class="flex w-full max-w-3xl flex-col gap-3 sm:flex-row sm:items-center">
+                    <select
+                      id="studentCourseFilter"
+                      class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:bg-white sm:max-w-[240px]"
+                    >
+                      <option value="all">All Courses</option>
+                    </select>
+                    <input
+                      id="studentSearchInput"
+                      type="search"
+                      placeholder="Search by name, phone, ID, email"
+                      class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:bg-white"
                   />
                   <button
                     id="newStudentBtn"
@@ -477,6 +497,6 @@
     </main>
 
     <script src="./portal-copy.js?v=20260315-1" defer></script>
-    <script src="./admin-app.js?v=20260331-3" defer></script>
+    <script src="./admin-app.js?v=20260331-4" defer></script>
   </body>
 </html>

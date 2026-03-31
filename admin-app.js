@@ -154,6 +154,7 @@ const state = {
   admin: null,
   data: createEmptyDashboard(),
   analyticsYear: "",
+  courseFilter: "all",
   studentQuery: "",
   editingStudentId: "",
   editingCourseId: "",
@@ -178,12 +179,15 @@ const dom = {
   summaryCourses: document.getElementById("summaryCourses"),
   summaryMessages: document.getElementById("summaryMessages"),
   adminAnalyticsCaption: document.getElementById("adminAnalyticsCaption"),
+  adminAnalyticsCourse: document.getElementById("adminAnalyticsCourse"),
   adminAnalyticsYear: document.getElementById("adminAnalyticsYear"),
   adminAnalyticsMeta: document.getElementById("adminAnalyticsMeta"),
   adminAnalyticsChart: document.getElementById("adminAnalyticsChart"),
   adminAnalyticsHighlights: document.getElementById("adminAnalyticsHighlights"),
   adminAnalyticsYears: document.getElementById("adminAnalyticsYears"),
+  studentCourseFilter: document.getElementById("studentCourseFilter"),
   studentSearchInput: document.getElementById("studentSearchInput"),
+  studentFilterMeta: document.getElementById("studentFilterMeta"),
   newStudentBtn: document.getElementById("newStudentBtn"),
   selectAllStudents: document.getElementById("selectAllStudents"),
   bulkActionSelect: document.getElementById("bulkActionSelect"),
@@ -800,6 +804,81 @@ function getStudentCourseIds(student) {
   return collected;
 }
 
+function normalizeCourseFilterValue(value) {
+  const normalized = String(value || "").trim();
+  if (!normalized || normalized === "all" || !state.data.courseMap.has(normalized)) {
+    return "all";
+  }
+
+  return normalized;
+}
+
+function getCourseStudentCountMap() {
+  const counts = new Map(state.data.courses.map((course) => [course.id, 0]));
+
+  state.data.students.forEach((student) => {
+    getStudentCourseIds(student).forEach((courseId) => {
+      counts.set(courseId, (counts.get(courseId) || 0) + 1);
+    });
+  });
+
+  return counts;
+}
+
+function doesStudentMatchCourseFilter(student, courseFilterValue = state.courseFilter) {
+  const selectedCourseId = normalizeCourseFilterValue(courseFilterValue);
+  return selectedCourseId === "all" ? true : getStudentCourseIds(student).includes(selectedCourseId);
+}
+
+function getStudentsInCourseScope(courseFilterValue = state.courseFilter) {
+  return state.data.students.filter((student) => doesStudentMatchCourseFilter(student, courseFilterValue));
+}
+
+function buildCourseFilterOptions(selectedCourseId = state.courseFilter) {
+  const normalizedCourseId = normalizeCourseFilterValue(selectedCourseId);
+  const courseCounts = getCourseStudentCountMap();
+
+  return [
+    `<option value="all"${normalizedCourseId === "all" ? " selected" : ""}>All Courses (${state.data.students.length})</option>`,
+    ...state.data.courses.map((course) => {
+      const enrolledCount = courseCounts.get(course.id) || 0;
+      const label = `${course.shortTitle || course.title} (${enrolledCount})`;
+      return `<option value="${escapeHtml(course.id)}"${
+        course.id === normalizedCourseId ? " selected" : ""
+      }>${escapeHtml(label)}</option>`;
+    }),
+  ].join("");
+}
+
+function renderCourseFilterControls() {
+  const selectedCourseId = normalizeCourseFilterValue(state.courseFilter);
+  const selectedCourse = selectedCourseId === "all" ? null : state.data.courseMap.get(selectedCourseId) || null;
+  const studentsInScope = getStudentsInCourseScope(selectedCourseId);
+  const optionMarkup = buildCourseFilterOptions(selectedCourseId);
+
+  state.courseFilter = selectedCourseId;
+
+  if (dom.adminAnalyticsCourse) {
+    dom.adminAnalyticsCourse.innerHTML = optionMarkup;
+    dom.adminAnalyticsCourse.disabled = !state.data.courses.length;
+    dom.adminAnalyticsCourse.value = selectedCourseId;
+  }
+
+  if (dom.studentCourseFilter) {
+    dom.studentCourseFilter.innerHTML = optionMarkup;
+    dom.studentCourseFilter.disabled = !state.data.courses.length;
+    dom.studentCourseFilter.value = selectedCourseId;
+  }
+
+  if (dom.studentFilterMeta) {
+    dom.studentFilterMeta.textContent = selectedCourse
+      ? `Showing ${studentsInScope.length} student${studentsInScope.length === 1 ? "" : "s"} inside ${
+          selectedCourse.title
+        }. Search works within this course.`
+      : `Showing all ${state.data.students.length} students across ${state.data.courses.length} courses.`;
+  }
+}
+
 function getSelectedStudentIds() {
   return [...state.selectedStudentIds];
 }
@@ -841,6 +920,11 @@ function renderSelectionState() {
 }
 
 function buildStudentSearchHaystack(student) {
+  const courseTokens = getStudentCourseIds(student).flatMap((courseId) => {
+    const course = state.data.courseMap.get(courseId);
+    return [courseId, course?.title || "", course?.shortTitle || ""];
+  });
+
   return [
     student.id,
     student.name,
@@ -851,21 +935,23 @@ function buildStudentSearchHaystack(student) {
     student.status,
     student.loginApproval,
     student.portalAccessMode,
+    ...courseTokens,
   ]
     .map((item) => normalizeLookupText(item))
     .filter(Boolean);
 }
 
 function getFilteredStudents() {
+  const studentsInScope = getStudentsInCourseScope();
   const rawQuery = state.studentQuery.trim();
   if (!rawQuery) {
-    return state.data.students;
+    return studentsInScope;
   }
 
   const query = normalizeLookupText(rawQuery);
   const phoneQuery = normalizePhoneValue(rawQuery);
 
-  return state.data.students.filter((student) => {
+  return studentsInScope.filter((student) => {
     if (phoneQuery && normalizePhoneValue(student.phone).includes(phoneQuery)) {
       return true;
     }
@@ -1129,9 +1215,23 @@ function clearAdminSession() {
   state.token = "";
   state.admin = null;
   state.data = createEmptyDashboard();
+  state.analyticsYear = "";
+  state.courseFilter = "all";
+  state.studentQuery = "";
+  state.editingStudentId = "";
+  state.editingCourseId = "";
   state.selectedStudentIds = new Set();
   state.visibleStudentIds = [];
   resetBulkCourseRuleDrafts();
+  if (dom.studentSearchInput) {
+    dom.studentSearchInput.value = "";
+  }
+  if (dom.adminAnalyticsCourse) {
+    dom.adminAnalyticsCourse.value = "all";
+  }
+  if (dom.studentCourseFilter) {
+    dom.studentCourseFilter.value = "all";
+  }
   removeStoredValue(STORAGE_KEYS.adminToken);
   removeStoredValue(STORAGE_KEYS.adminDashboardCache);
   removeStoredValue(STORAGE_KEYS.adminScrollY);
@@ -1272,7 +1372,10 @@ function renderSummaryCards() {
 }
 
 function buildAdmissionsAnalytics() {
-  const datedStudents = state.data.students
+  const selectedCourseId = normalizeCourseFilterValue(state.courseFilter);
+  const selectedCourse = selectedCourseId === "all" ? null : state.data.courseMap.get(selectedCourseId) || null;
+  const studentsInScope = getStudentsInCourseScope(selectedCourseId);
+  const datedStudents = studentsInScope
     .map((student) => {
       const joinedDate = parseDashboardDate(student.joinedOn);
       if (!(joinedDate instanceof Date) || Number.isNaN(joinedDate.getTime())) {
@@ -1326,12 +1429,17 @@ function buildAdmissionsAnalytics() {
   const growthDelta =
     previousYear && selectedYear !== "all" ? selectedYearTotal - previousYearTotal : null;
   const pendingRegistrations = state.data.registrations.filter(
-    (registration) => normalizeStatus(registration.status) === "pending"
+    (registration) =>
+      normalizeStatus(registration.status) === "pending" &&
+      (selectedCourseId === "all" || registration.requestedCourseIds.includes(selectedCourseId))
   ).length;
 
   return {
     years,
     selectedYear,
+    selectedCourseId,
+    selectedCourse,
+    scopedStudentCount: studentsInScope.length,
     monthlyCounts,
     totalStudents,
     maxMonthlyCount,
@@ -1342,7 +1450,7 @@ function buildAdmissionsAnalytics() {
     yearTotals,
     growthDelta,
     previousYear,
-    recordsWithoutDate: Math.max(state.data.students.length - datedStudents.length, 0),
+    recordsWithoutDate: Math.max(studentsInScope.length - datedStudents.length, 0),
   };
 }
 
@@ -1372,13 +1480,19 @@ function renderAdmissionsAnalytics() {
 
   if (!analytics.totalStudents) {
     dom.adminAnalyticsCaption.textContent = analytics.recordsWithoutDate
-      ? "Student records are available, but join dates are missing. Add valid join dates to unlock this timeline."
-      : "Admissions data will appear here as soon as student records start coming into the live sheet.";
+      ? `${analytics.recordsWithoutDate} student${
+          analytics.recordsWithoutDate === 1 ? "" : "s"
+        } in ${analytics.selectedCourse?.title || "the current view"} still have no valid join date.`
+      : analytics.selectedCourse
+        ? `No student is currently assigned to ${analytics.selectedCourse.title}.`
+        : "Admissions data will appear here as soon as student records start coming into the live sheet.";
 
     dom.adminAnalyticsMeta.innerHTML = `
       <div class="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-3 py-3">
-        <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Confirmed joins</p>
-        <p class="mt-2 text-2xl font-extrabold text-slate-950">0</p>
+        <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">${
+          analytics.selectedCourse ? "Students in course" : "Total students"
+        }</p>
+        <p class="mt-2 text-2xl font-extrabold text-slate-950">${analytics.scopedStudentCount}</p>
       </div>
       <div class="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-3 py-3">
         <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Peak month</p>
@@ -1392,7 +1506,11 @@ function renderAdmissionsAnalytics() {
 
     dom.adminAnalyticsChart.innerHTML = `
       <div class="col-span-full rounded-[1.2rem] border border-dashed border-slate-300 bg-slate-50 px-4 py-7 text-center text-sm leading-6 text-slate-500">
-        No monthly admission pattern is available yet.
+        ${
+          analytics.selectedCourse
+            ? `No chart-ready admission data is available for ${escapeHtml(analytics.selectedCourse.title)} yet.`
+            : "No monthly admission pattern is available yet."
+        }
       </div>
     `;
 
@@ -1402,7 +1520,11 @@ function renderAdmissionsAnalytics() {
         <p class="mt-2 text-2xl font-extrabold text-slate-950">${analytics.pendingRegistrations}</p>
       </div>
       <div class="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-600">
-        Keep the joined date field updated to unlock a reliable year-wise admission review.
+        ${
+          analytics.selectedCourse
+            ? `Use the course filter to compare ${escapeHtml(analytics.selectedCourse.title)} with the rest of your catalog.`
+            : "Use the course filter to compare one course against your full catalog."
+        }
       </div>
     `;
 
@@ -1412,6 +1534,7 @@ function renderAdmissionsAnalytics() {
 
   const selectedYearLabel =
     analytics.selectedYear === "all" ? "all recorded cohorts" : analytics.selectedYear;
+  const selectedCourseLabel = analytics.selectedCourse?.title || "all courses";
   const peakMonthLabel =
     analytics.peakMonthIndex >= 0 ? MONTH_LABELS[analytics.peakMonthIndex] : "No peak month";
   const growthLabel =
@@ -1421,13 +1544,19 @@ function renderAdmissionsAnalytics() {
       ? `Same as ${analytics.previousYear}`
       : `${analytics.growthDelta > 0 ? "+" : ""}${analytics.growthDelta} vs ${analytics.previousYear}`;
 
-  dom.adminAnalyticsCaption.textContent = `Review confirmed joins for ${selectedYearLabel} with a clear month-by-month breakdown.`;
+  dom.adminAnalyticsCaption.textContent = `Review ${selectedCourseLabel} across ${selectedYearLabel} with a clear month-by-month admission breakdown.`;
 
   dom.adminAnalyticsMeta.innerHTML = `
     <div class="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-3 py-3">
-      <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Confirmed joins</p>
-      <p class="mt-2 text-2xl font-extrabold text-slate-950">${analytics.totalStudents}</p>
-      <p class="mt-1.5 text-[11px] text-slate-500">${growthLabel}</p>
+      <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">${
+        analytics.selectedCourse ? "Students in course" : "Total students"
+      }</p>
+      <p class="mt-2 text-2xl font-extrabold text-slate-950">${analytics.scopedStudentCount}</p>
+      <p class="mt-1.5 text-[11px] text-slate-500">${
+        analytics.selectedYear === "all"
+          ? `${analytics.totalStudents} tracked with join dates`
+          : `${analytics.totalStudents} joined in ${analytics.selectedYear}`
+      }</p>
     </div>
     <div class="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-3 py-3">
       <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Peak month</p>
@@ -1480,14 +1609,18 @@ function renderAdmissionsAnalytics() {
     <div class="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-3 py-3">
       <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Pending approvals</p>
       <p class="mt-2 text-2xl font-extrabold text-slate-950">${analytics.pendingRegistrations}</p>
-      <p class="mt-1.5 text-sm text-slate-500">Students currently waiting for approval.</p>
+      <p class="mt-1.5 text-sm text-slate-500">${
+        analytics.selectedCourse ? "Pending inside the selected course scope." : "Students currently waiting for approval."
+      }</p>
     </div>
     <div class="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-3 py-3">
-      <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Selected cohort</p>
+      <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Current scope</p>
       <p class="mt-2 text-lg font-extrabold text-slate-950">${escapeHtml(
-        analytics.selectedYear === "all" ? "All cohorts" : analytics.selectedYear
+        analytics.selectedCourse?.shortTitle || analytics.selectedCourse?.title || "All courses"
       )}</p>
-      <p class="mt-1.5 text-sm text-slate-500">${escapeHtml(growthLabel)}</p>
+      <p class="mt-1.5 text-sm text-slate-500">${escapeHtml(
+        `${analytics.selectedYear === "all" ? "All years" : analytics.selectedYear} | ${growthLabel}`
+      )}</p>
     </div>
   `;
 
@@ -1977,8 +2110,30 @@ function renderMessageLog() {
     .join("");
 }
 
+function applySharedCourseFilter(nextValue) {
+  const normalizedCourseId = normalizeCourseFilterValue(nextValue);
+  const studentsInScope = new Set(getStudentsInCourseScope(normalizedCourseId).map((student) => student.id));
+
+  state.courseFilter = normalizedCourseId;
+  state.selectedStudentIds = new Set(
+    [...state.selectedStudentIds].filter((studentId) => studentsInScope.has(studentId))
+  );
+
+  if (state.editingStudentId && !studentsInScope.has(state.editingStudentId)) {
+    state.editingStudentId = "";
+  }
+
+  resetBulkCourseRuleDrafts();
+  renderCourseFilterControls();
+  renderAdmissionsAnalytics();
+  renderStudentTable();
+  renderStudentEditor();
+  renderBulkCourseSelector();
+}
+
 function renderDashboard() {
   renderSummaryCards();
+  renderCourseFilterControls();
   renderAdmissionsAnalytics();
   renderStudentTable();
   renderStudentEditor();
@@ -2549,6 +2704,16 @@ if (dom.adminAnalyticsYear) {
   dom.adminAnalyticsYear.addEventListener("change", () => {
     state.analyticsYear = dom.adminAnalyticsYear.value || "";
     renderAdmissionsAnalytics();
+  });
+}
+if (dom.adminAnalyticsCourse) {
+  dom.adminAnalyticsCourse.addEventListener("change", () => {
+    applySharedCourseFilter(dom.adminAnalyticsCourse.value || "all");
+  });
+}
+if (dom.studentCourseFilter) {
+  dom.studentCourseFilter.addEventListener("change", () => {
+    applySharedCourseFilter(dom.studentCourseFilter.value || "all");
   });
 }
 dom.studentSearchInput.addEventListener("input", () => {
