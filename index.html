@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://script.google.com" />
     <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin />
-    <link rel="stylesheet" href="./styles/app.css?v=20260331-12" />
+    <link rel="stylesheet" href="./styles/app.css?v=20260331-13" />
     <link
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
@@ -71,16 +71,24 @@
             />
           </div>
           <a
+            href="https://bjs-mcqtest.netlify.app/#"
+            target="_blank"
+            rel="noreferrer"
+            class="portal-nav-link portal-nav-link-accent"
+          >
+            Free MCQ Exam
+          </a>
+          <a
             id="registerNavLink"
             href="./register.html"
-            class="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+            class="portal-nav-link portal-nav-link-ghost"
           >
             Register
           </a>
           <button
             id="loginBtn"
             type="button"
-            class="rounded-xl bg-blue-900 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-blue-900/20 transition hover:bg-blue-800"
+            class="portal-nav-link portal-nav-link-primary"
           >
             Login
           </button>
@@ -110,85 +118,106 @@
       </div>
     </nav>
 
-    <main class="mx-auto min-h-screen max-w-5xl px-4 py-10">
-      <div
-        id="loginSection"
-        class="relative mx-auto mt-10 max-w-md overflow-hidden rounded-3xl border border-white bg-white p-10 shadow-2xl"
-      >
-        <div class="gold-bg absolute right-0 top-0 h-32 w-32 rounded-bl-full opacity-5"></div>
-        <div class="relative">
-          <div class="mb-6 flex items-center justify-between gap-4">
-            <div>
-              <h2 class="mb-2 text-3xl font-bold text-blue-950">Welcome Back!</h2>
-              <p class="text-slate-500">
-                Sign in to continue to your student portal.
+    <main class="mx-auto min-h-screen max-w-6xl px-4 pb-14 pt-8">
+      <section class="portal-stage">
+        <div class="portal-stage-grid">
+          <div class="portal-story">
+            <div class="portal-story-card hero-shell">
+              <p class="portal-story-kicker">Open Learning Lane</p>
+              <h2 class="portal-story-title">
+                Practice MCQ for free. Use the full portal when your classes are ready.
+              </h2>
+              <p class="portal-story-text">
+                Anyone can jump into the online MCQ exam instantly. Enrolled students can also return here to unlock
+                course lessons, class updates, and their full learning dashboard from one polished space.
               </p>
             </div>
-            <div
-              id="dataModeBadge"
-              class="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500"
-            ></div>
           </div>
 
-          <form id="lookup-form" class="space-y-5">
-            <div>
-              <label
-                data-copy-text="studentIdentifierComboLabel"
-                class="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500"
-                for="student-query"
-              >
-                Registration Number / Student ID / Phone Number / Email Address
-              </label>
-              <input
-                id="student-query"
-                type="text"
-                data-copy-placeholder="studentIdentifierComboPlaceholder"
-                placeholder="Enter registration number / student ID / phone number / email address"
-                class="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
-              />
-            </div>
+          <div id="loginSection" class="portal-login-card">
             <div class="relative">
-              <div class="mb-2 flex justify-between">
-                <label
-                  class="block text-xs font-bold uppercase tracking-wider text-slate-500"
-                  for="student-password"
-                >
-                  Password
-                </label>
+              <div class="portal-login-topline">
+                <span class="portal-login-badge">Student Portal Login</span>
+                <div
+                  id="dataModeBadge"
+                  class="hidden rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-500"
+                ></div>
               </div>
-              <input
-                id="student-password"
-                type="password"
-                autocomplete="current-password"
-                placeholder="••••••••"
-                class="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 pr-24 transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
-              />
-              <button
-                id="studentPasswordToggle"
-                type="button"
-                class="absolute right-3 top-[3.4rem] rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
-                aria-controls="student-password"
-                aria-pressed="false"
-              >
-                Show
-              </button>
-            </div>
-            <button
-              type="submit"
-              class="law-gradient w-full rounded-2xl py-4 text-lg font-bold text-white shadow-xl transition-all active:scale-[0.98] hover:shadow-blue-900/30"
-            >
-              Enter Portal
-            </button>
-          </form>
 
-          <div class="mt-5 rounded-2xl border border-blue-100 bg-blue-50 px-4 py-4 text-sm text-slate-700">
-            New student? Submit your request from
-            <a href="./register.html" class="font-bold text-blue-700 underline underline-offset-4">the registration page</a>
-            and wait for admin approval.
+              <div class="mb-6">
+                <h2 class="text-3xl font-bold text-blue-950">Welcome Back</h2>
+                <p class="mt-2 text-slate-600">
+                  Sign in to open your enrolled lessons, live class updates, and course progress.
+                </p>
+              </div>
+
+              <!-- <div class="portal-login-points">
+                <span class="portal-login-point">Approved student access</span>
+                <span class="portal-login-point">Lesson dashboard</span>
+                <span class="portal-login-point">Live class updates</span>
+              </div> -->
+
+              <form id="lookup-form" class="space-y-5">
+                <div>
+                  <label
+                    data-copy-text="studentIdentifierComboLabel"
+                    class="mb-2 block text-xs font-bold uppercase tracking-wider text-slate-500"
+                    for="student-query"
+                  >
+                    Registration Number / Student ID / Phone Number / Email Address
+                  </label>
+                  <input
+                    id="student-query"
+                    type="text"
+                    data-copy-placeholder="studentIdentifierComboPlaceholder"
+                    placeholder="Enter registration number / student ID / phone number / email address"
+                    class="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                </div>
+                <div class="relative">
+                  <div class="mb-2 flex justify-between">
+                    <label
+                      class="block text-xs font-bold uppercase tracking-wider text-slate-500"
+                      for="student-password"
+                    >
+                      Password
+                    </label>
+                  </div>
+                  <input
+                    id="student-password"
+                    type="password"
+                    autocomplete="current-password"
+                    placeholder="••••••••"
+                    class="w-full rounded-2xl border border-slate-100 bg-slate-50 px-5 py-4 pr-24 transition focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-600"
+                  />
+                  <button
+                    id="studentPasswordToggle"
+                    type="button"
+                    class="absolute right-3 top-[3.4rem] rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-600 transition hover:bg-slate-50"
+                    aria-controls="student-password"
+                    aria-pressed="false"
+                  >
+                    Show
+                  </button>
+                </div>
+                <button
+                  type="submit"
+                  class="law-gradient w-full rounded-[1.4rem] py-4 text-lg font-bold text-white shadow-[0_24px_40px_-30px_rgba(30,58,138,0.95)] transition-all active:scale-[0.98] hover:-translate-y-0.5"
+                >
+                  Enter Portal
+                </button>
+              </form>
+
+              <div class="portal-register-note">
+                New student? Submit your request from
+                <a href="./register.html" class="font-bold text-blue-700 underline underline-offset-4">the registration page</a>
+                and wait for admin approval.
+              </div>
+              <p id="loginFeedback" class="mt-5 text-sm font-medium text-slate-500"></p>
+            </div>
           </div>
-          <p id="loginFeedback" class="mt-5 text-sm text-slate-500"></p>
         </div>
-      </div>
+      </section>
 
       <div id="dashboardSection" class="hidden space-y-8">
         <div
