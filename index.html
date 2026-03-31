@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://script.google.com" />
     <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin />
-    <link rel="stylesheet" href="./styles/app.css?v=20260331-10" />
+    <link rel="stylesheet" href="./styles/app.css?v=20260331-11" />
     <link
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
@@ -347,7 +347,7 @@
             <span id="videoStatusText">Ready to play</span>
           </div>
         </div>
-        <div class="academy-player-stage">
+        <div id="videoStage" class="academy-player-stage">
           <div id="videoPosterLayer" class="academy-player-poster">
             <img
               id="videoPosterImage"
@@ -382,6 +382,7 @@
             loading="lazy"
             referrerpolicy="strict-origin-when-cross-origin"
             allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen
           ></iframe>
           <div
             id="videoLiveWatermark"
@@ -705,6 +706,6 @@
     </div>
 
     <script src="./portal-copy.js?v=20260315-1" defer></script>
-    <script src="./app.js?v=20260331-4" defer></script>
+    <script src="./app.js?v=20260331-5" defer></script>
   </body>
 </html>

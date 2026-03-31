@@ -220,6 +220,7 @@ const dom = {
   videoBackdrop: document.getElementById("videoBackdrop"),
   closeVideoBtn: document.getElementById("closeVideoBtn"),
   videoPlayer: document.getElementById("videoPlayer"),
+  videoStage: document.getElementById("videoStage"),
   videoTitle: document.getElementById("videoTitle"),
   videoMeta: document.getElementById("videoMeta"),
   videoPosterLayer: document.getElementById("videoPosterLayer"),
@@ -867,6 +868,62 @@ function buildVideoMetaLabel(moduleName, duration) {
   return metaParts.length ? metaParts.join(" | ") : "Authorized student playback";
 }
 
+function isPhoneOnlyDevice() {
+  const userAgent = navigator.userAgent || "";
+  const hasMobileUserAgent = /Android.+Mobile|iPhone|iPod|Windows Phone|Opera Mini|IEMobile|Mobile/i.test(
+    userAgent
+  );
+  const isCoarsePointer = window.matchMedia("(pointer: coarse)").matches;
+  const isPhoneViewport = window.matchMedia("(max-width: 767px)").matches;
+
+  return hasMobileUserAgent || (isCoarsePointer && isPhoneViewport);
+}
+
+async function requestMobileLandscapeMode() {
+  if (!isPhoneOnlyDevice()) {
+    return;
+  }
+
+  const stageElement = dom.videoStage || dom.videoModal;
+  if (!stageElement) {
+    return;
+  }
+
+  try {
+    if (!document.fullscreenElement && typeof stageElement.requestFullscreen === "function") {
+      await stageElement.requestFullscreen({ navigationUI: "hide" });
+    }
+  } catch (error) {
+    // Ignore fullscreen failures; orientation lock may still work on some browsers.
+  }
+
+  try {
+    if (screen.orientation?.lock) {
+      await screen.orientation.lock("landscape");
+    }
+  } catch (error) {
+    // Mobile browsers often require fullscreen or user settings to allow orientation lock.
+  }
+}
+
+async function releaseMobileLandscapeMode() {
+  try {
+    if (screen.orientation?.unlock) {
+      screen.orientation.unlock();
+    }
+  } catch (error) {
+    // No-op if unlock is unavailable.
+  }
+
+  try {
+    if (document.fullscreenElement && typeof document.exitFullscreen === "function") {
+      await document.exitFullscreen();
+    }
+  } catch (error) {
+    // No-op if fullscreen exit is blocked by the browser.
+  }
+}
+
 function getVideoWatermarkLabel() {
   const activeStudent = getActiveStudent();
   if (!activeStudent) {
@@ -946,6 +1003,8 @@ function startVideoPlayback() {
   if (dom.videoStatusText) {
     dom.videoStatusText.textContent = "Streaming in secure view";
   }
+
+  void requestMobileLandscapeMode();
 }
 
 function buildLessonsByCourseId(lessons) {
@@ -2536,6 +2595,7 @@ function openVideo(videoConfig, title) {
 }
 
 function closeVideo() {
+  void releaseMobileLandscapeMode();
   resetVideoPlayerState();
   dom.videoModal.classList.add("hidden");
   dom.videoModal.classList.remove("flex");

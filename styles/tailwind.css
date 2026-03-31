@@ -209,6 +209,13 @@
     background: #020617;
   }
 
+  .academy-player-stage:fullscreen {
+    aspect-ratio: auto;
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+  }
+
   .academy-player-poster,
   .academy-player-iframe {
     position: absolute;
