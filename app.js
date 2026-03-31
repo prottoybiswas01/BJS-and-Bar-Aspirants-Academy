@@ -870,10 +870,10 @@ function buildVideoMetaLabel(moduleName, duration) {
 function getVideoWatermarkLabel() {
   const activeStudent = getActiveStudent();
   if (!activeStudent) {
-    return "Authorized Portal Session";
+    return "AUTHORIZED";
   }
 
-  return `${activeStudent.name || "Student"} | ID ${activeStudent.id || "-"}`;
+  return activeStudent.id ? `ID ${activeStudent.id}` : activeStudent.name || "AUTHORIZED";
 }
 
 function updateVideoWatermarks() {
