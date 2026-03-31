@@ -2006,14 +2006,8 @@ function getManualVideoAccessTimestamp(entry) {
 }
 
 function getLessonAvailabilityDate(entry) {
-  const paidUnlockDate = getLatestValidDateValue([entry.videoAccessUntil, entry.paymentDueDate]);
   const courseEndDate = getLatestValidDateValue([entry.accessEndDate]);
-
-  if (paidUnlockDate && courseEndDate) {
-    return paidUnlockDate.timestamp <= courseEndDate.timestamp ? paidUnlockDate.raw : courseEndDate.raw;
-  }
-
-  return paidUnlockDate?.raw || courseEndDate?.raw || "";
+  return courseEndDate?.raw || "";
 }
 
 function getEffectiveVideoAccessTimestamp(entry) {
@@ -2036,11 +2030,7 @@ function getEnrollmentVideoAccessSummary(entry) {
     return "Unlimited access";
   }
 
-  if (hasPaidMonthAccess(entry)) {
-    return formatPaidMonthList(entry.paidMonths);
-  }
-
-  return formatDate(getLessonAvailabilityDate(entry), "Not set");
+  return formatDateRange(entry.accessStartDate, entry.accessEndDate);
 }
 
 function getLessonAccessState(entry, lesson) {
@@ -2117,40 +2107,14 @@ function getLessonAccessState(entry, lesson) {
     };
   }
 
-  const manualVideoAccessTimestamp = getManualVideoAccessTimestamp(entry);
-  if (manualVideoAccessTimestamp !== null && releaseTimestamp <= manualVideoAccessTimestamp) {
-    return {
-      canWatch: true,
-      reason: "",
-      status: "open",
-    };
-  }
-
-  if (hasPaidMonthAccess(entry)) {
-    const lessonMonthKey = parseMonthValue(lesson.releaseDate);
-    if (!lessonMonthKey || entry.paidMonths.includes(lessonMonthKey)) {
-      return {
-        canWatch: true,
-        reason: "",
-        status: "open",
-      };
-    }
-
-    const lessonMonthLabel = formatMonthKey(lessonMonthKey, "this month");
-    return {
-      canWatch: false,
-      reason: `This lesson was uploaded in ${lessonMonthLabel}. That month is not marked as paid for this course.`,
-      status: "payment-required",
-    };
-  }
-
-  const effectiveAccessTimestamp = getEffectiveVideoAccessTimestamp(entry);
-  if (releaseTimestamp > effectiveAccessTimestamp) {
+  if (releaseTimestamp > Date.now()) {
     const approvedUntilLabel = formatDate(getLessonAvailabilityDate(entry), "the available date");
     return {
       canWatch: false,
-      reason: `New lessons after ${approvedUntilLabel} are not available yet.`,
-      status: "payment-required",
+      reason: approvedUntilLabel === "the available date"
+        ? `This lesson will unlock on ${formatDate(lesson.releaseDate, "the scheduled date")}.`
+        : `This lesson will unlock on ${formatDate(lesson.releaseDate, "the scheduled date")}, within your approved course dates through ${approvedUntilLabel}.`,
+      status: "scheduled",
     };
   }
 
@@ -2308,27 +2272,7 @@ function getProfileVideoAccessSummary(courseEntries) {
     return unlimitedCount === courseEntries.length ? "Unlimited access" : "Varies by course";
   }
 
-  if (courseEntries.some((entry) => hasPaidMonthAccess(entry))) {
-    if (!courseEntries.every((entry) => hasPaidMonthAccess(entry))) {
-      return "Varies by course";
-    }
-
-    const paidMonths = [...new Set(courseEntries.flatMap((entry) => entry.paidMonths || []))].sort();
-    return formatPaidMonthList(paidMonths, "Not set");
-  }
-
-  const approvalDates = getSortedDateItems(
-    courseEntries.map((entry) => getLessonAvailabilityDate(entry))
-  );
-
-  if (approvalDates.length) {
-    const selected = approvalDates[approvalDates.length - 1];
-    return formatDate(selected.raw, "Not set");
-  }
-
-  const fallbackEntry = [...courseEntries].reverse().find((entry) => getLessonAvailabilityDate(entry));
-  const fallback = fallbackEntry ? getLessonAvailabilityDate(fallbackEntry) : "";
-  return formatDate(fallback, "Not set");
+  return getProfileAccessSummary(courseEntries);
 }
 
 function getProfileLastPaymentSummary(courseEntries) {
