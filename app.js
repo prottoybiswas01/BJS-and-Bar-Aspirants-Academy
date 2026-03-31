@@ -924,24 +924,42 @@ async function releaseMobileLandscapeMode() {
   }
 }
 
-function getVideoWatermarkLabel() {
+function getVideoWatermarkData() {
   const activeStudent = getActiveStudent();
   if (!activeStudent) {
-    return "AUTHORIZED";
+    return {
+      name: "Authorized Student",
+      idLabel: "Portal Session",
+    };
   }
 
-  return activeStudent.id ? `ID ${activeStudent.id}` : activeStudent.name || "AUTHORIZED";
+  const studentName = String(activeStudent.name || "").trim() || "Authorized Student";
+  const studentId = String(activeStudent.id || activeStudent.studentId || "").trim();
+
+  return {
+    name: studentName,
+    idLabel: studentId ? `ID ${studentId}` : "Portal Session",
+  };
+}
+
+function getVideoWatermarkMarkup() {
+  const watermarkData = getVideoWatermarkData();
+
+  return `
+    <span class="academy-player-watermark-name">${escapeHtml(watermarkData.name)}</span>
+    <span class="academy-player-watermark-id">${escapeHtml(watermarkData.idLabel)}</span>
+  `;
 }
 
 function updateVideoWatermarks() {
-  const watermarkLabel = getVideoWatermarkLabel();
+  const watermarkMarkup = getVideoWatermarkMarkup();
 
   if (dom.videoWatermark) {
-    dom.videoWatermark.textContent = watermarkLabel;
+    dom.videoWatermark.innerHTML = watermarkMarkup;
   }
 
   if (dom.videoLiveWatermark) {
-    dom.videoLiveWatermark.textContent = watermarkLabel;
+    dom.videoLiveWatermark.innerHTML = watermarkMarkup;
   }
 }
 
