@@ -143,10 +143,17 @@ const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   minute: "2-digit",
 });
 
+const MONTH_LABELS = Object.freeze(
+  Array.from({ length: 12 }, (_, index) =>
+    new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date(2026, index, 1))
+  )
+);
+
 const state = {
   token: "",
   admin: null,
   data: createEmptyDashboard(),
+  analyticsYear: "",
   studentQuery: "",
   editingStudentId: "",
   editingCourseId: "",
@@ -170,6 +177,12 @@ const dom = {
   summaryPending: document.getElementById("summaryPending"),
   summaryCourses: document.getElementById("summaryCourses"),
   summaryMessages: document.getElementById("summaryMessages"),
+  adminAnalyticsCaption: document.getElementById("adminAnalyticsCaption"),
+  adminAnalyticsYear: document.getElementById("adminAnalyticsYear"),
+  adminAnalyticsMeta: document.getElementById("adminAnalyticsMeta"),
+  adminAnalyticsChart: document.getElementById("adminAnalyticsChart"),
+  adminAnalyticsHighlights: document.getElementById("adminAnalyticsHighlights"),
+  adminAnalyticsYears: document.getElementById("adminAnalyticsYears"),
   studentSearchInput: document.getElementById("studentSearchInput"),
   newStudentBtn: document.getElementById("newStudentBtn"),
   selectAllStudents: document.getElementById("selectAllStudents"),
@@ -463,6 +476,41 @@ function formatDateTime(value, fallback = "-") {
   }
 
   return DATE_TIME_FORMATTER.format(date);
+}
+
+function parseDashboardDate(value) {
+  const raw = normalizeLocalizedDigits(String(value || "")).trim();
+  if (!raw) {
+    return null;
+  }
+
+  const directDate = new Date(raw);
+  if (!Number.isNaN(directDate.getTime())) {
+    return directDate;
+  }
+
+  const normalized = raw.replace(/\./g, "/").replace(/-/g, "/");
+  let match = normalized.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})$/);
+  if (match) {
+    const [, year, month, day] = match;
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+
+  match = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (match) {
+    const [, day, month, year] = match;
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+
+  return null;
+}
+
+function formatMonthYearLabel(date, fallback = "Not recorded") {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return fallback;
+  }
+
+  return `${MONTH_LABELS[date.getMonth()]} ${date.getFullYear()}`;
 }
 
 function normalizeStatus(value) {
@@ -1223,6 +1271,268 @@ function renderSummaryCards() {
   dom.adminWelcome.textContent = `${adminName} Dashboard`;
 }
 
+function buildAdmissionsAnalytics() {
+  const datedStudents = state.data.students
+    .map((student) => {
+      const joinedDate = parseDashboardDate(student.joinedOn);
+      if (!(joinedDate instanceof Date) || Number.isNaN(joinedDate.getTime())) {
+        return null;
+      }
+
+      return {
+        student,
+        joinedDate,
+      };
+    })
+    .filter(Boolean);
+
+  const yearTotals = new Map();
+  datedStudents.forEach((entry) => {
+    const year = entry.joinedDate.getFullYear();
+    yearTotals.set(year, (yearTotals.get(year) || 0) + 1);
+  });
+
+  const years = [...yearTotals.keys()].sort((left, right) => right - left);
+  let selectedYear = String(state.analyticsYear || "").trim();
+
+  if (!selectedYear || (selectedYear !== "all" && !years.includes(Number(selectedYear)))) {
+    selectedYear = years.length ? String(years[0]) : "all";
+  }
+
+  state.analyticsYear = selectedYear;
+
+  const filteredStudents =
+    selectedYear === "all"
+      ? datedStudents
+      : datedStudents.filter((entry) => entry.joinedDate.getFullYear() === Number(selectedYear));
+
+  const monthlyCounts = Array.from({ length: 12 }, () => 0);
+  filteredStudents.forEach((entry) => {
+    monthlyCounts[entry.joinedDate.getMonth()] += 1;
+  });
+
+  const totalStudents = filteredStudents.length;
+  const maxMonthlyCount = monthlyCounts.length ? Math.max(...monthlyCounts) : 0;
+  const peakMonthIndex = maxMonthlyCount ? monthlyCounts.indexOf(maxMonthlyCount) : -1;
+  const averagePerMonth = totalStudents ? (totalStudents / 12).toFixed(totalStudents >= 12 ? 1 : 2) : "0";
+  const latestJoinedEntry = filteredStudents
+    .slice()
+    .sort((left, right) => right.joinedDate.getTime() - left.joinedDate.getTime())[0] || null;
+  const previousYear =
+    selectedYear === "all" ? null : years.find((year) => year < Number(selectedYear)) || null;
+  const previousYearTotal = previousYear ? yearTotals.get(previousYear) || 0 : 0;
+  const selectedYearTotal =
+    selectedYear === "all" ? datedStudents.length : yearTotals.get(Number(selectedYear)) || 0;
+  const growthDelta =
+    previousYear && selectedYear !== "all" ? selectedYearTotal - previousYearTotal : null;
+  const pendingRegistrations = state.data.registrations.filter(
+    (registration) => normalizeStatus(registration.status) === "pending"
+  ).length;
+
+  return {
+    years,
+    selectedYear,
+    monthlyCounts,
+    totalStudents,
+    maxMonthlyCount,
+    peakMonthIndex,
+    averagePerMonth,
+    latestJoinedEntry,
+    pendingRegistrations,
+    yearTotals,
+    growthDelta,
+    previousYear,
+    recordsWithoutDate: Math.max(state.data.students.length - datedStudents.length, 0),
+  };
+}
+
+function renderAdmissionsAnalytics() {
+  if (
+    !dom.adminAnalyticsCaption ||
+    !dom.adminAnalyticsYear ||
+    !dom.adminAnalyticsMeta ||
+    !dom.adminAnalyticsChart ||
+    !dom.adminAnalyticsHighlights ||
+    !dom.adminAnalyticsYears
+  ) {
+    return;
+  }
+
+  const analytics = buildAdmissionsAnalytics();
+  const optionMarkup = [
+    `<option value="all"${analytics.selectedYear === "all" ? " selected" : ""}>All Years</option>`,
+    ...analytics.years.map(
+      (year) => `<option value="${year}"${String(year) === analytics.selectedYear ? " selected" : ""}>${year}</option>`
+    ),
+  ].join("");
+
+  dom.adminAnalyticsYear.innerHTML = optionMarkup;
+  dom.adminAnalyticsYear.disabled = !analytics.years.length;
+  dom.adminAnalyticsYear.value = analytics.selectedYear;
+
+  if (!analytics.totalStudents) {
+    dom.adminAnalyticsCaption.textContent = analytics.recordsWithoutDate
+      ? "Students exist, but the joined date field is empty. Add joined dates to unlock the intake graph."
+      : "No admitted student record is available yet. Once students are added, the intake graph will appear here.";
+
+    dom.adminAnalyticsMeta.innerHTML = `
+      <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
+        <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-white/55">Dated Students</p>
+        <p class="mt-3 text-3xl font-extrabold text-white">0</p>
+      </div>
+      <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
+        <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-white/55">Peak Month</p>
+        <p class="mt-3 text-3xl font-extrabold text-white">-</p>
+      </div>
+      <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
+        <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-white/55">Average / Month</p>
+        <p class="mt-3 text-3xl font-extrabold text-white">0</p>
+      </div>
+    `;
+
+    dom.adminAnalyticsChart.innerHTML = `
+      <div class="col-span-full rounded-[1.5rem] border border-dashed border-white/15 bg-white/5 px-5 py-10 text-center text-sm leading-6 text-white/70">
+        No month-wise admission history is available yet.
+      </div>
+    `;
+
+    dom.adminAnalyticsHighlights.innerHTML = `
+      <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
+        <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">Pending Registrations</p>
+        <p class="mt-3 text-3xl font-extrabold text-white">${analytics.pendingRegistrations}</p>
+      </div>
+      <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4 text-sm leading-6 text-white/75">
+        Add or sync students with a valid join date to start seeing year-wise admission trends here.
+      </div>
+    `;
+
+    dom.adminAnalyticsYears.innerHTML = "";
+    return;
+  }
+
+  const selectedYearLabel =
+    analytics.selectedYear === "all" ? "all recorded years" : `${analytics.selectedYear} admissions`;
+  const peakMonthLabel =
+    analytics.peakMonthIndex >= 0 ? MONTH_LABELS[analytics.peakMonthIndex] : "No peak month";
+  const growthLabel =
+    analytics.growthDelta === null
+      ? "No prior-year comparison"
+      : analytics.growthDelta === 0
+      ? `Same as ${analytics.previousYear}`
+      : `${analytics.growthDelta > 0 ? "+" : ""}${analytics.growthDelta} vs ${analytics.previousYear}`;
+
+  dom.adminAnalyticsCaption.textContent = `Showing month-wise student intake for ${selectedYearLabel}. Use the filter to compare how admissions moved across different years.`;
+
+  dom.adminAnalyticsMeta.innerHTML = `
+    <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
+      <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-white/55">Admitted Students</p>
+      <p class="mt-3 text-3xl font-extrabold text-white">${analytics.totalStudents}</p>
+      <p class="mt-2 text-xs text-white/60">${growthLabel}</p>
+    </div>
+    <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
+      <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-white/55">Peak Month</p>
+      <p class="mt-3 text-3xl font-extrabold text-white">${escapeHtml(peakMonthLabel)}</p>
+      <p class="mt-2 text-xs text-white/60">${analytics.maxMonthlyCount} student${analytics.maxMonthlyCount === 1 ? "" : "s"}</p>
+    </div>
+    <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
+      <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-white/55">Average / Month</p>
+      <p class="mt-3 text-3xl font-extrabold text-white">${escapeHtml(analytics.averagePerMonth)}</p>
+      <p class="mt-2 text-xs text-white/60">${analytics.recordsWithoutDate ? `${analytics.recordsWithoutDate} without join date` : "All dated records included"}</p>
+    </div>
+  `;
+
+  dom.adminAnalyticsChart.innerHTML = analytics.monthlyCounts
+    .map((count, index) => {
+      const height = analytics.maxMonthlyCount
+        ? Math.max(Math.round((count / analytics.maxMonthlyCount) * 132), count ? 28 : 10)
+        : 10;
+      const isPeak = analytics.peakMonthIndex === index && count > 0;
+      const barGradient = isPeak
+        ? "linear-gradient(180deg, rgba(251,191,36,0.98) 0%, rgba(96,165,250,0.92) 100%)"
+        : "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(96,165,250,0.62) 100%)";
+
+      return `
+        <div class="rounded-[1.25rem] border border-white/10 bg-white/5 px-2 py-3 text-center">
+          <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-white/55">${MONTH_LABELS[index]}</p>
+          <div class="mt-3 flex h-28 items-end justify-center rounded-[1rem] bg-slate-950/10 px-2 py-2">
+            <div
+              class="w-full rounded-[0.9rem] shadow-[0_18px_32px_-18px_rgba(15,23,42,0.65)]"
+              style="height:${height}px;background:${barGradient};opacity:${count ? "1" : "0.28"}"
+              title="${MONTH_LABELS[index]}: ${count} student${count === 1 ? "" : "s"}"
+            ></div>
+          </div>
+          <p class="mt-3 text-lg font-extrabold text-white">${count}</p>
+        </div>
+      `;
+    })
+    .join("");
+
+  dom.adminAnalyticsHighlights.innerHTML = `
+    <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
+      <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">Latest Intake</p>
+      <p class="mt-3 text-xl font-extrabold text-white">${escapeHtml(
+        analytics.latestJoinedEntry?.student?.name || "Not recorded"
+      )}</p>
+      <p class="mt-2 text-sm text-white/70">${escapeHtml(
+        formatMonthYearLabel(analytics.latestJoinedEntry?.joinedDate)
+      )}</p>
+    </div>
+    <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
+      <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">Pending Registrations</p>
+      <p class="mt-3 text-3xl font-extrabold text-white">${analytics.pendingRegistrations}</p>
+      <p class="mt-2 text-sm text-white/70">Waiting inside the approval queue right now.</p>
+    </div>
+    <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
+      <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">Year Focus</p>
+      <p class="mt-3 text-xl font-extrabold text-white">${escapeHtml(
+        analytics.selectedYear === "all" ? "All Years" : analytics.selectedYear
+      )}</p>
+      <p class="mt-2 text-sm text-white/70">${escapeHtml(growthLabel)}</p>
+    </div>
+  `;
+
+  dom.adminAnalyticsYears.innerHTML = [
+    `
+      <button
+        type="button"
+        data-analytics-year="all"
+        class="rounded-full border px-4 py-2 text-sm font-bold transition ${
+          analytics.selectedYear === "all"
+            ? "border-white bg-white text-slate-950"
+            : "border-white/15 bg-white/5 text-white hover:bg-white/10"
+        }"
+      >
+        All
+      </button>
+    `,
+    ...analytics.years.map((year) => {
+      const total = analytics.yearTotals.get(year) || 0;
+      const isActive = String(year) === analytics.selectedYear;
+
+      return `
+        <button
+          type="button"
+          data-analytics-year="${year}"
+          class="rounded-full border px-4 py-2 text-sm font-bold transition ${
+            isActive
+              ? "border-white bg-white text-slate-950"
+              : "border-white/15 bg-white/5 text-white hover:bg-white/10"
+          }"
+        >
+          ${year} <span class="ml-1 text-xs ${isActive ? "text-slate-500" : "text-white/60"}">${total}</span>
+        </button>
+      `;
+    }),
+  ].join("");
+
+  dom.adminAnalyticsYears.querySelectorAll("[data-analytics-year]").forEach((button) => {
+    button.addEventListener("click", () => {
+      state.analyticsYear = String(button.dataset.analyticsYear || "").trim();
+      renderAdmissionsAnalytics();
+    });
+  });
+}
+
 function renderCourseCheckboxes(container, selectedCourseIds, checkboxName) {
   if (!state.data.courses.length) {
     container.innerHTML =
@@ -1669,6 +1979,7 @@ function renderMessageLog() {
 
 function renderDashboard() {
   renderSummaryCards();
+  renderAdmissionsAnalytics();
   renderStudentTable();
   renderStudentEditor();
   renderBulkCourseSelector();
@@ -2234,6 +2545,12 @@ dom.adminLogoutBtn.addEventListener("click", () => {
   clearAdminSession();
   setFeedback(dom.adminLoginFeedback, "Admin session closed.", "info");
 });
+if (dom.adminAnalyticsYear) {
+  dom.adminAnalyticsYear.addEventListener("change", () => {
+    state.analyticsYear = dom.adminAnalyticsYear.value || "";
+    renderAdmissionsAnalytics();
+  });
+}
 dom.studentSearchInput.addEventListener("input", () => {
   state.studentQuery = dom.studentSearchInput.value || "";
   renderStudentTable();
