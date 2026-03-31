@@ -208,6 +208,7 @@ const dom = {
   navAvatar: document.getElementById("navAvatar"),
   navAvatarImage: document.getElementById("navAvatarImage"),
   navAvatarFallback: document.getElementById("navAvatarFallback"),
+  preLoginStage: document.getElementById("preLoginStage"),
   loginSection: document.getElementById("loginSection"),
   dashboardSection: document.getElementById("dashboardSection"),
   form: document.getElementById("lookup-form"),
@@ -2646,6 +2647,9 @@ function togglePage(page) {
     closeStudentMessageModal();
   }
 
+  if (dom.preLoginStage) {
+    dom.preLoginStage.classList.toggle("hidden", !isLogin);
+  }
   dom.loginSection.classList.toggle("hidden", !isLogin);
   dom.dashboardSection.classList.toggle("hidden", isLogin);
   dom.loginBtn.classList.toggle("hidden", !isLogin);
