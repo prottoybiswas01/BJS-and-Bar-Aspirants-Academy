@@ -14,7 +14,7 @@ This is a frontend prototype for a law-focused coaching portal that uses Tailwin
 - `styles/tailwind.css`: Tailwind input stylesheet
 - `styles/app.css`: compiled production stylesheet used by all pages
 
-## CSS build
+## Build
 
 Install dependencies once:
 
@@ -22,10 +22,10 @@ Install dependencies once:
 npm install
 ```
 
-Build the minified stylesheet:
+Build the production assets:
 
 ```text
-npm run build:css
+npm run build
 ```
 
 For active editing:
@@ -33,6 +33,8 @@ For active editing:
 ```text
 npm run watch:css
 ```
+
+Compression is handled by the web server through `mod_deflate`, so this repo no longer stores separate precompressed `.gz` asset files.
 
 ## What is already implemented
 

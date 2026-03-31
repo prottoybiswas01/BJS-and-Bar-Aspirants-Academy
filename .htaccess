@@ -1,28 +1,11 @@
 <IfModule mod_mime.c>
   AddType image/svg+xml .svg .svgz
-  AddEncoding gzip .gz
-  AddType text/html .html.gz
-  AddType text/css .css.gz
-  AddType application/javascript .js.gz
-  AddType application/json .json.gz
-  AddType image/svg+xml .svg.gz
 </IfModule>
 
 <IfModule mod_rewrite.c>
   RewriteEngine On
 
-  RewriteCond %{REQUEST_URI} ^/$
-  RewriteCond %{HTTP:Accept-Encoding} gzip
-  RewriteCond %{DOCUMENT_ROOT}/index.html.gz -f
-  RewriteRule ^$ /index.html.gz [L]
-
   RewriteRule ^favicon\.ico$ /favicon.svg [L]
-
-  RewriteCond %{REQUEST_URI} !\.gz$
-  RewriteCond %{HTTP:Accept-Encoding} gzip
-  RewriteCond %{REQUEST_FILENAME} !-d
-  RewriteCond %{REQUEST_FILENAME}\.gz -f
-  RewriteRule ^(.+)$ $1.gz [L]
 </IfModule>
 
 <IfModule mod_expires.c>
@@ -48,24 +31,7 @@
     Header set Cache-Control "no-cache, must-revalidate"
   </FilesMatch>
 
-  <FilesMatch "\.(html|css|js|json|svg)\.gz$">
-    Header set Content-Encoding gzip
-    Header append Vary Accept-Encoding
-  </FilesMatch>
-
-  <FilesMatch "\.(css|js|json|svg)\.gz$">
-    Header set Cache-Control "public, max-age=31536000, immutable"
-  </FilesMatch>
-
-  <FilesMatch "\.html\.gz$">
-    Header set Cache-Control "no-cache, must-revalidate"
-  </FilesMatch>
-
   Header merge Vary "Accept-Encoding"
-</IfModule>
-
-<IfModule mod_setenvif.c>
-  SetEnvIfNoCase Request_URI \.gz$ no-gzip
 </IfModule>
 
 <IfModule mod_deflate.c>
