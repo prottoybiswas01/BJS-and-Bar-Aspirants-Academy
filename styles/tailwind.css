@@ -788,7 +788,14 @@
   .portal-nav-shell,
   .register-header-shell,
   .admin-header-shell {
+    flex-direction: column;
     align-items: flex-start;
+  }
+
+  .portal-nav-shell > :first-child,
+  .register-header-shell > :first-child,
+  .admin-header-shell > :first-child {
+    width: 100%;
   }
 
   .portal-nav-actions,
@@ -796,6 +803,8 @@
   .admin-header-actions,
   .admin-hero-actions {
     width: 100%;
+    justify-content: flex-start;
+    gap: 0.65rem;
   }
 
   .portal-nav-actions > a,
@@ -805,13 +814,19 @@
   .admin-header-actions > button,
   .admin-hero-actions > a,
   .admin-hero-actions > button {
-    flex: 1 1 140px;
+    flex: 1 1 calc(50% - 0.65rem);
+    min-height: 3rem;
     text-align: center;
   }
 
   .portal-nav-actions > #userProfile {
     flex: 1 1 100%;
-    justify-content: flex-end;
+    justify-content: flex-start;
+  }
+
+  .portal-nav-link {
+    width: 100%;
+    padding-inline: 1rem;
   }
 
   #loginSection {
@@ -830,12 +845,106 @@
     border-radius: 2rem;
   }
 
+  .portal-story-kicker {
+    letter-spacing: 0.22em;
+  }
+
+  .portal-story-title {
+    font-size: 2rem;
+    line-height: 1.02;
+  }
+
+  .portal-story-text {
+    font-size: 0.92rem;
+    line-height: 1.65;
+  }
+
+  .portal-login-badge {
+    letter-spacing: 0.16em;
+  }
+
+  .portal-register-note {
+    padding: 0.95rem 1rem;
+    font-size: 0.88rem;
+    line-height: 1.6;
+  }
+
   #dashboardMeta > div {
     padding: 1.25rem;
   }
 
   #dashboardSection {
     gap: 1.25rem;
+  }
+
+  #dashboardSection .portal-hero {
+    align-items: flex-start;
+    text-align: left;
+  }
+
+  #dashboardSection .portal-hero > div:last-child {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  #dashboardSection .portal-hero > div:last-child > div {
+    flex: 1 1 140px;
+    width: auto;
+  }
+
+  #courseList [data-course-map-id] {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  #courseList [data-course-card] > button {
+    padding: 1rem;
+  }
+
+  #courseList [data-course-card] .accordion-content {
+    padding-left: 0.35rem;
+    padding-right: 0.35rem;
+  }
+
+  #courseList [data-course-card] .accordion-content > div {
+    border-radius: 1.45rem;
+    padding: 0.85rem;
+  }
+
+  #courseList [data-course-card] .card-hover {
+    padding: 1rem;
+  }
+
+  #courseList [data-course-card] .card-hover > div:last-child {
+    width: 100%;
+    justify-content: flex-start;
+    margin-top: 0.75rem;
+  }
+
+  #courseList [data-course-card] [data-video-id] {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  footer {
+    padding-top: 3.5rem;
+  }
+
+  footer h2 {
+    font-size: 2rem;
+  }
+
+  footer .text-lg {
+    font-size: 1rem;
+    line-height: 1.7;
+  }
+
+  footer .md\:text-right {
+    text-align: left;
+  }
+
+  footer .md\:justify-end {
+    justify-content: flex-start;
   }
 
   .academy-player-chrome {
@@ -893,5 +1002,67 @@
   .academy-player-footer {
     padding: 0.85rem 1rem 1rem;
     font-size: 0.72rem;
+  }
+}
+
+@media (max-width: 479px) {
+  .portal-nav-actions > a,
+  .portal-nav-actions > button,
+  .register-header-actions > a,
+  .admin-header-actions > a,
+  .admin-header-actions > button,
+  .admin-hero-actions > a,
+  .admin-hero-actions > button {
+    flex-basis: 100%;
+  }
+
+  .portal-stage,
+  .portal-story-card,
+  .portal-login-card {
+    border-radius: 1.4rem;
+  }
+
+  .portal-story-title {
+    font-size: 1.75rem;
+  }
+
+  .portal-story-text,
+  .portal-register-note {
+    font-size: 0.84rem;
+  }
+
+  #dashboardSection .portal-hero h1 {
+    font-size: 1.9rem;
+    line-height: 1.1;
+  }
+
+  #dashboardSection .portal-hero #heroWelcomeText {
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+
+  #dashboardSection .portal-hero > div:last-child {
+    gap: 0.75rem;
+  }
+
+  #dashboardSection .portal-hero > div:last-child > div {
+    flex-basis: 100%;
+  }
+
+  #courseList [data-course-card] .card-hover {
+    padding: 0.9rem;
+  }
+
+  #courseList [data-course-card] .card-hover > div:first-child {
+    align-items: flex-start;
+  }
+
+  #courseList [data-course-card] .card-hover .space-x-4 > :not([hidden]) ~ :not([hidden]) {
+    margin-left: 0.75rem;
+  }
+
+  footer .flex.items-center.space-x-3 {
+    width: 100%;
+    justify-content: center;
   }
 }
