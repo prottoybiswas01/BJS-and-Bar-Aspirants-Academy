@@ -1994,6 +1994,12 @@ function hasUnlimitedCourseAccess(entry) {
   return !!entry && isUnlimitedAccessEnabled(entry.unlimitedAccess);
 }
 
+function isPublicOrientationLesson(lesson) {
+  const title = getNormalizedLookupValue(lesson?.title || "");
+  const moduleTitle = getNormalizedLookupValue(lesson?.module || "");
+  return title.includes("orientation class") || title === "orientation" || moduleTitle.includes("orientation class");
+}
+
 function getLatestValidDateValue(values) {
   return values
     .map((value) => ({ raw: value, timestamp: parseTimestamp(value) }))
@@ -2034,6 +2040,14 @@ function getEnrollmentVideoAccessSummary(entry) {
 }
 
 function getLessonAccessState(entry, lesson) {
+  if (isPublicOrientationLesson(lesson)) {
+    return {
+      canWatch: true,
+      reason: "",
+      status: "public-open",
+    };
+  }
+
   if (entry.catalogOnly) {
     return {
       canWatch: false,
@@ -2119,6 +2133,10 @@ function getLessonAccessState(entry, lesson) {
 
 function getLessonAccessCtaLabel(entry, accessState) {
   if (accessState.canWatch) {
+    if (accessState.status === "public-open") {
+      return "Open Orientation";
+    }
+
     return "Play Video";
   }
 
@@ -2147,6 +2165,10 @@ function getLessonAccessCtaLabel(entry, accessState) {
 
 function getLessonAccessBadgeLabel(entry, accessState) {
   if (accessState.canWatch) {
+    if (accessState.status === "public-open") {
+      return "Public Open";
+    }
+
     return "Unlocked";
   }
 
