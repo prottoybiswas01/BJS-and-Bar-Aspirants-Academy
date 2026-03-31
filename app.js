@@ -2068,14 +2068,6 @@ function getLessonAccessState(entry, lesson) {
   }
 
   if (hasUnlimitedCourseAccess(entry)) {
-    if (releaseTimestamp > Date.now()) {
-      return {
-        canWatch: false,
-        reason: `This lesson will unlock on ${formatDate(lesson.releaseDate, "the scheduled date")}.`,
-        status: "scheduled",
-      };
-    }
-
     return {
       canWatch: true,
       reason: "",
@@ -2123,6 +2115,62 @@ function getLessonAccessState(entry, lesson) {
     reason: "",
     status: "open",
   };
+}
+
+function getLessonAccessCtaLabel(entry, accessState) {
+  if (accessState.canWatch) {
+    return "Play Video";
+  }
+
+  if (entry.catalogOnly) {
+    return entry.pendingRequest ? "Request Pending" : "Request Access First";
+  }
+
+  if (entry.previewOnly) {
+    return "Class List Only";
+  }
+
+  if (accessState.status === "scheduled") {
+    return "Unlocks Soon";
+  }
+
+  if (accessState.status === "outside-window") {
+    return "Date Locked";
+  }
+
+  if (accessState.status === "blocked") {
+    return "Blocked by Admin";
+  }
+
+  return "Locked";
+}
+
+function getLessonAccessBadgeLabel(entry, accessState) {
+  if (accessState.canWatch) {
+    return "Unlocked";
+  }
+
+  if (entry.catalogOnly) {
+    return entry.pendingRequest ? "Pending Approval" : "Catalog Lock";
+  }
+
+  if (entry.previewOnly) {
+    return "Preview Lock";
+  }
+
+  if (accessState.status === "scheduled") {
+    return "Scheduled";
+  }
+
+  if (accessState.status === "outside-window") {
+    return "Date Lock";
+  }
+
+  if (accessState.status === "blocked") {
+    return "Blocked";
+  }
+
+  return "Locked";
 }
 
 function getCourseLessons(courseId) {
@@ -3000,11 +3048,7 @@ function renderCourseListLegacy(student, courseEntries) {
                                     }"
                                   >
                                   <span>${
-                                    accessState.canWatch
-                                      ? "Play Video"
-                                      : isPreviewOnly
-                                      ? "Class List Only"
-                                      : "Locked Until Payment"
+                                    getLessonAccessCtaLabel(entry, accessState)
                                   }</span>
                                   <svg
                                     xmlns="http://www.w3.org/2000/svg"
@@ -3032,13 +3076,7 @@ function renderCourseListLegacy(student, courseEntries) {
                                   ? "bg-blue-50 text-blue-700"
                                   : "bg-rose-100 text-rose-700"
                               }">
-                                ${
-                                  accessState.canWatch
-                                    ? "Unlocked"
-                                    : isPreviewOnly
-                                    ? "Preview Lock"
-                                    : "Payment Lock"
-                                }
+                                ${getLessonAccessBadgeLabel(entry, accessState)}
                               </div>
                               <div class="rounded-full px-3 py-1 text-[10px] font-bold ${
                                 isCompleted
@@ -3611,15 +3649,7 @@ function renderCourseList(student, courseEntries) {
                                     }"
                                   >
                                   <span>${
-                                    accessState.canWatch
-                                      ? "Play Video"
-                                      : entry.catalogOnly
-                                      ? entry.pendingRequest
-                                        ? "Request Pending"
-                                        : "Request Access First"
-                                      : entry.previewOnly
-                                      ? "Class List Only"
-                                      : "Locked Until Payment"
+                                    getLessonAccessCtaLabel(entry, accessState)
                                   }</span>
                                   <svg
                                     xmlns="http://www.w3.org/2000/svg"
@@ -3647,17 +3677,7 @@ function renderCourseList(student, courseEntries) {
                                   ? "bg-blue-50 text-blue-700"
                                   : "bg-rose-100 text-rose-700"
                               }">
-                                ${
-                                  accessState.canWatch
-                                    ? "Unlocked"
-                                    : entry.catalogOnly
-                                    ? entry.pendingRequest
-                                      ? "Pending Approval"
-                                      : "Catalog Lock"
-                                    : entry.previewOnly
-                                    ? "Preview Lock"
-                                    : "Payment Lock"
-                                }
+                                ${getLessonAccessBadgeLabel(entry, accessState)}
                               </div>
                               <div class="rounded-full px-3 py-1 text-[10px] font-bold ${
                                 isCompleted
