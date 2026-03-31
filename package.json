@@ -2,7 +2,9 @@
   "name": "ain-pathshala-portal",
   "private": true,
   "scripts": {
+    "build": "npm run build:css && npm run build:gzip",
     "build:css": "tailwindcss -i ./styles/tailwind.css -o ./styles/app.css --minify",
+    "build:gzip": "node ./scripts/build-static-gzip.mjs",
     "watch:css": "tailwindcss -i ./styles/tailwind.css -o ./styles/app.css --watch"
   },
   "devDependencies": {
