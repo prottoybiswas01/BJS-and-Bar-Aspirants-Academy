@@ -2610,6 +2610,13 @@ function openVideo(videoConfig, title) {
   dom.videoModal.classList.remove("hidden");
   dom.videoModal.classList.add("flex");
   syncBodyOverflow();
+
+  if (isPhoneOnlyDevice()) {
+    if (dom.videoStatusText) {
+      dom.videoStatusText.textContent = "Opening secure stream";
+    }
+    startVideoPlayback();
+  }
 }
 
 function closeVideo() {
