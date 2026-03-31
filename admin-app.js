@@ -1372,37 +1372,37 @@ function renderAdmissionsAnalytics() {
 
   if (!analytics.totalStudents) {
     dom.adminAnalyticsCaption.textContent = analytics.recordsWithoutDate
-      ? "Students exist, but the joined date field is empty. Add joined dates to unlock the intake graph."
-      : "No admitted student record is available yet. Once students are added, the intake graph will appear here.";
+      ? "Student records are available, but join dates are missing. Add valid dates to unlock this view."
+      : "Admissions activity will appear here once student records start coming into the live sheet.";
 
     dom.adminAnalyticsMeta.innerHTML = `
-      <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
-        <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-white/55">Dated Students</p>
-        <p class="mt-3 text-3xl font-extrabold text-white">0</p>
+      <div class="rounded-[1.2rem] border border-white/10 bg-white/[0.06] px-3 py-3">
+        <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-100/[0.55]">Confirmed joins</p>
+        <p class="mt-2 text-2xl font-extrabold text-cyan-100">0</p>
       </div>
-      <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
-        <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-white/55">Peak Month</p>
-        <p class="mt-3 text-3xl font-extrabold text-white">-</p>
+      <div class="rounded-[1.2rem] border border-white/10 bg-white/[0.06] px-3 py-3">
+        <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-100/[0.55]">Busiest month</p>
+        <p class="mt-2 text-2xl font-extrabold text-white">-</p>
       </div>
-      <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
-        <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-white/55">Average / Month</p>
-        <p class="mt-3 text-3xl font-extrabold text-white">0</p>
+      <div class="rounded-[1.2rem] border border-white/10 bg-white/[0.06] px-3 py-3">
+        <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-100/[0.55]">Monthly average</p>
+        <p class="mt-2 text-2xl font-extrabold text-white">0</p>
       </div>
     `;
 
     dom.adminAnalyticsChart.innerHTML = `
-      <div class="col-span-full rounded-[1.5rem] border border-dashed border-white/15 bg-white/5 px-5 py-10 text-center text-sm leading-6 text-white/70">
-        No month-wise admission history is available yet.
+      <div class="col-span-full rounded-[1.2rem] border border-dashed border-white/15 bg-white/5 px-4 py-7 text-center text-sm leading-6 text-white/70">
+        No monthly admission pattern is available yet.
       </div>
     `;
 
     dom.adminAnalyticsHighlights.innerHTML = `
-      <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
-        <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">Pending Registrations</p>
-        <p class="mt-3 text-3xl font-extrabold text-white">${analytics.pendingRegistrations}</p>
+      <div class="rounded-[1.2rem] border border-white/10 bg-white/[0.06] px-3 py-3">
+        <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-100/[0.55]">Approval queue</p>
+        <p class="mt-2 text-2xl font-extrabold text-white">${analytics.pendingRegistrations}</p>
       </div>
-      <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4 text-sm leading-6 text-white/75">
-        Add or sync students with a valid join date to start seeing year-wise admission trends here.
+      <div class="rounded-[1.2rem] border border-white/10 bg-white/[0.06] px-3 py-3 text-sm leading-6 text-white/75">
+        Keep the joined date field updated to unlock a cleaner year-wise admission review.
       </div>
     `;
 
@@ -1411,99 +1411,99 @@ function renderAdmissionsAnalytics() {
   }
 
   const selectedYearLabel =
-    analytics.selectedYear === "all" ? "all recorded years" : `${analytics.selectedYear} admissions`;
+    analytics.selectedYear === "all" ? "all recorded cohorts" : analytics.selectedYear;
   const peakMonthLabel =
     analytics.peakMonthIndex >= 0 ? MONTH_LABELS[analytics.peakMonthIndex] : "No peak month";
   const growthLabel =
     analytics.growthDelta === null
-      ? "No prior-year comparison"
+      ? "No year-on-year comparison"
       : analytics.growthDelta === 0
       ? `Same as ${analytics.previousYear}`
       : `${analytics.growthDelta > 0 ? "+" : ""}${analytics.growthDelta} vs ${analytics.previousYear}`;
 
-  dom.adminAnalyticsCaption.textContent = `Showing month-wise student intake for ${selectedYearLabel}. Use the filter to compare how admissions moved across different years.`;
+  dom.adminAnalyticsCaption.textContent = `A compact month-by-month view for ${selectedYearLabel}, tuned for faster admission review.`;
 
   dom.adminAnalyticsMeta.innerHTML = `
-    <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
-      <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-white/55">Admitted Students</p>
-      <p class="mt-3 text-3xl font-extrabold text-white">${analytics.totalStudents}</p>
-      <p class="mt-2 text-xs text-white/60">${growthLabel}</p>
+    <div class="rounded-[1.2rem] border border-cyan-300/[0.14] bg-white/[0.06] px-3 py-3">
+      <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-100/[0.55]">Confirmed joins</p>
+      <p class="mt-2 text-2xl font-extrabold text-cyan-100">${analytics.totalStudents}</p>
+      <p class="mt-1.5 text-[11px] text-white/60">${growthLabel}</p>
     </div>
-    <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
-      <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-white/55">Peak Month</p>
-      <p class="mt-3 text-3xl font-extrabold text-white">${escapeHtml(peakMonthLabel)}</p>
-      <p class="mt-2 text-xs text-white/60">${analytics.maxMonthlyCount} student${analytics.maxMonthlyCount === 1 ? "" : "s"}</p>
+    <div class="rounded-[1.2rem] border border-emerald-300/[0.14] bg-white/[0.06] px-3 py-3">
+      <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-100/[0.55]">Busiest month</p>
+      <p class="mt-2 text-2xl font-extrabold text-white">${escapeHtml(peakMonthLabel)}</p>
+      <p class="mt-1.5 text-[11px] text-white/60">${analytics.maxMonthlyCount} student${analytics.maxMonthlyCount === 1 ? "" : "s"}</p>
     </div>
-    <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
-      <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-white/55">Average / Month</p>
-      <p class="mt-3 text-3xl font-extrabold text-white">${escapeHtml(analytics.averagePerMonth)}</p>
-      <p class="mt-2 text-xs text-white/60">${analytics.recordsWithoutDate ? `${analytics.recordsWithoutDate} without join date` : "All dated records included"}</p>
+    <div class="rounded-[1.2rem] border border-white/10 bg-white/[0.06] px-3 py-3">
+      <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-100/[0.55]">Monthly average</p>
+      <p class="mt-2 text-2xl font-extrabold text-white">${escapeHtml(analytics.averagePerMonth)}</p>
+      <p class="mt-1.5 text-[11px] text-white/60">${analytics.recordsWithoutDate ? `${analytics.recordsWithoutDate} without join date` : "All dated records included"}</p>
     </div>
   `;
 
   dom.adminAnalyticsChart.innerHTML = analytics.monthlyCounts
     .map((count, index) => {
       const height = analytics.maxMonthlyCount
-        ? Math.max(Math.round((count / analytics.maxMonthlyCount) * 132), count ? 28 : 10)
-        : 10;
+        ? Math.max(Math.round((count / analytics.maxMonthlyCount) * 84), count ? 18 : 8)
+        : 8;
       const isPeak = analytics.peakMonthIndex === index && count > 0;
       const barGradient = isPeak
-        ? "linear-gradient(180deg, rgba(251,191,36,0.98) 0%, rgba(96,165,250,0.92) 100%)"
-        : "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(96,165,250,0.62) 100%)";
+        ? "linear-gradient(180deg, rgba(52,211,153,0.98) 0%, rgba(13,148,136,0.92) 100%)"
+        : "linear-gradient(180deg, rgba(125,211,252,0.96) 0%, rgba(14,165,233,0.62) 100%)";
 
       return `
-        <div class="rounded-[1.25rem] border border-white/10 bg-white/5 px-2 py-3 text-center">
-          <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-white/55">${MONTH_LABELS[index]}</p>
-          <div class="mt-3 flex h-28 items-end justify-center rounded-[1rem] bg-slate-950/10 px-2 py-2">
+        <div class="rounded-[1.1rem] border border-white/10 bg-slate-950/[0.16] px-2 py-2.5 text-center">
+          <p class="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-100/50">${MONTH_LABELS[index].slice(0, 3)}</p>
+          <div class="mt-2.5 flex h-[84px] items-end justify-center rounded-[0.9rem] bg-white/[0.06] px-2 py-2">
             <div
-              class="w-full rounded-[0.9rem] shadow-[0_18px_32px_-18px_rgba(15,23,42,0.65)]"
+              class="w-full rounded-[0.8rem] shadow-[0_18px_32px_-18px_rgba(8,47,73,0.7)]"
               style="height:${height}px;background:${barGradient};opacity:${count ? "1" : "0.28"}"
               title="${MONTH_LABELS[index]}: ${count} student${count === 1 ? "" : "s"}"
             ></div>
           </div>
-          <p class="mt-3 text-lg font-extrabold text-white">${count}</p>
+          <p class="mt-2.5 text-base font-extrabold text-white">${count}</p>
         </div>
       `;
     })
     .join("");
 
   dom.adminAnalyticsHighlights.innerHTML = `
-    <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
-      <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">Latest Intake</p>
-      <p class="mt-3 text-xl font-extrabold text-white">${escapeHtml(
+    <div class="rounded-[1.2rem] border border-white/10 bg-white/[0.06] px-3 py-3">
+      <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-100/[0.55]">Latest joined</p>
+      <p class="mt-2 text-lg font-extrabold text-white">${escapeHtml(
         analytics.latestJoinedEntry?.student?.name || "Not recorded"
       )}</p>
-      <p class="mt-2 text-sm text-white/70">${escapeHtml(
+      <p class="mt-1.5 text-sm text-white/70">${escapeHtml(
         formatMonthYearLabel(analytics.latestJoinedEntry?.joinedDate)
       )}</p>
     </div>
-    <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
-      <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">Pending Registrations</p>
-      <p class="mt-3 text-3xl font-extrabold text-white">${analytics.pendingRegistrations}</p>
-      <p class="mt-2 text-sm text-white/70">Waiting inside the approval queue right now.</p>
+    <div class="rounded-[1.2rem] border border-white/10 bg-white/[0.06] px-3 py-3">
+      <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-100/[0.55]">Approval queue</p>
+      <p class="mt-2 text-2xl font-extrabold text-white">${analytics.pendingRegistrations}</p>
+      <p class="mt-1.5 text-sm text-white/70">Students currently waiting for approval.</p>
     </div>
-    <div class="rounded-[1.5rem] border border-white/10 bg-white/5 px-4 py-4">
-      <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-white/55">Year Focus</p>
-      <p class="mt-3 text-xl font-extrabold text-white">${escapeHtml(
-        analytics.selectedYear === "all" ? "All Years" : analytics.selectedYear
+    <div class="rounded-[1.2rem] border border-white/10 bg-white/[0.06] px-3 py-3">
+      <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-cyan-100/[0.55]">Current focus</p>
+      <p class="mt-2 text-lg font-extrabold text-white">${escapeHtml(
+        analytics.selectedYear === "all" ? "All cohorts" : analytics.selectedYear
       )}</p>
-      <p class="mt-2 text-sm text-white/70">${escapeHtml(growthLabel)}</p>
+      <p class="mt-1.5 text-sm text-white/70">${escapeHtml(growthLabel)}</p>
     </div>
   `;
 
   dom.adminAnalyticsYears.innerHTML = [
     `
-      <button
-        type="button"
-        data-analytics-year="all"
-        class="rounded-full border px-4 py-2 text-sm font-bold transition ${
-          analytics.selectedYear === "all"
-            ? "border-white bg-white text-slate-950"
-            : "border-white/15 bg-white/5 text-white hover:bg-white/10"
-        }"
-      >
-        All
-      </button>
+        <button
+          type="button"
+          data-analytics-year="all"
+          class="rounded-full border px-3.5 py-1.5 text-xs font-bold transition ${
+            analytics.selectedYear === "all"
+              ? "border-cyan-200 bg-cyan-100 text-slate-950"
+              : "border-white/15 bg-white/5 text-white hover:bg-white/10"
+          }"
+        >
+          All cohorts
+        </button>
     `,
     ...analytics.years.map((year) => {
       const total = analytics.yearTotals.get(year) || 0;
@@ -1513,9 +1513,9 @@ function renderAdmissionsAnalytics() {
         <button
           type="button"
           data-analytics-year="${year}"
-          class="rounded-full border px-4 py-2 text-sm font-bold transition ${
+          class="rounded-full border px-3.5 py-1.5 text-xs font-bold transition ${
             isActive
-              ? "border-white bg-white text-slate-950"
+              ? "border-cyan-200 bg-cyan-100 text-slate-950"
               : "border-white/15 bg-white/5 text-white hover:bg-white/10"
           }"
         >

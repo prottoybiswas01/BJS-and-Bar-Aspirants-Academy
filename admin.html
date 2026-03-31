@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://script.google.com" />
     <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin />
-    <link rel="stylesheet" href="./styles/app.css?v=20260331-3" />
+    <link rel="stylesheet" href="./styles/app.css?v=20260331-4" />
     <link
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
@@ -89,7 +89,7 @@
 
       <section id="adminDashboard" class="hidden space-y-8">
         <div class="panel-card overflow-hidden rounded-[2rem] border border-white/60 bg-white">
-          <div class="admin-hero soft-grid px-6 py-8 text-white md:px-8">
+          <div class="admin-hero soft-grid px-6 py-7 text-white md:px-8">
             <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
               <div>
                 <p class="text-xs font-bold uppercase tracking-[0.35em] text-white/60">Live Sheet Control</p>
@@ -116,39 +116,39 @@
               </div>
             </div>
 
-            <div class="mt-8 grid gap-4 xl:grid-cols-[minmax(0,1.3fr),360px]">
-              <section class="rounded-[1.75rem] border border-white/15 bg-white/10 p-5 backdrop-blur-sm">
-                <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div class="mt-6 grid gap-3 xl:grid-cols-[minmax(0,1fr),300px]">
+              <section class="rounded-[1.5rem] border border-white/[0.12] bg-slate-950/[0.18] p-4 backdrop-blur-sm">
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div class="min-w-0">
-                    <p class="text-xs font-bold uppercase tracking-[0.3em] text-white/60">Admissions Timeline</p>
-                    <h3 class="mt-2 text-2xl font-extrabold text-white">Student Intake Graph</h3>
-                    <p id="adminAnalyticsCaption" class="mt-3 max-w-2xl text-sm leading-6 text-white/75">
-                      Track how many students joined month by month and compare each year from one place.
+                    <p class="text-[11px] font-bold uppercase tracking-[0.32em] text-cyan-100/60">Admissions Overview</p>
+                    <h3 class="mt-2 text-xl font-extrabold text-white">Enrollment Snapshot</h3>
+                    <p id="adminAnalyticsCaption" class="mt-2 max-w-2xl text-sm leading-6 text-white/[0.72]">
+                      Compact month-by-month admission trends with quick cohort comparison.
                     </p>
                   </div>
                   <label class="w-full sm:w-auto">
-                    <span class="mb-2 block text-[11px] font-bold uppercase tracking-[0.24em] text-white/55">Year Filter</span>
+                    <span class="mb-2 block text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-100/[0.55]">Display Year</span>
                     <select
                       id="adminAnalyticsYear"
-                      class="w-full rounded-2xl border border-white/15 bg-slate-950/25 px-4 py-3 text-sm font-semibold text-white outline-none transition focus:border-white/40 sm:min-w-[150px]"
+                      class="w-full rounded-2xl border border-white/[0.12] bg-slate-950/35 px-4 py-2.5 text-sm font-semibold text-white outline-none transition focus:border-cyan-200/[0.45] sm:min-w-[150px]"
                     >
                       <option value="">Loading...</option>
                     </select>
                   </label>
                 </div>
 
-                <div id="adminAnalyticsMeta" class="mt-5 grid gap-3 md:grid-cols-3"></div>
-                <div id="adminAnalyticsChart" class="mt-6 grid grid-cols-3 gap-3 sm:grid-cols-6 xl:grid-cols-12"></div>
+                <div id="adminAnalyticsMeta" class="mt-4 grid gap-2 md:grid-cols-3"></div>
+                <div id="adminAnalyticsChart" class="mt-4 grid grid-cols-4 gap-2 sm:grid-cols-6 xl:grid-cols-12"></div>
               </section>
 
-              <aside class="rounded-[1.75rem] border border-white/15 bg-slate-950/20 p-5 backdrop-blur-sm">
-                <p class="text-xs font-bold uppercase tracking-[0.3em] text-white/60">Quick Insights</p>
-                <h3 class="mt-2 text-2xl font-extrabold text-white">Year Snapshot</h3>
-                <div id="adminAnalyticsHighlights" class="mt-5 space-y-3"></div>
+              <aside class="rounded-[1.5rem] border border-white/[0.12] bg-white/10 p-4 backdrop-blur-sm">
+                <p class="text-[11px] font-bold uppercase tracking-[0.32em] text-cyan-100/60">Operations Note</p>
+                <h3 class="mt-2 text-xl font-extrabold text-white">Quick Read</h3>
+                <div id="adminAnalyticsHighlights" class="mt-4 space-y-2.5"></div>
 
-                <div class="mt-6 border-t border-white/10 pt-5">
-                  <p class="text-xs font-bold uppercase tracking-[0.24em] text-white/55">Compare Years</p>
-                  <div id="adminAnalyticsYears" class="mt-4 flex flex-wrap gap-2"></div>
+                <div class="mt-5 border-t border-white/10 pt-4">
+                  <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-100/[0.55]">Cohort Switcher</p>
+                  <div id="adminAnalyticsYears" class="mt-3 flex flex-wrap gap-2"></div>
                 </div>
               </aside>
             </div>
@@ -480,6 +480,6 @@
     </main>
 
     <script src="./portal-copy.js?v=20260315-1" defer></script>
-    <script src="./admin-app.js?v=20260331-1" defer></script>
+    <script src="./admin-app.js?v=20260331-2" defer></script>
   </body>
 </html>
