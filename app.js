@@ -11,15 +11,20 @@ const APP_CONFIG = Object.freeze({
   remoteRetryDelayMs: 1200,
   portalDataCacheTtlMs: 5 * 60 * 1000,
   studentInboxPollIntervalMs: 15000,
+  deviceIpCacheTtlMs: 10 * 60 * 1000,
 });
 
 const SESSION_STORAGE_KEYS = Object.freeze({
   activeStudentId: "ain-pathshala.activeStudentId",
   openCourseId: "ain-pathshala.openCourseId",
   pendingCourseRequestIds: "ain-pathshala.pendingCourseRequestIds",
+  studentSessionToken: "ain-pathshala.studentSessionToken.v1",
   loginQuery: "ain-pathshala.loginQuery",
   loginPassword: "ain-pathshala.loginPassword",
   portalDataSnapshot: "ain-pathshala.portalDataSnapshot.v2",
+  deviceId: "ain-pathshala.deviceId.v1",
+  deviceIpCache: "ain-pathshala.deviceIpCache.v1",
+  deviceGeoCache: "ain-pathshala.deviceGeoCache.v1",
 });
 
 const LOOKUP_DIGIT_MAP = Object.freeze({
@@ -245,6 +250,7 @@ const state = {
   data: createEmptyPortalData(),
   dataModeLabel: "",
   activeStudentId: "",
+  studentSessionToken: "",
   openCourseId: "",
   pendingCourseRequestIds: new Set(),
   courseRequestBusyIds: new Set(),
@@ -428,6 +434,227 @@ function removeStoredPortalValue(key) {
   getPortalStores().forEach((store) => {
     store.removeItem(key);
   });
+}
+
+function getPersistentPortalDeviceId() {
+  const existingId = readStoredPortalValue(SESSION_STORAGE_KEYS.deviceId).trim();
+  if (existingId) {
+    return existingId;
+  }
+
+  const nextId =
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `device-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  writeStoredPortalValue(SESSION_STORAGE_KEYS.deviceId, nextId);
+  return nextId;
+}
+
+function readStoredPortalJson(key) {
+  const rawValue = readStoredPortalValue(key).trim();
+  if (!rawValue) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(rawValue);
+  } catch (error) {
+    return null;
+  }
+}
+
+function writeStoredPortalJson(key, value) {
+  try {
+    writeStoredPortalValue(key, JSON.stringify(value));
+  } catch (error) {
+    removeStoredPortalValue(key);
+  }
+}
+
+function buildPortalBrowserName() {
+  const userAgent = navigator.userAgent || "";
+  if (/Edg\//i.test(userAgent)) {
+    return "Edge";
+  }
+  if (/OPR\//i.test(userAgent) || /Opera/i.test(userAgent)) {
+    return "Opera";
+  }
+  if (/Chrome\//i.test(userAgent) && !/Edg\//i.test(userAgent)) {
+    return "Chrome";
+  }
+  if (/Firefox\//i.test(userAgent)) {
+    return "Firefox";
+  }
+  if (/Safari\//i.test(userAgent) && !/Chrome\//i.test(userAgent) && !/Chromium\//i.test(userAgent)) {
+    return "Safari";
+  }
+  return "Browser";
+}
+
+function buildPortalPlatformName() {
+  const userAgent = navigator.userAgent || "";
+  const platform = navigator.platform || "";
+  const source = `${platform} ${userAgent}`;
+
+  if (/Windows/i.test(source)) {
+    return "Windows";
+  }
+  if (/Android/i.test(source)) {
+    return "Android";
+  }
+  if (/iPhone|iPad|iPod/i.test(source)) {
+    return "iPhone";
+  }
+  if (/Mac/i.test(source)) {
+    return "macOS";
+  }
+  if (/Linux/i.test(source)) {
+    return "Linux";
+  }
+  return platform || "Device";
+}
+
+function buildPortalScreenSizeLabel() {
+  const screenWidth = window.screen?.width || window.innerWidth || 0;
+  const screenHeight = window.screen?.height || window.innerHeight || 0;
+  if (!screenWidth || !screenHeight) {
+    return "";
+  }
+
+  return `${screenWidth}x${screenHeight}`;
+}
+
+function buildPortalDeviceName() {
+  return `${buildPortalBrowserName()} on ${buildPortalPlatformName()}`;
+}
+
+function buildPortalDeviceFingerprint() {
+  return [
+    navigator.userAgent || "",
+    navigator.language || "",
+    Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+    buildPortalScreenSizeLabel(),
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" | ");
+}
+
+async function getPortalPublicIp(options = {}) {
+  const forceRefresh = options.forceRefresh === true;
+  const cachedPayload = !forceRefresh ? readStoredPortalJson(SESSION_STORAGE_KEYS.deviceIpCache) : null;
+  if (cachedPayload && cachedPayload.ip && Date.now() - Number(cachedPayload.cachedAt || 0) < APP_CONFIG.deviceIpCacheTtlMs) {
+    return String(cachedPayload.ip || "").trim();
+  }
+
+  try {
+    const response = await fetchRemoteResponseWithTimeout(
+      "https://api64.ipify.org?format=json",
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json",
+        },
+      },
+      {
+        timeoutMs: 5000,
+        timeoutMessage: "IP lookup timed out.",
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error("IP lookup failed.");
+    }
+
+    const payload = JSON.parse(await response.text());
+    const nextIp = String(payload.ip || "").trim();
+    if (nextIp) {
+      writeStoredPortalJson(SESSION_STORAGE_KEYS.deviceIpCache, {
+        ip: nextIp,
+        cachedAt: Date.now(),
+      });
+    }
+    return nextIp;
+  } catch (error) {
+    return cachedPayload?.ip ? String(cachedPayload.ip).trim() : "";
+  }
+}
+
+function requestPortalGeolocationSnapshot(options = {}) {
+  const shouldPrompt = options.prompt === true;
+  const cachedPayload = readStoredPortalJson(SESSION_STORAGE_KEYS.deviceGeoCache);
+  const cachedResult = cachedPayload && typeof cachedPayload === "object" ? cachedPayload : null;
+
+  if (!navigator.geolocation) {
+    return Promise.resolve({
+      locationPermission: "Unsupported",
+      latitude: "",
+      longitude: "",
+    });
+  }
+
+  const resolveWithCache = () => ({
+    locationPermission: String(cachedResult?.locationPermission || "Not Requested").trim() || "Not Requested",
+    latitude: String(cachedResult?.latitude || "").trim(),
+    longitude: String(cachedResult?.longitude || "").trim(),
+  });
+
+  if (!shouldPrompt && cachedResult) {
+    return Promise.resolve(resolveWithCache());
+  }
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const nextPayload = {
+          locationPermission: "Granted",
+          latitude: String(position.coords?.latitude ?? "").trim(),
+          longitude: String(position.coords?.longitude ?? "").trim(),
+        };
+        writeStoredPortalJson(SESSION_STORAGE_KEYS.deviceGeoCache, nextPayload);
+        resolve(nextPayload);
+      },
+      (error) => {
+        const nextPermission = error?.code === 1 ? "Denied" : "Prompt";
+        const nextPayload = {
+          locationPermission: nextPermission,
+          latitude: "",
+          longitude: "",
+        };
+        writeStoredPortalJson(SESSION_STORAGE_KEYS.deviceGeoCache, nextPayload);
+        resolve(nextPayload);
+      },
+      {
+        enableHighAccuracy: false,
+        timeout: 6000,
+        maximumAge: 10 * 60 * 1000,
+      }
+    );
+  });
+}
+
+async function collectPortalDeviceContext(options = {}) {
+  const promptLocation = options.promptLocation === true;
+  const refreshIp = options.refreshIp === true;
+  const [publicIp, location] = await Promise.all([
+    getPortalPublicIp({ forceRefresh: refreshIp }),
+    requestPortalGeolocationSnapshot({ prompt: promptLocation }),
+  ]);
+
+  return {
+    deviceId: getPersistentPortalDeviceId(),
+    deviceName: buildPortalDeviceName(),
+    deviceFingerprint: buildPortalDeviceFingerprint(),
+    publicIp,
+    userAgent: navigator.userAgent || "",
+    platform: navigator.platform || buildPortalPlatformName(),
+    browserLanguage: navigator.language || "",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+    screenSize: buildPortalScreenSizeLabel(),
+    locationPermission: String(location?.locationPermission || "Not Requested").trim() || "Not Requested",
+    latitude: String(location?.latitude || "").trim(),
+    longitude: String(location?.longitude || "").trim(),
+  };
 }
 
 function serializePortalDataSnapshot(data) {
@@ -1596,6 +1823,11 @@ async function refreshPortalDataInBackground() {
   }
 
   try {
+    const validationResult = await validateActiveStudentSession();
+    if (validationResult && validationResult.ok === false && !state.activeStudentId) {
+      return;
+    }
+
     const result = await loadData();
     if (!result || result.modeLabel !== "Live Google Sheet" || state.activeStudentId !== activeStudentId) {
       return;
@@ -1705,6 +1937,8 @@ async function fetchStudentInbox(studentId) {
       body: new URLSearchParams({
         action: "studentgetinbox",
         studentId,
+        sessionToken: state.studentSessionToken,
+        deviceId: getPersistentPortalDeviceId(),
       }),
       signal: controller ? controller.signal : undefined,
     });
@@ -1719,6 +1953,14 @@ async function fetchStudentInbox(studentId) {
 
     const result = await response.json();
     if (!result.ok) {
+      if (result.requiresLogout || isStudentSessionErrorMessage(result.message)) {
+        logout({
+          message: result.message || "This device session is no longer active. Please sign in again.",
+          feedbackTone: "error",
+          toastMessage: result.message || "Device session ended.",
+          toastType: "error",
+        });
+      }
       throw new Error(result.message || "Inbox could not be loaded.");
     }
 
@@ -1806,12 +2048,14 @@ function syncPortalSession() {
 
   if (!state.activeStudentId) {
     removeStoredPortalValue(SESSION_STORAGE_KEYS.activeStudentId);
+    removeStoredPortalValue(SESSION_STORAGE_KEYS.studentSessionToken);
     removeStoredPortalValue(SESSION_STORAGE_KEYS.openCourseId);
     removeStoredPortalValue(SESSION_STORAGE_KEYS.pendingCourseRequestIds);
     return;
   }
 
   writeStoredPortalValue(SESSION_STORAGE_KEYS.activeStudentId, state.activeStudentId);
+  writeStoredPortalValue(SESSION_STORAGE_KEYS.studentSessionToken, state.studentSessionToken || "");
   writeStoredPortalValue(SESSION_STORAGE_KEYS.openCourseId, state.openCourseId || "");
   if (state.pendingCourseRequestIds.size) {
     writeStoredPortalValue(
@@ -1871,13 +2115,15 @@ function restorePortalSession() {
   }
 
   const storedStudentId = readStoredPortalValue(SESSION_STORAGE_KEYS.activeStudentId).trim();
-  if (!storedStudentId) {
+  const storedSessionToken = readStoredPortalValue(SESSION_STORAGE_KEYS.studentSessionToken).trim();
+  if (!storedStudentId || (APP_CONFIG.dataMode === "remote" && APP_CONFIG.remoteEndpoint && !storedSessionToken)) {
     return false;
   }
 
   const student = state.data.students.find((entry) => entry.id === storedStudentId);
   if (!student || isStudentLoginBlocked(student) || !isLoginApprovalGranted(student.loginApproval)) {
     state.activeStudentId = "";
+    state.studentSessionToken = "";
     state.openCourseId = "";
     state.pendingCourseRequestIds = new Set();
     syncPortalSession();
@@ -1887,6 +2133,7 @@ function restorePortalSession() {
   const storedCourseId = readStoredPortalValue(SESSION_STORAGE_KEYS.openCourseId).trim();
 
   state.activeStudentId = student.id;
+  state.studentSessionToken = storedSessionToken;
   state.openCourseId = getCourseCatalogEntries(student).some((entry) => entry.course.id === storedCourseId)
     ? storedCourseId
     : getDefaultOpenCourseId(student);
@@ -2058,8 +2305,149 @@ function authenticateLocalStudent(query, password) {
   };
 }
 
-async function authenticateRemoteStudentOnce(query, password) {
+function isStudentSessionErrorMessage(message) {
+  const normalized = getCompactLookupValue(message || "");
+  return (
+    normalized.includes("devicesession") ||
+    normalized.includes("nolongerapproved") ||
+    normalized.includes("devicewasremoved") ||
+    normalized.includes("deviceisno") ||
+    normalized.includes("sessionexpired") ||
+    normalized.includes("loginagain") ||
+    normalized.includes("loginaagain") ||
+    normalized.includes("logingagain")
+  );
+}
+
+function buildStudentSessionPayload(studentId = state.activeStudentId) {
+  return {
+    studentId: String(studentId || "").trim(),
+    sessionToken: String(state.studentSessionToken || "").trim(),
+    deviceId: getPersistentPortalDeviceId(),
+  };
+}
+
+function formatApprovedDevicesForPrompt(devices = []) {
+  return devices
+    .slice(0, 4)
+    .map((device, index) => {
+      const name = String(device.deviceName || "Approved Device").trim() || "Approved Device";
+      const ip = String(device.publicIp || "").trim();
+      const lastSeen = String(device.lastSeenOn || device.lastLoginOn || "").trim();
+      const meta = [ip ? `IP ${ip}` : "", lastSeen ? `Seen ${formatDateTime(lastSeen, "recently")}` : ""]
+        .filter(Boolean)
+        .join(" | ");
+      return `${index + 1}. ${name}${meta ? ` (${meta})` : ""}`;
+    })
+    .join("\n");
+}
+
+async function logoutActiveDeviceSessionSilently(studentId = state.activeStudentId, sessionToken = state.studentSessionToken) {
+  if (!studentId || !sessionToken || APP_CONFIG.dataMode !== "remote" || !APP_CONFIG.remoteEndpoint) {
+    return;
+  }
+
+  const payload = new URLSearchParams({
+    action: "studentlogoutdevice",
+    studentId: String(studentId || "").trim(),
+    sessionToken: String(sessionToken || "").trim(),
+    deviceId: getPersistentPortalDeviceId(),
+  });
+
+  try {
+    if (navigator.sendBeacon) {
+      const blob = new Blob([payload.toString()], {
+        type: "application/x-www-form-urlencoded;charset=UTF-8",
+      });
+      navigator.sendBeacon(APP_CONFIG.remoteEndpoint, blob);
+      return;
+    }
+  } catch (error) {
+    // Fall back to fetch keepalive.
+  }
+
+  try {
+    fetch(APP_CONFIG.remoteEndpoint, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      },
+      body: payload,
+      keepalive: true,
+    }).catch(() => {});
+  } catch (error) {
+    // Ignore logout sync failures.
+  }
+}
+
+async function validateActiveStudentSession(options = {}) {
+  if (!state.activeStudentId || !state.studentSessionToken || APP_CONFIG.dataMode !== "remote" || !APP_CONFIG.remoteEndpoint) {
+    return { ok: true };
+  }
+
+  const deviceContext = await collectPortalDeviceContext({
+    promptLocation: false,
+    refreshIp: options.refreshIp === true,
+  });
+  const requestBody = new URLSearchParams({
+    action: "studentvalidate",
+    studentId: state.activeStudentId,
+    sessionToken: state.studentSessionToken,
+    ...deviceContext,
+  });
+
+  try {
+    const response = await fetchRemoteResponseWithTimeout(
+      APP_CONFIG.remoteEndpoint,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        },
+        body: requestBody,
+      },
+      {
+        timeoutMs: APP_CONFIG.remoteRequestTimeoutMs,
+        timeoutMessage: "Session validation timed out.",
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Session validation failed (${response.status}).`);
+    }
+
+    const result = JSON.parse(await response.text());
+    if (!result?.ok) {
+      if (result?.requiresLogout || isStudentSessionErrorMessage(result?.message)) {
+        logout({
+          message: result.message || "This device is no longer approved. Please sign in again.",
+          feedbackTone: "error",
+          toastMessage: result.message || "This device is no longer approved.",
+          toastType: "error",
+        });
+      }
+      return result;
+    }
+
+    return result;
+  } catch (error) {
+    if (options.throwOnFailure) {
+      throw error;
+    }
+
+    console.warn("Unable to validate the active student session.", error);
+    return { ok: false, message: error.message || "Session validation failed." };
+  }
+}
+
+async function authenticateRemoteStudentOnce(query, password, options = {}) {
   let rawResponse = "";
+  const deviceContext = await collectPortalDeviceContext({
+    promptLocation: options.promptLocation !== false,
+    refreshIp: true,
+  });
   const response = await fetchRemoteResponseWithTimeout(
     APP_CONFIG.remoteEndpoint,
     {
@@ -2072,6 +2460,9 @@ async function authenticateRemoteStudentOnce(query, password) {
         action: "login",
         query: String(query || "").trim(),
         password: String(password || ""),
+        replaceOldestDevice: options.replaceOldestDevice ? "true" : "",
+        replaceDeviceId: String(options.replaceDeviceId || "").trim(),
+        ...deviceContext,
       }),
     },
     {
@@ -2100,13 +2491,13 @@ async function authenticateRemoteStudentOnce(query, password) {
   }
 }
 
-async function authenticateRemoteStudent(query, password) {
+async function authenticateRemoteStudent(query, password, options = {}) {
   const totalAttempts = Math.max(1, Number(APP_CONFIG.remoteLoginRetryCount) + 1 || 1);
   let lastError = null;
 
   for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
     try {
-      return await authenticateRemoteStudentOnce(query, password);
+      return await authenticateRemoteStudentOnce(query, password, options);
     } catch (error) {
       lastError = error;
 
@@ -2121,9 +2512,9 @@ async function authenticateRemoteStudent(query, password) {
   throw lastError;
 }
 
-async function authenticateStudent(query, password) {
+async function authenticateStudent(query, password, options = {}) {
   if (APP_CONFIG.dataMode === "remote" && APP_CONFIG.remoteEndpoint) {
-    return authenticateRemoteStudent(query, password);
+    return authenticateRemoteStudent(query, password, options);
   }
 
   return authenticateLocalStudent(query, password);
@@ -3786,6 +4177,8 @@ async function refreshStudentPaymentsInBackground(studentId = state.activeStuden
   const requestBody = new URLSearchParams({
     action: "studentgetpayments",
     studentId,
+    sessionToken: state.studentSessionToken,
+    deviceId: getPersistentPortalDeviceId(),
   });
 
   try {
@@ -3811,6 +4204,14 @@ async function refreshStudentPaymentsInBackground(studentId = state.activeStuden
 
     const result = JSON.parse(await response.text());
     if (!result?.ok) {
+      if (result?.requiresLogout || isStudentSessionErrorMessage(result?.message)) {
+        logout({
+          message: result.message || "This device session is no longer active. Please sign in again.",
+          feedbackTone: "error",
+          toastMessage: result.message || "Device session ended.",
+          toastType: "error",
+        });
+      }
       throw new Error(result?.message || "Unable to refresh payment history.");
     }
 
@@ -3888,6 +4289,8 @@ async function requestStudentMessageResponse(responseType) {
         messageId: pendingMessage.id,
         responseType,
         reply: replyText,
+        sessionToken: state.studentSessionToken,
+        deviceId: getPersistentPortalDeviceId(),
       }),
       signal: controller ? controller.signal : undefined,
     });
@@ -3902,6 +4305,14 @@ async function requestStudentMessageResponse(responseType) {
 
     const result = await response.json();
     if (!result.ok) {
+      if (result.requiresLogout || isStudentSessionErrorMessage(result.message)) {
+        logout({
+          message: result.message || "This device session is no longer active. Please sign in again.",
+          feedbackTone: "error",
+          toastMessage: result.message || "Device session ended.",
+          toastType: "error",
+        });
+      }
       throw new Error(result.message || "Message response failed.");
     }
 
@@ -4032,6 +4443,8 @@ async function requestCourseAccess(courseId) {
     courseId,
     transactionId,
     note,
+    sessionToken: state.studentSessionToken,
+    deviceId: getPersistentPortalDeviceId(),
   });
   const totalAttempts = Math.max(1, Number(APP_CONFIG.remotePaymentRetryCount) + 1 || 1);
   let lastError = null;
@@ -4079,6 +4492,14 @@ async function requestCourseAccess(courseId) {
       }
 
       if (!result.ok) {
+        if (result.requiresLogout || isStudentSessionErrorMessage(result.message)) {
+          logout({
+            message: result.message || "This device session is no longer active. Please sign in again.",
+            feedbackTone: "error",
+            toastMessage: result.message || "Device session ended.",
+            toastType: "error",
+          });
+        }
         const normalizedMessage = getCompactLookupValue(result.message || "");
         if (normalizedMessage === "unsupportedrequestaction") {
           throw new Error(
@@ -4829,6 +5250,12 @@ function logout(options = {}) {
   const toastMessage = String(options.toastMessage || "").trim();
   const toastType = String(options.toastType || "").trim() || "info";
   const suppressToast = options.suppressToast === true;
+  const previousStudentId = state.activeStudentId;
+  const previousSessionToken = state.studentSessionToken;
+
+  if (options.syncRemoteLogout !== false) {
+    logoutActiveDeviceSessionSilently(previousStudentId, previousSessionToken);
+  }
 
   closePaymentModal();
   closeVideo();
@@ -4836,6 +5263,7 @@ function logout(options = {}) {
   closeStudentMessageModal();
   stopStudentInboxPolling();
   state.activeStudentId = "";
+  state.studentSessionToken = "";
   state.openCourseId = "";
   state.pendingCourseRequestIds = new Set();
   state.courseRequestBusyIds = new Set();
@@ -4889,7 +5317,9 @@ async function performLogin(query = dom.query.value) {
   setFeedback("Connecting to the login server and checking your credentials...", "neutral");
 
   try {
-    authResult = await authenticateStudent(studentQuery, password);
+    authResult = await authenticateStudent(studentQuery, password, {
+      promptLocation: true,
+    });
   } catch (error) {
     console.error(error);
     setFeedback(error?.message || "Login validation is unavailable right now.", "error");
@@ -4901,9 +5331,46 @@ async function performLogin(query = dom.query.value) {
   try {
     if (!authResult || !authResult.ok) {
       const failureMessage = authResult?.message || "Login failed.";
+
+      if (authResult?.deviceLimitReached) {
+        const deviceSummary = formatApprovedDevicesForPrompt(authResult.activeDevices || []);
+        const replaceConfirmed = window.confirm(
+          `${failureMessage}\n\n${deviceSummary || "Two devices are already approved for this account."}\n\nPress OK to log out the oldest approved device and continue from this device.`
+        );
+
+        if (replaceConfirmed) {
+          authResult = await authenticateStudent(studentQuery, password, {
+            promptLocation: false,
+            replaceOldestDevice: true,
+          });
+          if (authResult?.ok) {
+            // Continue into the success path below.
+          } else {
+            const retryMessage = authResult?.message || failureMessage;
+            setFeedback(retryMessage, "error");
+            openApprovalStatusModal({
+              title: "Device Limit Reached",
+              message: retryMessage,
+              note: formatApprovedDevicesForPrompt(authResult?.activeDevices || []),
+            });
+            showToast(retryMessage, "error");
+            return;
+          }
+        }
+        setFeedback(failureMessage, "error");
+        openApprovalStatusModal({
+          title: "Device Limit Reached",
+          message: failureMessage,
+          note: formatApprovedDevicesForPrompt(authResult?.activeDevices || []),
+        });
+        showToast(failureMessage, "error");
+        return;
+      }
+
       const isPendingApproval = authResult?.approvalStatus === "pending";
       setFeedback(failureMessage, isPendingApproval ? "neutral" : "error");
       showToast(failureMessage, isPendingApproval ? "info" : "error");
+
       if (authResult?.approvalStatus === "rejected") {
         openApprovalStatusModal({
           title: "Registration Not Approved",
@@ -4911,6 +5378,7 @@ async function performLogin(query = dom.query.value) {
           note: authResult?.reviewNote || "",
         });
       }
+
       return;
     }
 
@@ -4943,6 +5411,7 @@ async function performLogin(query = dom.query.value) {
     }
 
     state.activeStudentId = nextStudent.id;
+    state.studentSessionToken = String(authResult.sessionToken || "").trim();
     state.openCourseId = getDefaultOpenCourseId(nextStudent);
     syncPortalSession();
 

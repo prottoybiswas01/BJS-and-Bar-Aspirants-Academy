@@ -127,6 +127,29 @@ const PAYMENT_FIELD_KEYS = Object.freeze({
   reviewNote: ["reviewNote", "adminNote", "comment"],
 });
 
+const DEVICE_FIELD_KEYS = Object.freeze({
+  id: ["id", "deviceRecordId"],
+  studentId: ["studentId", "studentID"],
+  deviceId: ["deviceId", "browserDeviceId", "clientDeviceId"],
+  deviceName: ["deviceName", "deviceLabel", "label"],
+  publicIp: ["publicIp", "ip", "ipAddress"],
+  userAgent: ["userAgent", "ua"],
+  platform: ["platform", "devicePlatform"],
+  browserLanguage: ["browserLanguage", "language", "locale"],
+  timezone: ["timezone", "timeZone"],
+  screenSize: ["screenSize", "screen", "viewport"],
+  locationPermission: ["locationPermission", "geoPermission"],
+  latitude: ["latitude", "lat"],
+  longitude: ["longitude", "lng", "lon"],
+  status: ["status", "deviceStatus"],
+  firstSeenOn: ["firstSeenOn", "createdOn"],
+  lastSeenOn: ["lastSeenOn", "updatedOn"],
+  lastLoginOn: ["lastLoginOn", "loginOn"],
+  revokedOn: ["revokedOn"],
+  revokedBy: ["revokedBy"],
+  note: ["note", "remarks"],
+});
+
 const ADMIN_FIELD_KEYS = Object.freeze({
   name: ["name", "fullName", "adminName"],
   username: ["username", "userName", "login", "adminLogin"],
@@ -302,6 +325,7 @@ const dom = {
   courseListPanel: document.getElementById("courseListPanel"),
   courseCountBadge: document.getElementById("courseCountBadge"),
   paymentQueue: document.getElementById("paymentQueue"),
+  deviceRegistryPanel: document.getElementById("deviceRegistryPanel"),
   messageLogPanel: document.getElementById("messageLogPanel"),
 };
 
@@ -315,6 +339,7 @@ function createEmptyDashboard() {
     notices: [],
     enrollments: [],
     messages: [],
+    devices: [],
     payments: [],
     studentMap: new Map(),
     courseMap: new Map(),
@@ -952,6 +977,32 @@ function normalizeDashboard(payload = {}) {
     .filter((payment) => payment.id && payment.studentId && payment.courseId)
     .sort((left, right) => new Date(right.submittedOn || 0) - new Date(left.submittedOn || 0));
 
+  const devices = (payload.devices || [])
+    .map((device, index) => ({
+      id: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.id, `device-${index + 1}`)).trim(),
+      studentId: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.studentId, "")).trim(),
+      deviceId: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.deviceId, "")).trim(),
+      deviceName: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.deviceName, "Unknown Device")).trim() || "Unknown Device",
+      publicIp: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.publicIp, "")).trim(),
+      userAgent: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.userAgent, "")).trim(),
+      platform: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.platform, "")).trim(),
+      browserLanguage: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.browserLanguage, "")).trim(),
+      timezone: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.timezone, "")).trim(),
+      screenSize: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.screenSize, "")).trim(),
+      locationPermission: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.locationPermission, "")).trim() || "Not Requested",
+      latitude: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.latitude, "")).trim(),
+      longitude: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.longitude, "")).trim(),
+      status: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.status, "Active")).trim() || "Active",
+      firstSeenOn: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.firstSeenOn, "")).trim(),
+      lastSeenOn: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.lastSeenOn, "")).trim(),
+      lastLoginOn: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.lastLoginOn, "")).trim(),
+      revokedOn: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.revokedOn, "")).trim(),
+      revokedBy: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.revokedBy, "")).trim(),
+      note: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.note, "")).trim(),
+    }))
+    .filter((device) => device.id && device.studentId)
+    .sort((left, right) => new Date(right.lastSeenOn || right.lastLoginOn || 0) - new Date(left.lastSeenOn || left.lastLoginOn || 0));
+
   return {
     generatedAt: String(payload.generatedAt || "").trim(),
     spreadsheetName: String(payload.spreadsheetName || "").trim(),
@@ -961,6 +1012,7 @@ function normalizeDashboard(payload = {}) {
     notices: payload.notices || [],
     enrollments,
     messages,
+    devices,
     payments,
     studentMap,
     courseMap,
@@ -2392,6 +2444,90 @@ function renderPaymentQueue() {
   syncAllPaymentReviewCards();
 }
 
+function buildDeviceLocationLabel(device) {
+  const latitude = String(device.latitude || "").trim();
+  const longitude = String(device.longitude || "").trim();
+  if (latitude && longitude) {
+    return `${latitude}, ${longitude}`;
+  }
+
+  return device.locationPermission || "Not Requested";
+}
+
+function renderDeviceRegistry() {
+  if (!dom.deviceRegistryPanel) {
+    return;
+  }
+
+  if (!state.data.devices.length) {
+    dom.deviceRegistryPanel.innerHTML =
+      '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-500">No approved device has logged in yet.</div>';
+    return;
+  }
+
+  dom.deviceRegistryPanel.innerHTML = state.data.devices
+    .slice(0, 24)
+    .map((device) => {
+      const student = getStudentById(device.studentId) || null;
+      const studentLabel = student?.name || device.studentId || "Student";
+      const studentMeta = [device.studentId, student?.phone || ""].filter(Boolean).join(" | ");
+      const canRemove = normalizeStatus(device.status) === "active";
+
+      return `
+        <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4">
+          <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="text-xs font-bold uppercase tracking-[0.24em] text-slate-400">${escapeHtml(studentLabel)}</p>
+                ${renderPill(device.status || "Active")}
+              </div>
+              <h4 class="mt-2 text-lg font-extrabold text-slate-950">${escapeHtml(device.deviceName || "Unknown Device")}</h4>
+              <p class="mt-1 text-sm text-slate-500">${escapeHtml(studentMeta || "Student details unavailable")}</p>
+              <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div>
+                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">IP / Timezone</p>
+                  <p class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(device.publicIp || "Not captured")}</p>
+                  <p class="mt-1 text-xs text-slate-500">${escapeHtml(device.timezone || "Timezone unavailable")}</p>
+                </div>
+                <div>
+                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Browser / Platform</p>
+                  <p class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(device.platform || "Platform unavailable")}</p>
+                  <p class="mt-1 text-xs text-slate-500">${escapeHtml(device.userAgent || device.browserLanguage || "Browser details unavailable")}</p>
+                </div>
+                <div>
+                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Location / Screen</p>
+                  <p class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(buildDeviceLocationLabel(device))}</p>
+                  <p class="mt-1 text-xs text-slate-500">${escapeHtml(device.screenSize || "Screen size unavailable")}</p>
+                </div>
+              </div>
+              <p class="mt-4 text-xs text-slate-400">
+                First seen: ${escapeHtml(formatDateTime(device.firstSeenOn, "Not recorded"))}
+                | Last login: ${escapeHtml(formatDateTime(device.lastLoginOn, "Not recorded"))}
+                | Last seen: ${escapeHtml(formatDateTime(device.lastSeenOn, "Not recorded"))}
+              </p>
+              ${
+                device.note
+                  ? `<p class="mt-2 text-xs text-slate-500">${escapeHtml(device.note)}</p>`
+                  : ""
+              }
+            </div>
+            <div class="flex shrink-0 flex-wrap gap-2">
+              <button
+                type="button"
+                data-device-remove="${escapeHtml(device.id)}"
+                class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-bold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 ${canRemove ? "" : "opacity-50 cursor-not-allowed"}"
+                ${canRemove ? "" : "disabled"}
+              >
+                Remove Device
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
 function renderMessageLog() {
   if (!state.data.messages.length) {
     dom.messageLogPanel.innerHTML =
@@ -2507,6 +2643,7 @@ function renderDashboard() {
   renderBulkCourseSelector();
   renderCourseList();
   renderPaymentQueue();
+  renderDeviceRegistry();
   renderMessageLog();
 
   if (state.editingCourseId) {
@@ -2913,6 +3050,38 @@ async function handleCourseDelete(courseId) {
   }
 }
 
+async function handleDeviceRemove(deviceRecordId) {
+  const device = state.data.devices.find((entry) => entry.id === deviceRecordId) || null;
+  if (!device) {
+    setFeedback(dom.adminTopFeedback, "Device record could not be found.", "error");
+    return;
+  }
+
+  const student = getStudentById(device.studentId) || null;
+  const confirmed = window.confirm(
+    `Remove "${device.deviceName || "this device"}" from ${student?.name || device.studentId || "this student"}? The active session on that device will be forced to log out.`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    setFeedback(dom.adminTopFeedback, "Removing approved device...", "info");
+    const response = await requestAction("adminremovedevice", {
+      deviceRecordId,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.message || "Unable to remove the approved device.");
+    }
+
+    applyDashboardPayload(response, "Approved device removed.");
+  } catch (error) {
+    setFeedback(dom.adminTopFeedback, error.message || "Unable to remove the approved device.", "error");
+  }
+}
+
 async function handleMessageDelete(messageId) {
   const message = state.data.messages.find((entry) => entry.id === messageId) || null;
   const confirmed = window.confirm(
@@ -3103,6 +3272,13 @@ function handlePaymentQueueChange(event) {
   syncPaymentReviewCard(target.dataset.paymentMonths || target.dataset.paymentUnlimited || "");
 }
 
+function handleDeviceRegistryClick(event) {
+  const removeButton = event.target.closest("[data-device-remove]");
+  if (removeButton) {
+    handleDeviceRemove(String(removeButton.dataset.deviceRemove || "").trim());
+  }
+}
+
 function handleMessageLogClick(event) {
   const deleteButton = event.target.closest("[data-message-delete]");
   if (deleteButton) {
@@ -3227,6 +3403,7 @@ dom.courseListPanel.addEventListener("click", handleCourseListClick);
 dom.paymentQueue.addEventListener("click", handlePaymentQueueClick);
 dom.paymentQueue.addEventListener("input", handlePaymentQueueChange);
 dom.paymentQueue.addEventListener("change", handlePaymentQueueChange);
+dom.deviceRegistryPanel?.addEventListener("click", handleDeviceRegistryClick);
 dom.messageLogPanel.addEventListener("click", handleMessageLogClick);
 window.addEventListener("scroll", persistAdminScrollPosition, { passive: true });
 document.addEventListener("visibilitychange", () => {

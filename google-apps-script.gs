@@ -7,6 +7,7 @@ const SHEET_NAMES = {
   admins: "Admins",
   registrations: "Registrations",
   messages: "Messages",
+  devices: "Devices",
   payments: "Payments",
 };
 
@@ -88,6 +89,31 @@ const SHEET_HEADERS = {
     "reviewNote",
   ],
   messages: ["id", "studentIds", "title", "message", "status", "createdOn", "createdBy", "audience", "recipientStateJson"],
+  devices: [
+    "id",
+    "studentId",
+    "deviceId",
+    "deviceName",
+    "deviceFingerprint",
+    "publicIp",
+    "userAgent",
+    "platform",
+    "browserLanguage",
+    "timezone",
+    "screenSize",
+    "locationPermission",
+    "latitude",
+    "longitude",
+    "status",
+    "firstSeenOn",
+    "lastSeenOn",
+    "lastLoginOn",
+    "sessionToken",
+    "sessionExpiresAt",
+    "revokedOn",
+    "revokedBy",
+    "note",
+  ],
   payments: [
     "id",
     "studentId",
@@ -126,6 +152,9 @@ const SELF_REGISTRATION_REVIEWED_BY_ = "Self Registration";
 const STUDENT_LOGIN_QUERY_LABEL_ = "registration number, student ID, phone number, or email";
 const ADMIN_TOKEN_PREFIX_ = "ain-pathshala.admin-token.";
 const ADMIN_TOKEN_TTL_SECONDS_ = 21600;
+const STUDENT_SESSION_TTL_SECONDS_ = 2592000;
+const MAX_ACTIVE_DEVICES_PER_STUDENT_ = 2;
+const DEVICE_HEARTBEAT_WINDOW_MS_ = 5 * 60 * 1000;
 const SECURITY_LOCK_HIGHLIGHT_PREFIX_ = "Security lock:";
 const SECURITY_LOCK_LOGIN_MESSAGE_ =
   "Security lock: the same transaction ID was used in multiple places. Contact the admin office.";
@@ -161,6 +190,32 @@ const STUDENT_FIELD_KEYS_ = {
 const COURSE_FIELD_KEYS_ = {
   id: ["id", "courseId", "courseID"],
   status: ["status", "courseStatus", "visibility", "publishStatus", "courseVisibility", "isActive"],
+};
+
+const DEVICE_FIELD_KEYS_ = {
+  id: ["id", "deviceRecordId"],
+  studentId: ["studentId", "studentID"],
+  deviceId: ["deviceId", "browserDeviceId", "clientDeviceId"],
+  deviceName: ["deviceName", "deviceLabel", "label"],
+  deviceFingerprint: ["deviceFingerprint", "fingerprint", "deviceSignature"],
+  publicIp: ["publicIp", "ip", "ipAddress"],
+  userAgent: ["userAgent", "ua"],
+  platform: ["platform", "devicePlatform"],
+  browserLanguage: ["browserLanguage", "language", "locale"],
+  timezone: ["timezone", "timeZone"],
+  screenSize: ["screenSize", "screen", "viewport"],
+  locationPermission: ["locationPermission", "geoPermission"],
+  latitude: ["latitude", "lat"],
+  longitude: ["longitude", "lng", "lon"],
+  status: ["status", "deviceStatus"],
+  firstSeenOn: ["firstSeenOn", "createdOn"],
+  lastSeenOn: ["lastSeenOn", "updatedOn"],
+  lastLoginOn: ["lastLoginOn", "loginOn"],
+  sessionToken: ["sessionToken", "studentSessionToken"],
+  sessionExpiresAt: ["sessionExpiresAt", "expiresAt"],
+  revokedOn: ["revokedOn"],
+  revokedBy: ["revokedBy"],
+  note: ["note", "remarks"],
 };
 
 const REGISTRATION_FIELD_KEYS_ = {
@@ -404,12 +459,15 @@ function doPost(e) {
     if (action === "studentsubmitpayment") return handleStudentSubmitPayment_(request);
     if (action === "studentgetinbox") return handleStudentGetInbox_(request);
     if (action === "studentgetpayments") return handleStudentGetPayments_(request);
+    if (action === "studentvalidate") return handleStudentValidate_(request);
+    if (action === "studentlogoutdevice") return handleStudentLogoutDevice_(request);
     if (action === "admingetdashboard") return handleAdminGetDashboard_(request);
     if (action === "adminupdatestudent") return handleAdminUpdateStudent_(request);
     if (action === "adminbulkstudentaction") return handleAdminBulkStudentAction_(request);
     if (action === "adminassigncourses") return handleAdminAssignCourses_(request);
     if (action === "admincreatecourse") return handleAdminCreateCourse_(request);
     if (action === "admindeletecourse") return handleAdminDeleteCourse_(request);
+    if (action === "adminremovedevice") return handleAdminRemoveDevice_(request);
     if (action === "adminapproveregistration") return handleAdminApproveRegistration_(request);
     if (action === "adminrejectregistration") return handleAdminRejectRegistration_(request);
     if (action === "adminreviewpayment") return handleAdminReviewPayment_(request);
@@ -561,6 +619,19 @@ function handleLogin_(request) {
     return buildDeniedLoginResponse_(student, finalAccessState);
   }
 
+  const deviceLoginResult = registerStudentLoginDevice_(spreadsheet, student, request);
+  if (!deviceLoginResult.ok) {
+    return jsonOutput_({
+      ok: false,
+      approved: true,
+      studentId: getStudentId_(student),
+      deviceLimitReached: !!deviceLoginResult.deviceLimitReached,
+      maxDevices: MAX_ACTIVE_DEVICES_PER_STUDENT_,
+      activeDevices: sanitizeStudentDevices_(deviceLoginResult.activeDevices || []),
+      message: deviceLoginResult.message || "This device could not be approved for login.",
+    });
+  }
+
   const previewOnly = isPreviewAccessStudent_(student) || isSecurityLockedStudent_(student);
   const securityLocked = isSecurityLockedStudent_(student);
   const notices = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.notices));
@@ -601,6 +672,9 @@ function handleLogin_(request) {
     generatedAt: new Date().toISOString(),
     spreadsheetId: spreadsheet.getId(),
     spreadsheetName: spreadsheet.getName(),
+    sessionToken: deviceLoginResult.sessionToken,
+    maxDevices: MAX_ACTIVE_DEVICES_PER_STUDENT_,
+    activeDevices: sanitizeStudentDevices_(deviceLoginResult.activeDevices || []),
     previewOnly: previewOnly,
     studentId: studentId,
     students: sanitizeStudents_([student]),
@@ -817,6 +891,11 @@ function handleStudentCourseRequest_(request) {
     });
   }
 
+  const sessionValidation = validateStudentDeviceSession_(spreadsheet, request);
+  if (!sessionValidation.ok) {
+    return jsonOutput_(sessionValidation);
+  }
+
   const student = studentsData.records.find(function (entry) {
     return getStudentId_(entry) === studentId;
   });
@@ -972,6 +1051,11 @@ function handleStudentSubmitPayment_(request) {
     return jsonOutput_({ ok: false, message: "Transaction ID is required for payment submission." });
   }
 
+  const sessionValidation = validateStudentDeviceSession_(spreadsheet, request);
+  if (!sessionValidation.ok) {
+    return jsonOutput_(sessionValidation);
+  }
+
   const student = studentsData.records.find(function (entry) {
     return getStudentId_(entry) === studentId;
   });
@@ -1107,6 +1191,11 @@ function handleStudentGetInbox_(request) {
     });
   }
 
+  const sessionValidation = validateStudentDeviceSession_(spreadsheet, request);
+  if (!sessionValidation.ok) {
+    return jsonOutput_(sessionValidation);
+  }
+
   const students = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students));
   const matchedStudent = students.find(function (student) {
     return getStudentId_(student) === studentId;
@@ -1136,6 +1225,11 @@ function handleStudentGetPayments_(request) {
     });
   }
 
+  const sessionValidation = validateStudentDeviceSession_(spreadsheet, request);
+  if (!sessionValidation.ok) {
+    return jsonOutput_(sessionValidation);
+  }
+
   const students = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students));
   const matchedStudent = students.find(function (student) {
     return getStudentId_(student) === studentId;
@@ -1151,6 +1245,64 @@ function handleStudentGetPayments_(request) {
   return jsonOutput_({
     ok: true,
     payments: getStudentPayments_(spreadsheet, studentId),
+  });
+}
+
+function handleStudentValidate_(request) {
+  const spreadsheet = getSpreadsheet_();
+  const validation = validateStudentDeviceSession_(spreadsheet, request);
+  if (!validation.ok) {
+    return jsonOutput_(validation);
+  }
+
+  return jsonOutput_({
+    ok: true,
+    message: "Device session is active.",
+    device: sanitizeStudentDevice_(validation.device || {}),
+  });
+}
+
+function handleStudentLogoutDevice_(request) {
+  const spreadsheet = getSpreadsheet_();
+  const studentId = String(request.studentId || "").trim();
+  const sessionToken = String(request.sessionToken || request.token || "").trim();
+  const deviceId = String(request.deviceId || "").trim();
+
+  if (!studentId || !sessionToken || !deviceId) {
+    return jsonOutput_({
+      ok: true,
+      message: "Student device session cleared locally.",
+    });
+  }
+
+  const devicesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.devices);
+  const deviceIndex = devicesData.records.findIndex(function (device) {
+    return (
+      getDeviceStudentId_(device) === studentId &&
+      getDeviceIdValue_(device) === deviceId &&
+      getDeviceSessionToken_(device) === sessionToken
+    );
+  });
+
+  if (deviceIndex === -1) {
+    return jsonOutput_({
+      ok: true,
+      message: "Student device session cleared locally.",
+    });
+  }
+
+  const nextDevices = devicesData.records.slice();
+  nextDevices[deviceIndex] = revokeStudentDeviceRecord_(
+    nextDevices[deviceIndex],
+    studentId,
+    "Student logged out from this device.",
+    "Logged Out"
+  );
+  writeSheetEntries_(devicesData.sheet, devicesData.headers, nextDevices);
+
+  return jsonOutput_({
+    ok: true,
+    message: "Device logged out successfully.",
   });
 }
 
@@ -1457,6 +1609,411 @@ function filterRowsByCourseLookup_(records, courseLookup, extractor) {
     ).trim();
     return !!courseId && !!courseLookup[courseId];
   });
+}
+
+function buildStudentDevicePayloadFromRequest_(request) {
+  return {
+    deviceId: String(request.deviceId || request.clientDeviceId || "").trim(),
+    deviceName: String(request.deviceName || request.deviceLabel || "Unknown Device").trim() || "Unknown Device",
+    deviceFingerprint: String(request.deviceFingerprint || request.fingerprint || "").trim(),
+    publicIp: String(request.publicIp || request.ip || "").trim(),
+    userAgent: String(request.userAgent || "").trim(),
+    platform: String(request.platform || "").trim(),
+    browserLanguage: String(request.browserLanguage || request.language || "").trim(),
+    timezone: String(request.timezone || request.timeZone || "").trim(),
+    screenSize: String(request.screenSize || request.screen || request.viewport || "").trim(),
+    locationPermission: normalizeDeviceLocationPermissionStatus_(request.locationPermission || ""),
+    latitude: String(request.latitude || request.lat || "").trim(),
+    longitude: String(request.longitude || request.lng || request.lon || "").trim(),
+  };
+}
+
+function normalizeDeviceLocationPermissionStatus_(value) {
+  const normalized = normalizeValue_(value);
+  if (normalized === "granted" || normalized === "allowed") {
+    return "Granted";
+  }
+  if (normalized === "denied" || normalized === "blocked") {
+    return "Denied";
+  }
+  if (normalized === "prompt") {
+    return "Prompt";
+  }
+  if (normalized === "unsupported") {
+    return "Unsupported";
+  }
+  return normalized ? "Unknown" : "Not Requested";
+}
+
+function getDeviceRecordId_(device) {
+  return String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.id, "")).trim();
+}
+
+function getDeviceStudentId_(device) {
+  return String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.studentId, "")).trim();
+}
+
+function getDeviceIdValue_(device) {
+  return String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.deviceId, "")).trim();
+}
+
+function getDeviceStatus_(device) {
+  return String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.status, "Active")).trim() || "Active";
+}
+
+function normalizeDeviceStatusLabel_(value) {
+  const normalized = normalizeValue_(value);
+  if (normalized === "revoked" || normalized === "removed" || normalized === "blocked") {
+    return "Revoked";
+  }
+  if (
+    normalized === "loggedout" ||
+    normalized === "logged out" ||
+    normalized === "logout" ||
+    normalized === "signedout" ||
+    normalized === "signed out"
+  ) {
+    return "Logged Out";
+  }
+  if (normalized === "expired") {
+    return "Expired";
+  }
+  return "Active";
+}
+
+function isActiveDeviceRecord_(device) {
+  return normalizeDeviceStatusLabel_(getDeviceStatus_(device)) === "Active";
+}
+
+function getDeviceSessionToken_(device) {
+  return String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.sessionToken, "")).trim();
+}
+
+function getDeviceSessionExpiryTimestamp_(device) {
+  const rawValue = String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.sessionExpiresAt, "")).trim();
+  const parsed = Number(rawValue);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed;
+  }
+
+  const directDate = new Date(rawValue);
+  return Number.isNaN(directDate.getTime()) ? 0 : directDate.getTime();
+}
+
+function isStudentDeviceSessionExpired_(device) {
+  const expiresAt = getDeviceSessionExpiryTimestamp_(device);
+  return !expiresAt || expiresAt <= Date.now();
+}
+
+function sanitizeStudentDevice_(device) {
+  const copy = Object.assign({}, device || {});
+  DEVICE_FIELD_KEYS_.sessionToken.forEach(function (key) {
+    delete copy[key];
+  });
+  return copy;
+}
+
+function sanitizeStudentDevices_(devices) {
+  return (devices || []).map(sanitizeStudentDevice_);
+}
+
+function buildDeviceRegistryDisplayName_(device) {
+  const deviceName = String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.deviceName, "")).trim();
+  const publicIp = String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.publicIp, "")).trim();
+  return deviceName || (publicIp ? "IP " + publicIp : "Unknown Device");
+}
+
+function getStudentDeviceRecords_(spreadsheet, studentId) {
+  if (!spreadsheet || !studentId) {
+    return [];
+  }
+
+  return readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.devices)).filter(function (device) {
+    return getDeviceStudentId_(device) === studentId;
+  });
+}
+
+function getStudentActiveDeviceRecords_(devices, studentId) {
+  return (devices || [])
+    .filter(function (device) {
+      return getDeviceStudentId_(device) === studentId && isActiveDeviceRecord_(device) && !isStudentDeviceSessionExpired_(device);
+    })
+    .sort(function (left, right) {
+      return new Date(right.lastSeenOn || right.lastLoginOn || 0) - new Date(left.lastSeenOn || left.lastLoginOn || 0);
+    });
+}
+
+function findLatestStudentDeviceIndex_(devices, studentId, deviceId) {
+  for (let index = (devices || []).length - 1; index >= 0; index -= 1) {
+    const device = devices[index] || {};
+    if (getDeviceStudentId_(device) === studentId && getDeviceIdValue_(device) === deviceId) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function buildDeviceLimitExceededMessage_(devices) {
+  const labels = (devices || [])
+    .slice(0, MAX_ACTIVE_DEVICES_PER_STUDENT_)
+    .map(function (device) {
+      return buildDeviceRegistryDisplayName_(device);
+    })
+    .filter(Boolean);
+
+  return (
+    "This account is already active on " +
+    MAX_ACTIVE_DEVICES_PER_STUDENT_ +
+    " devices. Remove one approved device or log out an older device before continuing. " +
+    (labels.length ? "Active devices: " + labels.join(", ") + "." : "")
+  );
+}
+
+function buildStudentDeviceRecord_(studentId, deviceInfo, sessionToken, overrides) {
+  const nowIso = getNowIso_();
+  const sessionExpiresAt = Date.now() + STUDENT_SESSION_TTL_SECONDS_ * 1000;
+  const nextRecord = Object.assign(
+    {
+      id: Utilities.getUuid(),
+      studentId: studentId,
+      deviceId: deviceInfo.deviceId,
+      deviceName: deviceInfo.deviceName,
+      deviceFingerprint: deviceInfo.deviceFingerprint,
+      publicIp: deviceInfo.publicIp,
+      userAgent: deviceInfo.userAgent,
+      platform: deviceInfo.platform,
+      browserLanguage: deviceInfo.browserLanguage,
+      timezone: deviceInfo.timezone,
+      screenSize: deviceInfo.screenSize,
+      locationPermission: deviceInfo.locationPermission,
+      latitude: deviceInfo.latitude,
+      longitude: deviceInfo.longitude,
+      status: "Active",
+      firstSeenOn: nowIso,
+      lastSeenOn: nowIso,
+      lastLoginOn: nowIso,
+      sessionToken: sessionToken,
+      sessionExpiresAt: String(sessionExpiresAt),
+      revokedOn: "",
+      revokedBy: "",
+      note: "",
+    },
+    overrides || {}
+  );
+
+  nextRecord.studentId = studentId;
+  nextRecord.deviceId = deviceInfo.deviceId;
+  nextRecord.deviceName = deviceInfo.deviceName || nextRecord.deviceName || "Unknown Device";
+  nextRecord.deviceFingerprint = deviceInfo.deviceFingerprint || nextRecord.deviceFingerprint || "";
+  nextRecord.publicIp = deviceInfo.publicIp || nextRecord.publicIp || "";
+  nextRecord.userAgent = deviceInfo.userAgent || nextRecord.userAgent || "";
+  nextRecord.platform = deviceInfo.platform || nextRecord.platform || "";
+  nextRecord.browserLanguage = deviceInfo.browserLanguage || nextRecord.browserLanguage || "";
+  nextRecord.timezone = deviceInfo.timezone || nextRecord.timezone || "";
+  nextRecord.screenSize = deviceInfo.screenSize || nextRecord.screenSize || "";
+  nextRecord.locationPermission = deviceInfo.locationPermission || nextRecord.locationPermission || "Not Requested";
+  nextRecord.latitude = deviceInfo.latitude || nextRecord.latitude || "";
+  nextRecord.longitude = deviceInfo.longitude || nextRecord.longitude || "";
+  nextRecord.status = "Active";
+  nextRecord.lastSeenOn = nowIso;
+  nextRecord.lastLoginOn = nowIso;
+  nextRecord.sessionToken = sessionToken;
+  nextRecord.sessionExpiresAt = String(sessionExpiresAt);
+  nextRecord.revokedOn = "";
+  nextRecord.revokedBy = "";
+
+  if (!String(nextRecord.firstSeenOn || "").trim()) {
+    nextRecord.firstSeenOn = nowIso;
+  }
+
+  return nextRecord;
+}
+
+function revokeStudentDeviceRecord_(record, revokedBy, note, status) {
+  const nextRecord = Object.assign({}, record || {});
+  nextRecord.status = normalizeDeviceStatusLabel_(status || "Revoked");
+  nextRecord.revokedOn = getNowIso_();
+  nextRecord.revokedBy = String(revokedBy || "").trim();
+  nextRecord.note = String(note || nextRecord.note || "").trim();
+  nextRecord.sessionToken = "";
+  nextRecord.sessionExpiresAt = "";
+  return nextRecord;
+}
+
+function registerStudentLoginDevice_(spreadsheet, student, request) {
+  const studentId = getStudentId_(student);
+  const deviceInfo = buildStudentDevicePayloadFromRequest_(request);
+  if (!studentId) {
+    return {
+      ok: false,
+      message: "Student ID is missing for device registration.",
+      activeDevices: [],
+    };
+  }
+
+  if (!deviceInfo.deviceId) {
+    return {
+      ok: false,
+      message: "Device verification is required for login. Please refresh the page and try again.",
+      activeDevices: [],
+    };
+  }
+
+  const devicesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.devices);
+  const studentDevices = devicesData.records.filter(function (device) {
+    return getDeviceStudentId_(device) === studentId;
+  });
+  const activeDevices = getStudentActiveDeviceRecords_(studentDevices, studentId);
+  const existingDeviceIndex = findLatestStudentDeviceIndex_(devicesData.records, studentId, deviceInfo.deviceId);
+  const existingDeviceRecord = existingDeviceIndex === -1 ? null : devicesData.records[existingDeviceIndex] || null;
+  const existingDeviceAlreadyActive =
+    !!existingDeviceRecord &&
+    isActiveDeviceRecord_(existingDeviceRecord) &&
+    !isStudentDeviceSessionExpired_(existingDeviceRecord);
+  const replaceDeviceId = String(request.replaceDeviceId || "").trim();
+  const replaceOldestDevice = normalizeValue_(request.replaceOldestDevice || "") === "true";
+  let nextDevices = devicesData.records.slice();
+
+  if (!existingDeviceAlreadyActive && activeDevices.length >= MAX_ACTIVE_DEVICES_PER_STUDENT_) {
+    let targetDevice = null;
+    if (replaceDeviceId) {
+      targetDevice = activeDevices.find(function (device) {
+        return getDeviceIdValue_(device) === replaceDeviceId;
+      }) || null;
+    }
+
+    if (!targetDevice && replaceOldestDevice) {
+      targetDevice = activeDevices[activeDevices.length - 1] || null;
+    }
+
+    if (!targetDevice) {
+      return {
+        ok: false,
+        message: buildDeviceLimitExceededMessage_(activeDevices),
+        activeDevices: activeDevices,
+        deviceLimitReached: true,
+      };
+    }
+
+    const targetIndex = findLatestStudentDeviceIndex_(
+      nextDevices,
+      studentId,
+      getDeviceIdValue_(targetDevice)
+    );
+    if (targetIndex !== -1) {
+      nextDevices[targetIndex] = revokeStudentDeviceRecord_(
+        nextDevices[targetIndex],
+        "Auto Device Replace",
+        "Removed automatically to allow a new approved device.",
+        "Revoked"
+      );
+    }
+  }
+
+  const sessionToken = Utilities.getUuid();
+  if (existingDeviceIndex !== -1) {
+    nextDevices[existingDeviceIndex] = buildStudentDeviceRecord_(
+      studentId,
+      deviceInfo,
+      sessionToken,
+      nextDevices[existingDeviceIndex]
+    );
+  } else {
+    nextDevices.push(buildStudentDeviceRecord_(studentId, deviceInfo, sessionToken));
+  }
+
+  writeSheetEntries_(devicesData.sheet, devicesData.headers, nextDevices);
+
+  return {
+    ok: true,
+    sessionToken: sessionToken,
+    activeDevices: getStudentActiveDeviceRecords_(nextDevices, studentId),
+  };
+}
+
+function buildStudentSessionErrorResult_(message) {
+  return {
+    ok: false,
+    message: String(message || "This device session is no longer active. Please log in again.").trim(),
+    requiresLogout: true,
+  };
+}
+
+function shouldRefreshDeviceHeartbeat_(device, request) {
+  const lastSeen = new Date(String(device.lastSeenOn || device.lastLoginOn || "")).getTime();
+  if (!lastSeen || Number.isNaN(lastSeen)) {
+    return true;
+  }
+
+  const requestIp = String(request.publicIp || request.ip || "").trim();
+  if (requestIp && requestIp !== String(device.publicIp || "").trim()) {
+    return true;
+  }
+
+  return Date.now() - lastSeen >= DEVICE_HEARTBEAT_WINDOW_MS_;
+}
+
+function validateStudentDeviceSession_(spreadsheet, request) {
+  const studentId = String(request.studentId || "").trim();
+  const sessionToken = String(request.sessionToken || request.token || "").trim();
+  const deviceInfo = buildStudentDevicePayloadFromRequest_(request);
+
+  if (!studentId || !sessionToken || !deviceInfo.deviceId) {
+    return buildStudentSessionErrorResult_("Device session data is missing. Please log in again.");
+  }
+
+  const devicesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.devices);
+  const deviceIndex = devicesData.records.findIndex(function (device) {
+    return (
+      getDeviceStudentId_(device) === studentId &&
+      getDeviceIdValue_(device) === deviceInfo.deviceId &&
+      getDeviceSessionToken_(device) === sessionToken
+    );
+  });
+
+  if (deviceIndex === -1) {
+    return buildStudentSessionErrorResult_("This device is no longer approved for this account.");
+  }
+
+  const matchedDevice = devicesData.records[deviceIndex] || {};
+  if (!isActiveDeviceRecord_(matchedDevice)) {
+    return buildStudentSessionErrorResult_("This device was removed from the approved device list.");
+  }
+
+  if (isStudentDeviceSessionExpired_(matchedDevice)) {
+    const nextDevices = devicesData.records.slice();
+    nextDevices[deviceIndex] = revokeStudentDeviceRecord_(
+      matchedDevice,
+      "System",
+      "Student device session expired automatically.",
+      "Expired"
+    );
+    writeSheetEntries_(devicesData.sheet, devicesData.headers, nextDevices);
+    return buildStudentSessionErrorResult_("Your device session expired. Please log in again.");
+  }
+
+  if (shouldRefreshDeviceHeartbeat_(matchedDevice, deviceInfo)) {
+    const nextDevices = devicesData.records.slice();
+    nextDevices[deviceIndex] = buildStudentDeviceRecord_(
+      studentId,
+      deviceInfo,
+      sessionToken,
+      matchedDevice
+    );
+    nextDevices[deviceIndex].firstSeenOn = String(matchedDevice.firstSeenOn || nextDevices[deviceIndex].firstSeenOn).trim();
+    nextDevices[deviceIndex].lastLoginOn = String(matchedDevice.lastLoginOn || nextDevices[deviceIndex].lastLoginOn).trim();
+    writeSheetEntries_(devicesData.sheet, devicesData.headers, nextDevices);
+    return {
+      ok: true,
+      device: nextDevices[deviceIndex],
+    };
+  }
+
+  return {
+    ok: true,
+    device: matchedDevice,
+  };
 }
 
 function normalizePaymentTransactionId_(value) {
@@ -2523,6 +3080,44 @@ function handleAdminDeleteCourse_(request) {
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
 }
 
+function handleAdminRemoveDevice_(request) {
+  const auth = getAuthorizedAdminSession_(request);
+  if (!auth) {
+    return unauthorizedOutput_();
+  }
+
+  const deviceRecordId = String(request.deviceRecordId || request.deviceIdRecord || request.id || "").trim();
+  const deviceId = String(request.deviceId || "").trim();
+  const studentId = String(request.studentId || "").trim();
+  if (!deviceRecordId && (!deviceId || !studentId)) {
+    return jsonOutput_({ ok: false, message: "Device record ID is required." });
+  }
+
+  const spreadsheet = getSpreadsheet_();
+  const devicesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.devices);
+  const deviceIndex = devicesData.records.findIndex(function (device) {
+    return (
+      (deviceRecordId && getDeviceRecordId_(device) === deviceRecordId) ||
+      (!deviceRecordId && getDeviceStudentId_(device) === studentId && getDeviceIdValue_(device) === deviceId)
+    );
+  });
+
+  if (deviceIndex === -1) {
+    return jsonOutput_({ ok: false, message: "Approved device was not found." });
+  }
+
+  const nextDevices = devicesData.records.slice();
+  nextDevices[deviceIndex] = revokeStudentDeviceRecord_(
+    nextDevices[deviceIndex],
+    auth.username || auth.name || auth.id || "",
+    "Removed from the admin device registry.",
+    "Revoked"
+  );
+  writeSheetEntries_(devicesData.sheet, devicesData.headers, nextDevices);
+
+  return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
+}
+
 function handleAdminApproveRegistration_(request) {
   const auth = getAuthorizedAdminSession_(request);
   if (!auth) {
@@ -2875,6 +3470,11 @@ function handleStudentRespondMessage_(request) {
   }
 
   const spreadsheet = getSpreadsheet_();
+  const sessionValidation = validateStudentDeviceSession_(spreadsheet, request);
+  if (!sessionValidation.ok) {
+    return jsonOutput_(sessionValidation);
+  }
+
   const messagesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.messages);
   const messageIndex = messagesData.records.findIndex(function (entry) {
     return String(entry.id || "").trim() === messageId;
@@ -3115,6 +3715,10 @@ function sanitizeStudents_(students) {
 
 function sanitizeAdmins_(admins) {
   return admins.map(sanitizeAdmin_);
+}
+
+function sanitizeDevicesForAdmin_(devices) {
+  return sanitizeStudentDevices_(devices);
 }
 
 function sanitizeAdmin_(admin) {
@@ -4265,6 +4869,7 @@ function buildAdminPayload_(spreadsheet, adminSession) {
     admins: sanitizeAdmins_(readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.admins))),
     registrations: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.registrations)),
     messages: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.messages)),
+    devices: sanitizeDevicesForAdmin_(readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.devices))),
     payments: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.payments)),
   };
 }
