@@ -584,6 +584,74 @@ function getTodayInputValue() {
   return new Date().toISOString().slice(0, 10);
 }
 
+function normalizePaymentAccessMonths(value, fallback = 1) {
+  const parsed = Number(String(value || "").trim());
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return Math.max(1, Number(fallback || 1));
+  }
+
+  return Math.max(1, Math.floor(parsed));
+}
+
+function getPaymentAccessSummary(monthCount, unlimitedEnabled) {
+  if (unlimitedEnabled) {
+    return {
+      buttonLabel: "Approve Unlimited",
+      accessLabel: "unlimited access",
+      helperText:
+        "Unlimited access is on. End date and payment deadline will be cleared, and the course will stay active until you turn unlimited access off later.",
+    };
+  }
+
+  const normalizedMonthCount = normalizePaymentAccessMonths(monthCount, 1);
+  const monthLabel = `${normalizedMonthCount} month${normalizedMonthCount === 1 ? "" : "s"}`;
+  return {
+    buttonLabel: `Approve ${normalizedMonthCount} Month${normalizedMonthCount === 1 ? "" : "s"}`,
+    accessLabel: monthLabel,
+    helperText: `This approval will keep the course active for ${monthLabel} from the selected payment date.`,
+  };
+}
+
+function syncPaymentReviewCard(paymentId) {
+  const resolvedPaymentId = String(paymentId || "").trim();
+  if (!resolvedPaymentId) {
+    return;
+  }
+
+  const monthsField = dom.paymentQueue.querySelector(`[data-payment-months="${resolvedPaymentId}"]`);
+  const unlimitedField = dom.paymentQueue.querySelector(`[data-payment-unlimited="${resolvedPaymentId}"]`);
+  const approveButton = dom.paymentQueue.querySelector(`[data-payment-approve="${resolvedPaymentId}"]`);
+  const helper = dom.paymentQueue.querySelector(`[data-payment-access-helper="${resolvedPaymentId}"]`);
+
+  if (!monthsField || !approveButton || !helper) {
+    return;
+  }
+
+  const unlimitedEnabled = !!unlimitedField?.checked;
+  const monthCount = normalizePaymentAccessMonths(monthsField.value, 1);
+  if (!String(monthsField.value || "").trim()) {
+    monthsField.value = String(monthCount);
+  }
+
+  monthsField.disabled = unlimitedEnabled;
+  monthsField.classList.toggle("cursor-not-allowed", unlimitedEnabled);
+  monthsField.classList.toggle("opacity-60", unlimitedEnabled);
+
+  const accessSummary = getPaymentAccessSummary(monthCount, unlimitedEnabled);
+  approveButton.textContent = accessSummary.buttonLabel;
+  helper.textContent = accessSummary.helperText;
+}
+
+function syncAllPaymentReviewCards() {
+  if (!dom.paymentQueue) {
+    return;
+  }
+
+  dom.paymentQueue.querySelectorAll("[data-payment-approve]").forEach((button) => {
+    syncPaymentReviewCard(button.dataset.paymentApprove);
+  });
+}
+
 function parseDashboardDate(value) {
   const raw = normalizeLocalizedDigits(String(value || "")).trim();
   if (!raw) {
@@ -2334,6 +2402,32 @@ function renderPaymentQueue() {
                 data-payment-date="${escapeHtml(payment.id)}"
                 class="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none"
               />
+              <label class="mt-4 block text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Access Duration</label>
+              <div class="mt-2 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value="1"
+                  data-payment-months="${escapeHtml(payment.id)}"
+                  class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none sm:max-w-[10rem]"
+                  placeholder="Months"
+                />
+                <label class="inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-900">
+                  <input
+                    type="checkbox"
+                    data-payment-unlimited="${escapeHtml(payment.id)}"
+                    class="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span>Unlimited Access</span>
+                </label>
+              </div>
+              <p
+                class="mt-3 text-xs leading-5 text-slate-500"
+                data-payment-access-helper="${escapeHtml(payment.id)}"
+              >
+                This approval will keep the course active for 1 month from the selected payment date.
+              </p>
               <label class="mt-4 block text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Review Note</label>
               <textarea
                 rows="3"
@@ -2366,6 +2460,8 @@ function renderPaymentQueue() {
       `;
     })
     .join("");
+
+  syncAllPaymentReviewCards();
 }
 
 function renderMessageLog() {
@@ -2893,9 +2989,13 @@ async function handleRegistrationReview(registrationId, action) {
 async function handlePaymentReview(paymentId, action) {
   const confirmedField = dom.paymentQueue.querySelector(`[data-payment-confirmed="${paymentId}"]`);
   const paymentDateField = dom.paymentQueue.querySelector(`[data-payment-date="${paymentId}"]`);
+  const accessMonthsField = dom.paymentQueue.querySelector(`[data-payment-months="${paymentId}"]`);
+  const unlimitedField = dom.paymentQueue.querySelector(`[data-payment-unlimited="${paymentId}"]`);
   const noteField = dom.paymentQueue.querySelector(`[data-payment-note="${paymentId}"]`);
   const confirmedTransactionId = confirmedField?.value.trim() || "";
   const paymentDate = paymentDateField?.value.trim() || "";
+  const unlimitedAccess = !!unlimitedField?.checked;
+  const accessMonths = normalizePaymentAccessMonths(accessMonthsField?.value || "1", 1);
   const reviewNote = noteField?.value.trim() || "";
 
   if (action === "approve" && !confirmedTransactionId) {
@@ -2904,13 +3004,28 @@ async function handlePaymentReview(paymentId, action) {
     return;
   }
 
+  if (action === "approve" && !unlimitedAccess && accessMonths < 1) {
+    setFeedback(dom.adminTopFeedback, "Enter a valid month count before approving.", "error");
+    accessMonthsField?.focus();
+    return;
+  }
+
   try {
-    setFeedback(dom.adminTopFeedback, `${action === "approve" ? "Approving" : "Rejecting"} payment...`, "info");
+    const accessSummary = getPaymentAccessSummary(accessMonths, unlimitedAccess);
+    setFeedback(
+      dom.adminTopFeedback,
+      action === "approve"
+        ? `Approving payment for ${accessSummary.accessLabel}...`
+        : "Rejecting payment...",
+      "info"
+    );
     const response = await requestAction("adminreviewpayment", {
       paymentId,
       reviewAction: action,
       confirmedTransactionId,
       paymentDate,
+      accessMonths: action === "approve" ? String(accessMonths) : "",
+      unlimitedAccess: action === "approve" && unlimitedAccess ? "true" : "false",
       reviewNote,
     });
 
@@ -2918,7 +3033,12 @@ async function handlePaymentReview(paymentId, action) {
       throw new Error(response.message || "Unable to update the payment review.");
     }
 
-    applyDashboardPayload(response, `Payment ${action === "approve" ? "approved" : "rejected"}.`);
+    applyDashboardPayload(
+      response,
+      action === "approve"
+        ? `Payment approved for ${accessSummary.accessLabel}.`
+        : "Payment rejected."
+    );
   } catch (error) {
     setFeedback(dom.adminTopFeedback, error.message || "Unable to update the payment review.", "error");
   }
@@ -3025,6 +3145,15 @@ function handlePaymentQueueClick(event) {
   if (rejectButton) {
     handlePaymentReview(rejectButton.dataset.paymentReject, "reject");
   }
+}
+
+function handlePaymentQueueChange(event) {
+  const target = event.target.closest("[data-payment-months], [data-payment-unlimited]");
+  if (!target) {
+    return;
+  }
+
+  syncPaymentReviewCard(target.dataset.paymentMonths || target.dataset.paymentUnlimited || "");
 }
 
 function handleMessageLogClick(event) {
@@ -3150,6 +3279,8 @@ dom.clearCourseFormBtn.addEventListener("click", clearCourseForm);
 dom.courseListPanel.addEventListener("click", handleCourseListClick);
 dom.registrationQueue.addEventListener("click", handleRegistrationQueueClick);
 dom.paymentQueue.addEventListener("click", handlePaymentQueueClick);
+dom.paymentQueue.addEventListener("input", handlePaymentQueueChange);
+dom.paymentQueue.addEventListener("change", handlePaymentQueueChange);
 dom.messageLogPanel.addEventListener("click", handleMessageLogClick);
 window.addEventListener("scroll", persistAdminScrollPosition, { passive: true });
 document.addEventListener("visibilitychange", () => {

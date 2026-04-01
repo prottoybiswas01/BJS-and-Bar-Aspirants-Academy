@@ -1496,6 +1496,7 @@ function processAutoMatchedPayments_(spreadsheet, students) {
     const studentTransactionId = normalizeValue_(payment.studentTransactionId || "");
     const confirmedTransactionId = normalizeValue_(payment.confirmedTransactionId || "");
     const paymentStatus = normalizeValue_(payment.status || "");
+    const paymentAccessSettings = derivePaymentAccessSettings_(payment);
     const matchedStudent = resolveLinkedStudentRecord_(
       studentLookup,
       payment.studentId || "",
@@ -1504,8 +1505,8 @@ function processAutoMatchedPayments_(spreadsheet, students) {
     );
     const needsSelfHealing =
       !String(payment.accessStartDate || "").trim() ||
-      !String(payment.accessEndDate || "").trim() ||
-      !String(payment.paymentDueDate || "").trim() ||
+      (!paymentAccessSettings.unlimitedAccess &&
+        (!String(payment.accessEndDate || "").trim() || !String(payment.paymentDueDate || "").trim())) ||
       (matchedStudent && isPreviewAccessStudent_(matchedStudent));
 
     if (
@@ -1526,7 +1527,9 @@ function processAutoMatchedPayments_(spreadsheet, students) {
       reviewNote:
         String(payment.reviewNote || "Approved automatically after transaction ID match.").trim() ||
         "Approved automatically after transaction ID match.",
-      approvalMode: "Auto Match",
+      approvalMode: getPaymentApprovalBaseMode_(payment.approvalMode || "Auto Match"),
+      accessMonths: paymentAccessSettings.accessMonths,
+      unlimitedAccess: paymentAccessSettings.unlimitedAccess ? "true" : "false",
       source: "auto",
     });
 
@@ -1581,15 +1584,23 @@ function approvePaymentRecordById_(spreadsheet, paymentId, options) {
 
   const normalizedStudentTransactionId = normalizeValue_(payment.studentTransactionId || "");
   const normalizedConfirmedTransactionId = normalizeValue_(confirmedTransactionId);
+  const paymentAccessSettings = normalizePaymentAccessSettings_(options, payment);
   const approvalMode =
     (options && options.approvalMode) ||
     (normalizedStudentTransactionId && normalizedStudentTransactionId === normalizedConfirmedTransactionId
       ? "Auto Match"
       : "Manual Review");
+  const approvalModeLabel = buildPaymentApprovalModeLabel_(
+    approvalMode,
+    paymentAccessSettings.accessMonths,
+    paymentAccessSettings.unlimitedAccess
+  );
   const paymentDate = normalizeIsoDateValue_(
     (options && options.paymentDate) || payment.paymentDate || getTodayIso_()
   );
-  const paymentDueDate = addMonthsIso_(paymentDate, 1);
+  const paymentDueDate = paymentAccessSettings.unlimitedAccess
+    ? ""
+    : addMonthsIso_(paymentDate, paymentAccessSettings.accessMonths);
   const accessStartDate = getEarliestCourseLessonReleaseDate_(spreadsheet, courseId) || paymentDate;
   const monthlyFee = String(payment.amount || course.price || course.fee || course.courseFee || "").trim();
   const reviewedBy =
@@ -1602,13 +1613,9 @@ function approvePaymentRecordById_(spreadsheet, paymentId, options) {
     String(
       (options && options.reviewNote) ||
         payment.reviewNote ||
-        (approvalMode === "Auto Match"
-          ? "Approved automatically after transaction ID match."
-          : "Payment approved from admin panel.")
+        buildPaymentApprovalReviewNote_(approvalMode, paymentAccessSettings)
     ).trim() ||
-    (approvalMode === "Auto Match"
-      ? "Approved automatically after transaction ID match."
-      : "Payment approved from admin panel.");
+    buildPaymentApprovalReviewNote_(approvalMode, paymentAccessSettings);
   const reviewTimestamp = getNowIso_();
   const existingStudentCourseIds = parseStringList_(
     getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.enrolledCourseIds, "")
@@ -1640,7 +1647,9 @@ function approvePaymentRecordById_(spreadsheet, paymentId, options) {
     nextEntry.portalAccessMode = "";
     nextEntry.enrolledCourseIds = buildPipeList_(mergedCourseIds);
     if (!String(nextEntry.highlight || "").trim() || isPreviewAccessStudent_(entry)) {
-      nextEntry.highlight = "Payment confirmed. Full course access is now active.";
+      nextEntry.highlight = paymentAccessSettings.unlimitedAccess
+        ? "Payment confirmed. Unlimited course access is now active."
+        : "Payment confirmed. Full course access is now active.";
     }
 
     if (hasRecordChangesForHeaders_(entry, nextEntry, studentsData.headers)) {
@@ -1671,11 +1680,11 @@ function approvePaymentRecordById_(spreadsheet, paymentId, options) {
     nextEntry.courseId = courseId;
     nextEntry.accessStartDate = accessStartDate;
     nextEntry.accessEndDate = paymentDueDate;
-    nextEntry.unlimitedAccess = "false";
-    nextEntry.videoAccessUntil = paymentDueDate;
-    nextEntry.lastPaymentDate = paymentDate;
-    nextEntry.paymentDueDate = paymentDueDate;
-    nextEntry.monthlyFee = monthlyFee;
+    nextEntry.unlimitedAccess = paymentAccessSettings.unlimitedAccess ? "true" : "false";
+    nextEntry.videoAccessUntil = paymentAccessSettings.unlimitedAccess ? "" : paymentDueDate;
+    nextEntry.lastPaymentDate = paymentAccessSettings.unlimitedAccess ? "" : paymentDate;
+    nextEntry.paymentDueDate = paymentAccessSettings.unlimitedAccess ? "" : paymentDueDate;
+    nextEntry.monthlyFee = paymentAccessSettings.unlimitedAccess ? "" : monthlyFee;
     nextEntry.status = "Active";
     nextEntry.paidMonths = "";
 
@@ -1693,13 +1702,13 @@ function approvePaymentRecordById_(spreadsheet, paymentId, options) {
       courseId: courseId,
       accessStartDate: accessStartDate,
       accessEndDate: paymentDueDate,
-      videoAccessUntil: paymentDueDate,
-      lastPaymentDate: paymentDate,
-      paymentDueDate: paymentDueDate,
-      monthlyFee: monthlyFee,
+      videoAccessUntil: paymentAccessSettings.unlimitedAccess ? "" : paymentDueDate,
+      lastPaymentDate: paymentAccessSettings.unlimitedAccess ? "" : paymentDate,
+      paymentDueDate: paymentAccessSettings.unlimitedAccess ? "" : paymentDueDate,
+      monthlyFee: paymentAccessSettings.unlimitedAccess ? "" : monthlyFee,
       status: "Active",
       paidMonths: "",
-      unlimitedAccess: "false",
+      unlimitedAccess: paymentAccessSettings.unlimitedAccess ? "true" : "false",
     });
     hasEnrollmentChanges = true;
   }
@@ -1723,10 +1732,10 @@ function approvePaymentRecordById_(spreadsheet, paymentId, options) {
     nextEntry.paymentDate = paymentDate;
     nextEntry.accessStartDate = accessStartDate;
     nextEntry.accessEndDate = paymentDueDate;
-    nextEntry.paymentDueDate = paymentDueDate;
+    nextEntry.paymentDueDate = paymentAccessSettings.unlimitedAccess ? "" : paymentDueDate;
     nextEntry.approvalMode = forceReviewOverwrite
-      ? approvalMode
-      : String(nextEntry.approvalMode || approvalMode).trim() || approvalMode;
+      ? approvalModeLabel
+      : String(nextEntry.approvalMode || approvalModeLabel).trim() || approvalModeLabel;
     nextEntry.reviewedOn = forceReviewOverwrite
       ? reviewTimestamp
       : String(nextEntry.reviewedOn || "").trim() || reviewTimestamp;
@@ -2414,6 +2423,8 @@ function handleAdminReviewPayment_(request) {
     paymentDate: normalizeIsoDateValue_(request.paymentDate || payment.submittedOn || getTodayIso_()),
     reviewedBy: auth.username || auth.name || auth.id || "",
     reviewNote: String(request.reviewNote || "Payment approved from admin panel."),
+    accessMonths: request.accessMonths || "",
+    unlimitedAccess: request.unlimitedAccess || "",
     approvalMode:
       normalizeValue_(payment.studentTransactionId || "") === normalizeValue_(confirmedTransactionId)
         ? "Auto Match"
@@ -2966,6 +2977,83 @@ function isPendingPaymentStatus_(value) {
 
 function normalizeUnlimitedAccessValue_(value) {
   return UNLIMITED_ACCESS_VALUES_.indexOf(normalizeValue_(value)) !== -1 ? "true" : "false";
+}
+
+function normalizePaymentAccessMonthCount_(value, fallback) {
+  const parsed = Number(String(value || "").trim());
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return Math.max(1, Number(fallback || 1));
+  }
+
+  return Math.max(1, Math.floor(parsed));
+}
+
+function getPaymentApprovalBaseMode_(value) {
+  const normalized = normalizeValue_(value);
+  return normalized.indexOf("auto") === 0 ? "Auto Match" : "Manual Review";
+}
+
+function derivePaymentAccessSettings_(payment) {
+  const approvalModeText = String((payment && payment.approvalMode) || "").trim();
+  const unlimitedAccess = /\bunlimited\b/i.test(approvalModeText);
+  const monthsMatch = approvalModeText.match(/(\d+)\s*month/i);
+
+  return {
+    accessMonths: unlimitedAccess ? 1 : normalizePaymentAccessMonthCount_(monthsMatch ? monthsMatch[1] : "", 1),
+    unlimitedAccess: unlimitedAccess,
+  };
+}
+
+function normalizePaymentAccessSettings_(options, payment) {
+  const derivedSettings = derivePaymentAccessSettings_(payment);
+  const unlimitedAccess = hasProvidedValue_(options && options.unlimitedAccess)
+    ? normalizeUnlimitedAccessValue_(options.unlimitedAccess) === "true"
+    : !!derivedSettings.unlimitedAccess;
+
+  return {
+    accessMonths: unlimitedAccess
+      ? 1
+      : normalizePaymentAccessMonthCount_(
+          hasProvidedValue_(options && options.accessMonths)
+            ? options.accessMonths
+            : derivedSettings.accessMonths,
+          1
+        ),
+    unlimitedAccess: unlimitedAccess,
+  };
+}
+
+function buildPaymentApprovalModeLabel_(baseMode, accessMonths, unlimitedAccess) {
+  return String(baseMode || "Manual Review").trim() +
+    " - " +
+    (unlimitedAccess
+      ? "Unlimited"
+      : String(normalizePaymentAccessMonthCount_(accessMonths, 1)) +
+        " Month" +
+        (normalizePaymentAccessMonthCount_(accessMonths, 1) === 1 ? "" : "s"));
+}
+
+function buildPaymentApprovalReviewNote_(baseMode, accessSettings) {
+  const actionLabel = String(baseMode || "Manual Review").trim() === "Auto Match"
+    ? "Approved automatically after transaction ID match"
+    : "Payment approved from admin panel";
+
+  if (accessSettings && accessSettings.unlimitedAccess) {
+    return actionLabel + " with unlimited course access.";
+  }
+
+  const monthCount = normalizePaymentAccessMonthCount_(
+    accessSettings && accessSettings.accessMonths,
+    1
+  );
+  return (
+    actionLabel +
+    " for " +
+    monthCount +
+    " month" +
+    (monthCount === 1 ? "" : "s") +
+    "."
+  );
 }
 
 function normalizeLocalizedDigit_(character) {
