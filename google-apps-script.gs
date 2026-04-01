@@ -2183,6 +2183,104 @@ function applyDuplicateTransactionSecurityLock_(spreadsheet, payments, transacti
   };
 }
 
+function buildDuplicateTransactionStudentLookup_(payments, students) {
+  const studentLookup = buildStudentLookupMaps_(students || []);
+  const paymentGroups = {};
+
+  (payments || []).forEach(function (payment) {
+    const normalizedTransactionId = normalizePaymentTransactionId_(payment.studentTransactionId || "");
+    if (!normalizedTransactionId) {
+      return;
+    }
+
+    if (!paymentGroups[normalizedTransactionId]) {
+      paymentGroups[normalizedTransactionId] = [];
+    }
+
+    paymentGroups[normalizedTransactionId].push(payment);
+  });
+
+  return Object.keys(paymentGroups).reduce(function (result, transactionId) {
+    const groupedPayments = paymentGroups[transactionId] || [];
+    if (groupedPayments.length < 2) {
+      return result;
+    }
+
+    groupedPayments.forEach(function (payment) {
+      const matchedStudent = resolveLinkedStudentRecord_(
+        studentLookup,
+        payment.studentId || "",
+        payment.studentPhone || "",
+        payment.studentEmail || ""
+      );
+      const studentId = matchedStudent ? getStudentId_(matchedStudent) : String(payment.studentId || "").trim();
+      if (studentId) {
+        result[studentId] = true;
+      }
+    });
+
+    return result;
+  }, {});
+}
+
+function releaseResolvedDuplicateTransactionSecurityLocks_(spreadsheet, students, payments) {
+  if (!spreadsheet) {
+    return [];
+  }
+
+  const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
+  const sourceStudents = Array.isArray(students) && students.length ? students : studentsData.records;
+  const lockedStudents = sourceStudents.filter(function (student) {
+    return isSecurityLockHighlight_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.highlight, ""));
+  });
+
+  if (!lockedStudents.length) {
+    return [];
+  }
+
+  const duplicateStudentLookup = buildDuplicateTransactionStudentLookup_(payments, sourceStudents);
+  let hasChanges = false;
+  const restoredStudents = [];
+  const nextStudents = studentsData.records.map(function (student) {
+    const studentId = getStudentId_(student);
+    const highlight = String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.highlight, "")).trim();
+    if (!studentId || !isSecurityLockHighlight_(highlight) || duplicateStudentLookup[studentId]) {
+      return student;
+    }
+
+    const nextStudent = Object.assign({}, student);
+    const normalizedStatus = normalizeValue_(nextStudent.status || "");
+    if (
+      normalizedStatus === "blocked" ||
+      normalizedStatus === "suspended" ||
+      normalizedStatus === "inactive"
+    ) {
+      nextStudent.status = "Active";
+    }
+    nextStudent.highlight = "";
+
+    if (hasRecordChangesForHeaders_(student, nextStudent, studentsData.headers)) {
+      hasChanges = true;
+      restoredStudents.push(nextStudent);
+      return nextStudent;
+    }
+
+    return student;
+  });
+
+  if (!hasChanges) {
+    return [];
+  }
+
+  writeSheetEntries_(studentsData.sheet, studentsData.headers, nextStudents);
+  syncLatestRegistrationReviewsForStudents_(spreadsheet, restoredStudents, {
+    username: "Security Lock Auto Release",
+    name: "Security Lock Auto Release",
+    id: "Security Lock Auto Release",
+  });
+  return restoredStudents;
+}
+
 function syncPortalLinkedData_(spreadsheet) {
   if (!spreadsheet) {
     return 0;
@@ -2192,7 +2290,13 @@ function syncPortalLinkedData_(spreadsheet) {
   const coursesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.courses);
   syncLinkedRegistrations_(spreadsheet, studentsData.records);
   syncLinkedPayments_(spreadsheet, studentsData.records, coursesData.records);
-  return processAutoMatchedPayments_(spreadsheet, studentsData.records);
+  const syncedStudents = readSheet_(studentsData.sheet);
+  const syncedPayments = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.payments));
+  releaseResolvedDuplicateTransactionSecurityLocks_(spreadsheet, syncedStudents, syncedPayments);
+  return processAutoMatchedPayments_(
+    spreadsheet,
+    readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students))
+  );
 }
 
 function syncLinkedRegistrations_(spreadsheet, students) {

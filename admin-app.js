@@ -2204,6 +2204,7 @@ function renderStudentTable() {
     renderStudentMobileList([]);
     dom.selectAllStudents.checked = false;
     renderSelectionState();
+    renderDeviceRegistry();
     return;
   }
 
@@ -2274,6 +2275,7 @@ function renderStudentTable() {
     state.visibleStudentIds.length > 0 &&
     state.visibleStudentIds.every((studentId) => state.selectedStudentIds.has(studentId));
   renderSelectionState();
+  renderDeviceRegistry();
 }
 
 function renderCourseList() {
@@ -2508,14 +2510,25 @@ function buildDeviceLocationLabel(device) {
 }
 
 function getOrderedDeviceRegistryEntries() {
-  const focusedStudentId = state.editingStudentId || getSelectedStudentIds()[0] || "";
-  if (!focusedStudentId) {
-    return state.data.devices.slice();
+  const selectedStudentIds = getSelectedStudentIds().filter((studentId) => !!getStudentById(studentId));
+  if (!selectedStudentIds.length) {
+    return [];
   }
 
-  const focusedDevices = state.data.devices.filter((device) => device.studentId === focusedStudentId);
-  const otherDevices = state.data.devices.filter((device) => device.studentId !== focusedStudentId);
-  return focusedDevices.concat(otherDevices);
+  const selectedOrder = new Map(selectedStudentIds.map((studentId, index) => [studentId, index]));
+  return state.data.devices
+    .filter((device) => selectedOrder.has(device.studentId))
+    .sort((left, right) => {
+      const studentOrder = selectedOrder.get(left.studentId) - selectedOrder.get(right.studentId);
+      if (studentOrder !== 0) {
+        return studentOrder;
+      }
+
+      return (
+        new Date(right.lastSeenOn || right.lastLoginOn || 0).getTime() -
+        new Date(left.lastSeenOn || left.lastLoginOn || 0).getTime()
+      );
+    });
 }
 
 function renderDeviceRegistry() {
@@ -2523,26 +2536,36 @@ function renderDeviceRegistry() {
     return;
   }
 
-  if (!state.data.devices.length) {
+  const selectedStudents = getSelectedStudents();
+  if (!selectedStudents.length) {
     dom.deviceRegistryPanel.innerHTML =
-      '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-500">No approved device has logged in yet.</div>';
+      '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-500">Select one or more students from the Student Access Manager to see only their approved devices here.</div>';
     return;
   }
 
-  const focusedStudent = state.editingStudentId ? getStudentById(state.editingStudentId) : null;
   const orderedDevices = getOrderedDeviceRegistryEntries();
+  if (!orderedDevices.length) {
+    dom.deviceRegistryPanel.innerHTML = `<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-500">No approved device record was found for ${
+      selectedStudents.length === 1 ? escapeHtml(selectedStudents[0].name || selectedStudents[0].id) : "the selected students"
+    }.</div>`;
+    return;
+  }
+
+  const selectedNames = formatSelectedStudentNames(selectedStudents);
+  const leadStudent = selectedStudents[0] || null;
 
   dom.deviceRegistryPanel.innerHTML = [
-    focusedStudent
-      ? `<div class="rounded-[1.25rem] border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">Showing ${getDevicesForStudent(
-          focusedStudent.id
-        ).length} device record${getDevicesForStudent(focusedStudent.id).length === 1 ? "" : "s"} for ${escapeHtml(
-          focusedStudent.name || focusedStudent.id
-        )} first. Policy: ${escapeHtml(buildStudentDeviceUsageLabel(focusedStudent))}.</div>`
-      : "",
+    selectedStudents.length === 1
+      ? `<div class="rounded-[1.25rem] border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">Showing ${orderedDevices.length} device record${
+          orderedDevices.length === 1 ? "" : "s"
+        } for ${escapeHtml(leadStudent?.name || leadStudent?.id || "this student")} only. Policy: ${escapeHtml(
+          buildStudentDeviceUsageLabel(leadStudent)
+        )}.</div>`
+      : `<div class="rounded-[1.25rem] border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">Showing ${orderedDevices.length} device record${
+          orderedDevices.length === 1 ? "" : "s"
+        } for ${selectedStudents.length} selected students only: ${escapeHtml(selectedNames)}.</div>`,
     orderedDevices
-      .slice(0, 32)
-    .map((device) => {
+      .map((device) => {
       const student = getStudentById(device.studentId) || null;
       const studentLabel = student?.name || device.studentId || "Student";
       const studentMeta = [device.studentId, student?.phone || ""].filter(Boolean).join(" | ");
@@ -2551,7 +2574,7 @@ function renderDeviceRegistry() {
 
       return `
         <div class="rounded-[1.5rem] border ${
-          focusedStudent && device.studentId === focusedStudent.id ? "border-blue-200 bg-blue-50/70" : "border-slate-100 bg-slate-50"
+          state.selectedStudentIds.has(device.studentId) ? "border-blue-200 bg-blue-50/70" : "border-slate-100 bg-slate-50"
         } p-4">
           <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div class="min-w-0">
@@ -2730,7 +2753,6 @@ function renderDashboard() {
   renderBulkCourseSelector();
   renderCourseList();
   renderPaymentQueue();
-  renderDeviceRegistry();
   renderMessageLog();
 
   if (state.editingCourseId) {
