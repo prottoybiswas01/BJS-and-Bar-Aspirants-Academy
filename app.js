@@ -3834,11 +3834,15 @@ async function requestCourseAccess(courseId) {
       }
 
       if (Array.isArray(result.payments)) {
-        state.data.payments = normalizeData({ payments: result.payments }).payments || state.data.payments;
-        persistPortalDataSnapshot({
-          data: state.data,
-          modeLabel: "Live Google Sheet",
-        });
+        try {
+          state.data.payments = normalizeData({ payments: result.payments }).payments || state.data.payments;
+          persistPortalDataSnapshot({
+            data: state.data,
+            modeLabel: "Live Google Sheet",
+          });
+        } catch (normalizationError) {
+          console.warn("Payment request was saved, but the payment list could not be refreshed immediately.", normalizationError);
+        }
       }
 
       return result;
@@ -3977,17 +3981,24 @@ async function handlePaymentSubmit(event) {
   try {
     const result = await requestCourseAccess(courseId);
     closePaymentModal();
-    const activeStudent = getActiveStudent();
-    if (activeStudent) {
-      state.openCourseId = courseId;
-      renderDashboard(activeStudent);
-    }
     const isPendingReview = !!result.pendingReview;
     const feedbackMessage = result.message ||
       (isPendingReview
         ? "Please wait a little while. Your course will activate automatically after confirmation."
         : "Payment request submitted successfully.");
-    setFeedback(feedbackMessage, isPendingReview ? "neutral" : "success");
+    try {
+      const activeStudent = getActiveStudent();
+      if (activeStudent) {
+        state.openCourseId = courseId;
+        renderDashboard(activeStudent);
+      }
+      setFeedback(feedbackMessage, isPendingReview ? "neutral" : "success");
+    } catch (followUpError) {
+      console.warn("Payment request succeeded, but the dashboard could not refresh immediately.", followUpError);
+      setFeedback(feedbackMessage, "neutral");
+      refreshPortalDataInBackground();
+    }
+
     showActionNotice({
       type: isPendingReview ? "info" : "success",
       title: isPendingReview
