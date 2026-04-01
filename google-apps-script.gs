@@ -3021,7 +3021,7 @@ function writeSheetEntries_(sheet, headers, records) {
   invalidatePublicReadCaches_();
   flushSpreadsheetChanges_();
 }
-
+  
 function flushSpreadsheetChanges_() {
   try {
     SpreadsheetApp.flush();

@@ -3539,9 +3539,11 @@ async function requestCourseAccess(courseId) {
   const timeoutHandle = controller
     ? setTimeout(() => controller.abort(), APP_CONFIG.remoteRequestTimeoutMs)
     : null;
+  let response;
+  let rawResponse = "";
 
   try {
-    const response = await fetch(APP_CONFIG.remoteEndpoint, {
+    response = await fetch(APP_CONFIG.remoteEndpoint, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -3562,11 +3564,34 @@ async function requestCourseAccess(courseId) {
     }
 
     if (!response.ok) {
-      throw new Error("Unable to submit the payment request right now.");
+      throw new Error(`Unable to submit the payment request right now (${response.status}).`);
     }
 
-    const result = await response.json();
+    try {
+      rawResponse = await response.text();
+    } catch (readError) {
+      throw new Error("Payment server response could not be read.");
+    }
+
+    let result;
+    try {
+      result = JSON.parse(rawResponse);
+    } catch (parseError) {
+      if (/^\s*</.test(rawResponse)) {
+        throw new Error("Payment server returned HTML instead of JSON. Redeploy the latest Apps Script web app.");
+      }
+
+      throw new Error("Payment server returned an invalid JSON response.");
+    }
+
     if (!result.ok) {
+      const normalizedMessage = getCompactLookupValue(result.message || "");
+      if (normalizedMessage === "unsupportedrequestaction") {
+        throw new Error(
+          "The payment endpoint is still using an older Apps Script deployment. Redeploy the latest web app so `studentsubmitpayment` works."
+        );
+      }
+
       throw new Error(result.message || "Payment request failed.");
     }
 
