@@ -1607,6 +1607,7 @@ function startStudentInboxPolling(studentId = state.activeStudentId) {
       return;
     }
 
+    refreshPortalDataInBackground();
     refreshStudentInboxInBackground(studentId, { openModal: true });
   }, APP_CONFIG.studentInboxPollIntervalMs);
 }

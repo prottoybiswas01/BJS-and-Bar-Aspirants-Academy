@@ -408,6 +408,60 @@ function setupLawPortalSheets() {
   return buildStatusPayload_(spreadsheet);
 }
 
+function runPortalAutomation() {
+  const spreadsheet = ensurePortalSheets_(getSpreadsheet_());
+  const processedPayments = syncPortalLinkedData_(spreadsheet);
+
+  return jsonOutput_({
+    ok: true,
+    message: "Portal automation finished.",
+    processedPayments: processedPayments,
+    spreadsheetId: spreadsheet.getId(),
+    spreadsheetName: spreadsheet.getName(),
+  });
+}
+
+function handlePortalAutomationEditTrigger(e) {
+  const spreadsheet = ensurePortalSheets_(getSpreadsheet_());
+  syncPortalLinkedData_(spreadsheet);
+}
+
+function handlePortalAutomationChangeTrigger(e) {
+  const spreadsheet = ensurePortalSheets_(getSpreadsheet_());
+  syncPortalLinkedData_(spreadsheet);
+}
+
+function installPortalAutomationTriggers() {
+  const spreadsheet = getSpreadsheet_();
+  const handlerNames = [
+    "handlePortalAutomationEditTrigger",
+    "handlePortalAutomationChangeTrigger",
+  ];
+
+  ScriptApp.getProjectTriggers().forEach(function (trigger) {
+    if (handlerNames.indexOf(trigger.getHandlerFunction()) !== -1) {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+
+  ScriptApp.newTrigger("handlePortalAutomationEditTrigger")
+    .forSpreadsheet(spreadsheet.getId())
+    .onEdit()
+    .create();
+
+  ScriptApp.newTrigger("handlePortalAutomationChangeTrigger")
+    .forSpreadsheet(spreadsheet.getId())
+    .onChange()
+    .create();
+
+  return jsonOutput_({
+    ok: true,
+    message: "Installable spreadsheet triggers created successfully.",
+    spreadsheetId: spreadsheet.getId(),
+    spreadsheetName: spreadsheet.getName(),
+  });
+}
+
 function seedLawPortalDemoData() {
   const spreadsheet = getSpreadsheet_();
   const result = {};
@@ -1235,13 +1289,14 @@ function getStudentPayments_(spreadsheet, studentId) {
 
 function syncPortalLinkedData_(spreadsheet) {
   if (!spreadsheet) {
-    return;
+    return 0;
   }
 
   const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
   const coursesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.courses);
   syncLinkedRegistrations_(spreadsheet, studentsData.records);
   syncLinkedPayments_(spreadsheet, studentsData.records, coursesData.records);
+  return processAutoMatchedPayments_(spreadsheet, studentsData.records);
 }
 
 function syncLinkedRegistrations_(spreadsheet, students) {
@@ -1420,6 +1475,291 @@ function hasRecordChangesForHeaders_(currentRecord, nextRecord, headers) {
   return (headers || []).some(function (header) {
     return serializeRowValue_(currentRecord[header]) !== serializeRowValue_(nextRecord[header]);
   });
+}
+
+function processAutoMatchedPayments_(spreadsheet, students) {
+  const payments = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.payments));
+  if (!payments.length) {
+    return 0;
+  }
+
+  const studentLookup = buildStudentLookupMaps_(students || readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students)));
+
+  return payments.reduce(function (count, payment) {
+    const paymentId = String(payment.id || "").trim();
+    const studentTransactionId = normalizeValue_(payment.studentTransactionId || "");
+    const confirmedTransactionId = normalizeValue_(payment.confirmedTransactionId || "");
+    const paymentStatus = normalizeValue_(payment.status || "");
+    const matchedStudent = resolveLinkedStudentRecord_(
+      studentLookup,
+      payment.studentId || "",
+      payment.studentPhone || "",
+      payment.studentEmail || ""
+    );
+    const needsSelfHealing =
+      !String(payment.accessStartDate || "").trim() ||
+      !String(payment.accessEndDate || "").trim() ||
+      !String(payment.paymentDueDate || "").trim() ||
+      (matchedStudent && isPreviewAccessStudent_(matchedStudent));
+
+    if (
+      !paymentId ||
+      !studentTransactionId ||
+      !confirmedTransactionId ||
+      studentTransactionId !== confirmedTransactionId ||
+      paymentStatus === "rejected" ||
+      (!isPendingPaymentStatus_(payment.status || "") && !needsSelfHealing)
+    ) {
+      return count;
+    }
+
+    const result = approvePaymentRecordById_(spreadsheet, paymentId, {
+      confirmedTransactionId: String(payment.confirmedTransactionId || "").trim(),
+      paymentDate: String(payment.paymentDate || "").trim(),
+      reviewedBy: String(payment.reviewedBy || "Sheet Auto Match").trim() || "Sheet Auto Match",
+      reviewNote:
+        String(payment.reviewNote || "Approved automatically after transaction ID match.").trim() ||
+        "Approved automatically after transaction ID match.",
+      approvalMode: "Auto Match",
+      source: "auto",
+    });
+
+    return count + (result && result.changed ? 1 : 0);
+  }, 0);
+}
+
+function approvePaymentRecordById_(spreadsheet, paymentId, options) {
+  const paymentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.payments);
+  const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
+  const enrollmentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.enrollments);
+  const courses = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses));
+  const paymentIndex = paymentsData.records.findIndex(function (entry) {
+    return String(entry.id || "").trim() === String(paymentId || "").trim();
+  });
+
+  if (paymentIndex === -1) {
+    throw new Error("Payment record was not found.");
+  }
+
+  const payment = paymentsData.records[paymentIndex] || {};
+  const studentLookup = buildStudentLookupMaps_(studentsData.records);
+  const student = resolveLinkedStudentRecord_(
+    studentLookup,
+    payment.studentId || "",
+    payment.studentPhone || "",
+    payment.studentEmail || ""
+  );
+  if (!student) {
+    throw new Error("Student account was not found for this payment.");
+  }
+
+  const studentId = getStudentId_(student);
+  const courseId = String(payment.courseId || "").trim();
+  if (!courseId) {
+    throw new Error("Course ID is missing from this payment record.");
+  }
+
+  const course = courses.find(function (entry) {
+    return String(entry.id || entry.courseId || "").trim() === courseId;
+  });
+  if (!course) {
+    throw new Error("Course was not found for this payment record.");
+  }
+
+  const confirmedTransactionId = String(
+    (options && options.confirmedTransactionId) || payment.confirmedTransactionId || ""
+  ).trim();
+  if (!confirmedTransactionId) {
+    throw new Error("Confirmed bKash transaction ID is required.");
+  }
+
+  const normalizedStudentTransactionId = normalizeValue_(payment.studentTransactionId || "");
+  const normalizedConfirmedTransactionId = normalizeValue_(confirmedTransactionId);
+  const approvalMode =
+    (options && options.approvalMode) ||
+    (normalizedStudentTransactionId && normalizedStudentTransactionId === normalizedConfirmedTransactionId
+      ? "Auto Match"
+      : "Manual Review");
+  const paymentDate = normalizeIsoDateValue_(
+    (options && options.paymentDate) || payment.paymentDate || getTodayIso_()
+  );
+  const paymentDueDate = addMonthsIso_(paymentDate, 1);
+  const accessStartDate = getEarliestCourseLessonReleaseDate_(spreadsheet, courseId) || paymentDate;
+  const monthlyFee = String(payment.amount || course.price || course.fee || course.courseFee || "").trim();
+  const reviewedBy =
+    String(
+      (options && options.reviewedBy) ||
+        payment.reviewedBy ||
+        (approvalMode === "Auto Match" ? "Sheet Auto Match" : "Admin Panel")
+    ).trim() || (approvalMode === "Auto Match" ? "Sheet Auto Match" : "Admin Panel");
+  const reviewNote =
+    String(
+      (options && options.reviewNote) ||
+        payment.reviewNote ||
+        (approvalMode === "Auto Match"
+          ? "Approved automatically after transaction ID match."
+          : "Payment approved from admin panel.")
+    ).trim() ||
+    (approvalMode === "Auto Match"
+      ? "Approved automatically after transaction ID match."
+      : "Payment approved from admin panel.");
+  const reviewTimestamp = getNowIso_();
+  const existingStudentCourseIds = parseStringList_(
+    getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.enrolledCourseIds, "")
+  );
+  const existingEnrollmentCourseIds = enrollmentsData.records
+    .filter(function (enrollment) {
+      return String(enrollment.studentId || "").trim() === studentId;
+    })
+    .map(function (enrollment) {
+      return String(enrollment.courseId || "").trim();
+    })
+    .filter(Boolean);
+  const mergedCourseIds = existingStudentCourseIds
+    .concat(existingEnrollmentCourseIds)
+    .concat([courseId])
+    .filter(function (entryCourseId, index, list) {
+      return entryCourseId && list.indexOf(entryCourseId) === index;
+    });
+
+  let hasStudentChanges = false;
+  const nextStudents = studentsData.records.map(function (entry) {
+    if (getStudentId_(entry) !== studentId) {
+      return entry;
+    }
+
+    const nextEntry = Object.assign({}, entry);
+    nextEntry.status = "Active";
+    nextEntry.loginApproval = "Approved";
+    nextEntry.portalAccessMode = "";
+    nextEntry.enrolledCourseIds = buildPipeList_(mergedCourseIds);
+    if (!String(nextEntry.highlight || "").trim() || isPreviewAccessStudent_(entry)) {
+      nextEntry.highlight = "Payment confirmed. Full course access is now active.";
+    }
+
+    if (hasRecordChangesForHeaders_(entry, nextEntry, studentsData.headers)) {
+      hasStudentChanges = true;
+      return nextEntry;
+    }
+
+    return entry;
+  });
+
+  if (hasStudentChanges) {
+    writeSheetEntries_(studentsData.sheet, studentsData.headers, nextStudents);
+  }
+
+  let hasEnrollmentChanges = false;
+  let hasTargetEnrollment = false;
+  const nextEnrollments = enrollmentsData.records.map(function (entry) {
+    if (
+      String(entry.studentId || "").trim() !== studentId ||
+      String(entry.courseId || "").trim() !== courseId
+    ) {
+      return entry;
+    }
+
+    hasTargetEnrollment = true;
+    const nextEntry = Object.assign({}, entry);
+    nextEntry.studentId = studentId;
+    nextEntry.courseId = courseId;
+    nextEntry.accessStartDate = accessStartDate;
+    nextEntry.accessEndDate = paymentDueDate;
+    nextEntry.unlimitedAccess = "false";
+    nextEntry.videoAccessUntil = paymentDueDate;
+    nextEntry.lastPaymentDate = paymentDate;
+    nextEntry.paymentDueDate = paymentDueDate;
+    nextEntry.monthlyFee = monthlyFee;
+    nextEntry.status = "Active";
+    nextEntry.paidMonths = "";
+
+    if (hasRecordChangesForHeaders_(entry, nextEntry, enrollmentsData.headers)) {
+      hasEnrollmentChanges = true;
+      return nextEntry;
+    }
+
+    return entry;
+  });
+
+  if (!hasTargetEnrollment) {
+    nextEnrollments.push({
+      studentId: studentId,
+      courseId: courseId,
+      accessStartDate: accessStartDate,
+      accessEndDate: paymentDueDate,
+      videoAccessUntil: paymentDueDate,
+      lastPaymentDate: paymentDate,
+      paymentDueDate: paymentDueDate,
+      monthlyFee: monthlyFee,
+      status: "Active",
+      paidMonths: "",
+      unlimitedAccess: "false",
+    });
+    hasEnrollmentChanges = true;
+  }
+
+  if (hasEnrollmentChanges) {
+    writeSheetEntries_(enrollmentsData.sheet, enrollmentsData.headers, nextEnrollments);
+  }
+
+  let hasPaymentChanges = false;
+  const forceReviewOverwrite = !!(options && options.forceReviewOverwrite);
+  const nextPayments = paymentsData.records.map(function (entry, index) {
+    if (index !== paymentIndex) {
+      return entry;
+    }
+
+    const nextEntry = Object.assign({}, entry);
+    nextEntry.confirmedTransactionId = confirmedTransactionId;
+    nextEntry.courseTitle = String(course.title || course.shortTitle || courseId).trim();
+    nextEntry.amount = monthlyFee;
+    nextEntry.status = "Approved";
+    nextEntry.paymentDate = paymentDate;
+    nextEntry.accessStartDate = accessStartDate;
+    nextEntry.accessEndDate = paymentDueDate;
+    nextEntry.paymentDueDate = paymentDueDate;
+    nextEntry.approvalMode = forceReviewOverwrite
+      ? approvalMode
+      : String(nextEntry.approvalMode || approvalMode).trim() || approvalMode;
+    nextEntry.reviewedOn = forceReviewOverwrite
+      ? reviewTimestamp
+      : String(nextEntry.reviewedOn || "").trim() || reviewTimestamp;
+    nextEntry.reviewedBy = forceReviewOverwrite
+      ? reviewedBy
+      : String(nextEntry.reviewedBy || "").trim() || reviewedBy;
+    nextEntry.reviewNote = forceReviewOverwrite
+      ? reviewNote
+      : String(nextEntry.reviewNote || "").trim() || reviewNote;
+
+    if (hasRecordChangesForHeaders_(entry, nextEntry, paymentsData.headers)) {
+      hasPaymentChanges = true;
+      return nextEntry;
+    }
+
+    return entry;
+  });
+
+  if (hasPaymentChanges) {
+    writeSheetEntries_(paymentsData.sheet, paymentsData.headers, nextPayments);
+  }
+
+  const finalStudent =
+    nextStudents.find(function (entry) {
+      return getStudentId_(entry) === studentId;
+    }) || student;
+  syncLatestRegistrationReviewsForStudents_(spreadsheet, [finalStudent], {
+    username: reviewedBy,
+    name: reviewedBy,
+    id: reviewedBy,
+  });
+
+  return {
+    ok: true,
+    changed: hasStudentChanges || hasEnrollmentChanges || hasPaymentChanges,
+    paymentId: paymentId,
+    studentId: studentId,
+    courseId: courseId,
+  };
 }
 
 function getStudentAssignedCourseIds_(spreadsheet, student) {
@@ -2063,64 +2403,18 @@ function handleAdminReviewPayment_(request) {
     return jsonOutput_({ ok: false, message: "Confirmed bKash transaction ID is required." });
   }
 
-  const paymentDate = normalizeIsoDateValue_(request.paymentDate || payment.submittedOn || getTodayIso_());
-  const paymentDueDate = addMonthsIso_(paymentDate, 1);
-  const accessStartDate = getEarliestCourseLessonReleaseDate_(spreadsheet, courseId) || paymentDate;
-  const mergedCourseIds = getStudentAssignedCourseIds_(spreadsheet, student)
-    .concat([courseId])
-    .filter(function (entryCourseId, index, list) {
-      return entryCourseId && list.indexOf(entryCourseId) === index;
-    });
-  const approvalMode =
-    normalizeValue_(payment.studentTransactionId || "") === normalizeValue_(confirmedTransactionId)
-      ? "Auto Match"
-      : "Manual Review";
-  const course = courses.find(function (entry) {
-    return String(entry.id || entry.courseId || "").trim() === courseId;
+  approvePaymentRecordById_(spreadsheet, paymentId, {
+    confirmedTransactionId: confirmedTransactionId,
+    paymentDate: normalizeIsoDateValue_(request.paymentDate || payment.submittedOn || getTodayIso_()),
+    reviewedBy: auth.username || auth.name || auth.id || "",
+    reviewNote: String(request.reviewNote || "Payment approved from admin panel."),
+    approvalMode:
+      normalizeValue_(payment.studentTransactionId || "") === normalizeValue_(confirmedTransactionId)
+        ? "Auto Match"
+        : "Manual Review",
+    forceReviewOverwrite: true,
+    source: "admin",
   });
-  const monthlyFee = String(payment.amount || (course ? course.price || course.fee || "" : "")).trim();
-
-  syncStudentCourses_(spreadsheet, [studentId], mergedCourseIds, {
-    replaceExisting: true,
-    courseRulesMap: (function () {
-      const courseRulesMap = {};
-      courseRulesMap[courseId] = {
-        accessStartDate: accessStartDate,
-        accessEndDate: paymentDueDate,
-        videoAccessUntil: paymentDueDate,
-        lastPaymentDate: paymentDate,
-        paymentDueDate: paymentDueDate,
-        monthlyFee: monthlyFee,
-        status: "Active",
-        paidMonths: "",
-        unlimitedAccess: "false",
-      };
-      return courseRulesMap;
-    })(),
-  });
-
-  writeSheetEntries_(
-    paymentsData.sheet,
-    paymentsData.headers,
-    paymentsData.records.map(function (entry) {
-      if (String(entry.id || "").trim() !== paymentId) {
-        return entry;
-      }
-
-      const nextEntry = Object.assign({}, entry);
-      nextEntry.confirmedTransactionId = confirmedTransactionId;
-      nextEntry.status = "Approved";
-      nextEntry.reviewedOn = getNowIso_();
-      nextEntry.reviewedBy = auth.username || auth.name || auth.id || "";
-      nextEntry.paymentDate = paymentDate;
-      nextEntry.accessStartDate = accessStartDate;
-      nextEntry.accessEndDate = paymentDueDate;
-      nextEntry.paymentDueDate = paymentDueDate;
-      nextEntry.approvalMode = approvalMode;
-      nextEntry.reviewNote = String(request.reviewNote || "Payment approved from admin panel.");
-      return nextEntry;
-    })
-  );
 
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
 }
