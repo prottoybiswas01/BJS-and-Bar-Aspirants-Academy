@@ -124,6 +124,7 @@ const SELF_REGISTRATION_REVIEWED_BY_ = "Self Registration";
 const STUDENT_LOGIN_QUERY_LABEL_ = "registration number, student ID, phone number, or email";
 const ADMIN_TOKEN_PREFIX_ = "ain-pathshala.admin-token.";
 const ADMIN_TOKEN_TTL_SECONDS_ = 21600;
+const SECURITY_LOCK_HIGHLIGHT_PREFIX_ = "Security lock:";
 const PUBLIC_CACHE_TTL_SECONDS_ = 0;
 const PUBLIC_CACHE_KEYS_ = Object.freeze({
   courses: "ain-pathshala.public-courses",
@@ -933,6 +934,18 @@ function handleStudentSubmitPayment_(request) {
     return jsonOutput_({ ok: false, message: "Student account was not found." });
   }
 
+  if (BLOCKED_STATUS_VALUES.indexOf(normalizeValue_(getStudentStatus_(student))) !== -1) {
+    return jsonOutput_({
+      ok: true,
+      blocked: true,
+      message: getStudentSecurityLockMessage_(
+        student,
+        "This student account is blocked. Contact the admin office before submitting another payment."
+      ),
+      payments: getStudentPayments_(spreadsheet, studentId),
+    });
+  }
+
   const course = courses.find(function (entry) {
     return String(entry.id || entry.courseId || "").trim() === courseId;
   });
@@ -984,7 +997,32 @@ function handleStudentSubmitPayment_(request) {
     reviewNote: "",
   };
 
+  const duplicatePayments = getPaymentsByTransactionId_(paymentsData.records.concat([nextPayment]), transactionId);
+  if (duplicatePayments.length > 1) {
+    nextPayment.reviewNote = buildDuplicateTransactionSecurityReviewNote_();
+  }
+
   writeSheetEntries_(paymentsData.sheet, paymentsData.headers, paymentsData.records.concat([nextPayment]));
+
+  const duplicateLockResult = applyDuplicateTransactionSecurityLock_(
+    spreadsheet,
+    paymentsData.records.concat([nextPayment]),
+    transactionId
+  );
+
+  if (duplicateLockResult.duplicateDetected) {
+    return jsonOutput_({
+      ok: true,
+      blocked: true,
+      pendingReview: false,
+      alreadyPending: false,
+      message:
+        "Duplicate transaction ID detected. This account has been blocked automatically. Contact the admin office to restore access.",
+      paymentId: nextPayment.id,
+      studentId: studentId,
+      payments: getStudentPayments_(spreadsheet, studentId),
+    });
+  }
 
   appendSystemMessage_(spreadsheet, {
     studentIds: buildPipeList_([studentId]),
@@ -1321,6 +1359,152 @@ function getStudentPayments_(spreadsheet, studentId) {
     .sort(function (left, right) {
       return new Date(right.submittedOn || 0) - new Date(left.submittedOn || 0);
     });
+}
+
+function normalizePaymentTransactionId_(value) {
+  return normalizeLookupText_(value).replace(/\s+/g, "").trim().toLowerCase();
+}
+
+function isSecurityLockHighlight_(value) {
+  return String(value || "").trim().indexOf(SECURITY_LOCK_HIGHLIGHT_PREFIX_) === 0;
+}
+
+function getStudentSecurityLockMessage_(student, fallback) {
+  const highlight = String(getFirstAvailableValue_(student || {}, STUDENT_FIELD_KEYS_.highlight, "")).trim();
+  return isSecurityLockHighlight_(highlight) ? highlight : String(fallback || "").trim();
+}
+
+function buildDuplicateTransactionSecurityHighlight_() {
+  return SECURITY_LOCK_HIGHLIGHT_PREFIX_ +
+    " duplicate payment transaction ID detected across multiple submissions. Contact the admin office.";
+}
+
+function buildDuplicateTransactionSecurityReviewNote_() {
+  return "Duplicate transaction ID detected. Related student accounts were blocked automatically.";
+}
+
+function getPaymentsByTransactionId_(payments, transactionId) {
+  const normalizedTransactionId = normalizePaymentTransactionId_(transactionId);
+  if (!normalizedTransactionId) {
+    return [];
+  }
+
+  return (payments || []).filter(function (payment) {
+    return normalizePaymentTransactionId_(payment.studentTransactionId || "") === normalizedTransactionId;
+  });
+}
+
+function buildDuplicateTransactionAlertMessage_(transactionId, matchedPayments, blockedStudents) {
+  const studentLabels = (blockedStudents || [])
+    .map(function (student) {
+      const studentId = getStudentId_(student);
+      const studentName = String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.name, "Student")).trim();
+      return studentId ? studentName + " (" + studentId + ")" : studentName;
+    })
+    .filter(Boolean);
+  const courseLabels = (matchedPayments || [])
+    .map(function (payment) {
+      return String(payment.courseTitle || payment.courseId || "").trim();
+    })
+    .filter(Boolean)
+    .filter(function (label, index, list) {
+      return list.indexOf(label) === index;
+    });
+
+  return (
+    "Duplicate payment transaction ID detected. Transaction ID: " +
+    String(transactionId || "-").trim() +
+    ". Related student accounts were blocked automatically: " +
+    (studentLabels.length ? studentLabels.join(", ") : "No linked student found") +
+    ". Related course submissions: " +
+    (courseLabels.length ? courseLabels.join(", ") : "Not available") +
+    ". Review the payment sheet before restoring access."
+  );
+}
+
+function applyDuplicateTransactionSecurityLock_(spreadsheet, payments, transactionId) {
+  const matchedPayments = getPaymentsByTransactionId_(payments, transactionId);
+  if (matchedPayments.length < 2) {
+    return {
+      duplicateDetected: false,
+      blockedStudentIds: [],
+      blockedStudents: [],
+    };
+  }
+
+  const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
+  const studentLookup = buildStudentLookupMaps_(studentsData.records);
+  const blockedStudentIds = matchedPayments
+    .map(function (payment) {
+      const linkedStudent = resolveLinkedStudentRecord_(
+        studentLookup,
+        payment.studentId || "",
+        payment.studentPhone || "",
+        payment.studentEmail || ""
+      );
+      return linkedStudent ? getStudentId_(linkedStudent) : String(payment.studentId || "").trim();
+    })
+    .filter(Boolean)
+    .filter(function (studentId, index, list) {
+      return list.indexOf(studentId) === index;
+    });
+
+  if (!blockedStudentIds.length) {
+    return {
+      duplicateDetected: true,
+      blockedStudentIds: [],
+      blockedStudents: [],
+    };
+  }
+
+  const securityHighlight = buildDuplicateTransactionSecurityHighlight_();
+  let hasStudentChanges = false;
+  const nextStudents = studentsData.records.map(function (student) {
+    const studentId = getStudentId_(student);
+    if (blockedStudentIds.indexOf(studentId) === -1) {
+      return student;
+    }
+
+    const nextStudent = Object.assign({}, student);
+    nextStudent.status = "Blocked";
+    nextStudent.portalAccessMode = "";
+    nextStudent.highlight = securityHighlight;
+
+    if (hasRecordChangesForHeaders_(student, nextStudent, studentsData.headers)) {
+      hasStudentChanges = true;
+      return nextStudent;
+    }
+
+    return student;
+  });
+
+  if (hasStudentChanges) {
+    writeSheetEntries_(studentsData.sheet, studentsData.headers, nextStudents);
+  }
+
+  const blockedStudents = nextStudents.filter(function (student) {
+    return blockedStudentIds.indexOf(getStudentId_(student)) !== -1;
+  });
+
+  appendSystemMessage_(spreadsheet, {
+    title: "Duplicate Transaction ID Detected",
+    message: buildDuplicateTransactionAlertMessage_(transactionId, matchedPayments, blockedStudents),
+    status: "Sent",
+    createdBy: "Security Lock",
+    audience: "Admin",
+  });
+
+  syncLatestRegistrationReviewsForStudents_(spreadsheet, blockedStudents, {
+    username: "Security Lock",
+    name: "Security Lock",
+    id: "Security Lock",
+  });
+
+  return {
+    duplicateDetected: true,
+    blockedStudentIds: blockedStudentIds,
+    blockedStudents: blockedStudents,
+  };
 }
 
 function syncPortalLinkedData_(spreadsheet) {
@@ -1900,6 +2084,7 @@ function handleAdminUpdateStudent_(request) {
   const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
   const courses = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses));
   const payload = parseJsonField_(request.student) || request;
+  const hasExplicitHighlight = payload.highlight !== undefined && payload.highlight !== null;
   const explicitStudentId = String(payload.id || payload.studentId || request.studentId || "").trim();
   const existingStudent = studentsData.records.find(function (student) {
     return explicitStudentId && getStudentId_(student) === explicitStudentId;
@@ -1960,6 +2145,13 @@ function handleAdminUpdateStudent_(request) {
   nextStudent.portalAccessMode = String(nextStudent.portalAccessMode || "").trim();
   if (isPreviewAccessStudent_(nextStudent)) {
     nextStudent.loginApproval = "Approved";
+  }
+  if (
+    !hasExplicitHighlight &&
+    normalizeValue_(nextStudent.status || "") !== "blocked" &&
+    isSecurityLockHighlight_(nextStudent.highlight || "")
+  ) {
+    nextStudent.highlight = "Access restored from admin panel.";
   }
   nextStudent.enrolledCourseIds = buildPipeList_(courseIds);
 
@@ -2025,13 +2217,22 @@ function handleAdminBulkStudentAction_(request) {
       nextStudent.status = "Active";
       nextStudent.loginApproval = "Approved";
       nextStudent.portalAccessMode = "";
+      if (isSecurityLockHighlight_(nextStudent.highlight || "")) {
+        nextStudent.highlight = "Access restored from admin panel.";
+      }
     } else if (action === "preview" || action === "classlist" || action === "listonly") {
       nextStudent.status = "Active";
       nextStudent.loginApproval = "Approved";
       nextStudent.portalAccessMode = "Preview";
+      if (isSecurityLockHighlight_(nextStudent.highlight || "")) {
+        nextStudent.highlight = "Access restored from admin panel.";
+      }
     } else if (action === "activate") {
       nextStudent.status = "Active";
       nextStudent.portalAccessMode = "";
+      if (isSecurityLockHighlight_(nextStudent.highlight || "")) {
+        nextStudent.highlight = "Access restored from admin panel.";
+      }
     } else if (action === "block" || action === "suspend" || action === "disable") {
       nextStudent.status = "Blocked";
       nextStudent.portalAccessMode = "";
@@ -2955,7 +3156,7 @@ function getStudentLoginAccessState_(spreadsheet, student) {
     return {
       approvalStatus: "inactive",
       reviewNote: reviewNote,
-      message: "This student account is not active.",
+      message: getStudentSecurityLockMessage_(student, "This student account is not active."),
     };
   }
 

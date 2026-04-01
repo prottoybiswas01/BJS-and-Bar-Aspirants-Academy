@@ -900,6 +900,11 @@ function isRejectedPaymentStatus(value) {
   );
 }
 
+function getStudentSecurityLockMessage(student) {
+  const highlight = String(student?.highlight || "").trim();
+  return /^security lock:/i.test(highlight) ? highlight : "";
+}
+
 function getStudentVisiblePaymentReviewNote(payment) {
   const reviewNote = String(payment?.reviewNote || "").trim();
   const normalizedReviewNote = getCompactLookupValue(reviewNote);
@@ -1559,9 +1564,28 @@ async function refreshPortalDataInBackground() {
     applyPortalData(result);
     await refreshStudentPaymentsInBackground(activeStudentId);
     const refreshedStudent = state.data.students.find((student) => student.id === activeStudentId) || null;
-    if (refreshedStudent) {
-      renderDashboard(refreshedStudent);
+    if (!refreshedStudent) {
+      logout({
+        message: "Your account session is no longer available. Please sign in again.",
+        feedbackTone: "error",
+        toastMessage: "Your account session is no longer available.",
+        toastType: "error",
+      });
+      return;
     }
+
+    const approvalState = getStudentApprovalState(refreshedStudent);
+    if (approvalState.approvalStatus !== "approved") {
+      logout({
+        message: approvalState.message || "Your account access has changed. Please sign in again.",
+        feedbackTone: approvalState.approvalStatus === "pending" ? "neutral" : "error",
+        toastMessage: approvalState.message || "Your account access has changed.",
+        toastType: approvalState.approvalStatus === "pending" ? "info" : "error",
+      });
+      return;
+    }
+
+    renderDashboard(refreshedStudent);
   } catch (error) {
     console.warn("Unable to refresh portal data in the background.", error);
   }
@@ -1896,7 +1920,7 @@ function getStudentApprovalState(student) {
   if (isStudentLoginBlocked(student)) {
     return {
       approvalStatus: "inactive",
-      message: "This student account is not active.",
+      message: getStudentSecurityLockMessage(student) || "This student account is not active.",
     };
   }
 
@@ -3989,6 +4013,24 @@ async function requestCourseAccess(courseId) {
     console.warn("Unable to verify payment submission after timeout.", refreshError);
   }
 
+  const refreshedStudent = getActiveStudent();
+  if (!refreshedStudent) {
+    return {
+      ok: true,
+      blocked: true,
+      message: "Your account session is no longer available. Please sign in again.",
+    };
+  }
+
+  const refreshedApprovalState = getStudentApprovalState(refreshedStudent);
+  if (refreshedApprovalState.approvalStatus !== "approved") {
+    return {
+      ok: true,
+      blocked: true,
+      message: refreshedApprovalState.message || "Your account access has changed. Please sign in again.",
+    };
+  }
+
   const latestPayment = getLatestPaymentForCourse(student.id, courseId);
   const hasEnrollment = (state.data.enrollments || []).some((entry) => {
     return entry.studentId === student.id && entry.courseId === courseId;
@@ -4099,6 +4141,19 @@ async function handlePaymentSubmit(event) {
 
   try {
     const result = await requestCourseAccess(courseId);
+    if (result.blocked) {
+      const blockedMessage =
+        result.message ||
+        "Duplicate transaction ID detected. This account has been blocked automatically. Contact the admin office.";
+      logout({
+        message: blockedMessage,
+        feedbackTone: "error",
+        toastMessage: blockedMessage,
+        toastType: "error",
+      });
+      return;
+    }
+
     closePaymentModal();
     const isPendingReview = !!result.pendingReview;
     const feedbackMessage = result.message ||
@@ -4592,7 +4647,14 @@ function renderDashboard(student) {
   renderProfileModal(student, enrolledCourseEntries);
 }
 
-function logout() {
+function logout(options = {}) {
+  const feedbackMessage = String(options.message || "").trim();
+  const feedbackTone = String(options.feedbackTone || "").trim() || "neutral";
+  const toastMessage = String(options.toastMessage || "").trim();
+  const toastType = String(options.toastType || "").trim() || "info";
+  const suppressToast = options.suppressToast === true;
+
+  closePaymentModal();
   closeVideo();
   closeProfileModal();
   closeStudentMessageModal();
@@ -4611,8 +4673,10 @@ function logout() {
   syncStudentPasswordToggle();
   clearLoginDraft();
   togglePage("login");
-  setFeedback("Enter your student credentials to log in again.");
-  showToast("Logged out successfully.", "info");
+  setFeedback(feedbackMessage || "Enter your student credentials to log in again.", feedbackTone);
+  if (!suppressToast) {
+    showToast(toastMessage || (feedbackMessage ? feedbackMessage : "Logged out successfully."), toastType);
+  }
 }
 
 async function performLogin(query = dom.query.value) {
