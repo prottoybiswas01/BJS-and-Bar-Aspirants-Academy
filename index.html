@@ -15,6 +15,253 @@
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
     />
+    <style>
+      .payment-modal-shell {
+        align-items: center;
+        overflow: auto;
+        padding: clamp(0.85rem, 2vw, 1.5rem);
+      }
+
+      .payment-modal-panel {
+        position: relative;
+        width: min(100%, 44rem);
+        max-height: min(88vh, 52rem);
+        overflow: hidden;
+        border: 1px solid rgba(251, 191, 36, 0.18);
+        border-radius: 1.75rem;
+        background:
+          radial-gradient(circle at top right, rgba(251, 191, 36, 0.14), transparent 24%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.98));
+        box-shadow: 0 32px 90px -48px rgba(15, 23, 42, 0.72);
+      }
+
+      .payment-modal-scroll {
+        max-height: inherit;
+        overflow: auto;
+        padding: 1rem;
+      }
+
+      .payment-modal-scroll::-webkit-scrollbar {
+        width: 10px;
+      }
+
+      .payment-modal-scroll::-webkit-scrollbar-thumb {
+        background: rgba(148, 163, 184, 0.42);
+        border-radius: 999px;
+      }
+
+      .payment-modal-hero {
+        border-radius: 1.45rem;
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.96), rgba(30, 64, 175, 0.94) 60%, rgba(13, 148, 136, 0.9));
+        padding: 1rem 1rem 1.1rem;
+        color: #fff;
+      }
+
+      .payment-modal-kicker {
+        display: inline-flex;
+        align-items: center;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.14);
+        padding: 0.42rem 0.72rem;
+        font-size: 0.66rem;
+        font-weight: 800;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.86);
+      }
+
+      .payment-modal-title {
+        margin-top: 0.8rem;
+        padding-right: 3rem;
+        font-size: clamp(1.45rem, 2.8vw, 2rem);
+        line-height: 1.05;
+        font-weight: 800;
+        letter-spacing: -0.03em;
+      }
+
+      .payment-modal-copy {
+        margin-top: 0.7rem;
+        max-width: 34rem;
+        font-size: 0.94rem;
+        line-height: 1.65;
+        color: rgba(255, 255, 255, 0.84);
+      }
+
+      .payment-modal-grid {
+        margin-top: 0.9rem;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.75rem;
+      }
+
+      .payment-modal-stat {
+        min-width: 0;
+        border: 1px solid rgba(226, 232, 240, 0.92);
+        border-radius: 1.2rem;
+        background: rgba(255, 255, 255, 0.88);
+        padding: 0.9rem 1rem;
+      }
+
+      .payment-modal-label {
+        font-size: 0.64rem;
+        font-weight: 800;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: #94a3b8;
+      }
+
+      .payment-modal-value {
+        margin-top: 0.4rem;
+        word-break: break-word;
+        font-size: 1.1rem;
+        font-weight: 800;
+        line-height: 1.35;
+        color: #0f172a;
+      }
+
+      .payment-modal-number-card {
+        margin-top: 0.9rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1rem;
+        border: 1px solid rgba(251, 191, 36, 0.26);
+        border-radius: 1.4rem;
+        background: linear-gradient(180deg, rgba(255, 251, 235, 0.96), rgba(255, 247, 237, 0.92));
+        padding: 1rem;
+      }
+
+      .payment-modal-number-caption {
+        font-size: 0.64rem;
+        font-weight: 800;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: #c2410c;
+      }
+
+      .payment-modal-number {
+        margin-top: 0.35rem;
+        word-break: break-word;
+        font-size: clamp(1.55rem, 3.6vw, 2rem);
+        font-weight: 800;
+        line-height: 1.05;
+        letter-spacing: -0.03em;
+        color: #0f172a;
+      }
+
+      .payment-modal-number-note {
+        margin-top: 0.7rem;
+        max-width: 31rem;
+        font-size: 0.92rem;
+        line-height: 1.62;
+        color: #475569;
+      }
+
+      .payment-modal-form {
+        margin-top: 0.95rem;
+        display: grid;
+        gap: 0.85rem;
+      }
+
+      .payment-modal-field {
+        display: grid;
+        gap: 0.45rem;
+      }
+
+      .payment-modal-helper {
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        border-radius: 1.15rem;
+        background: #f8fafc;
+        padding: 0.95rem 1rem;
+        font-size: 0.92rem;
+        line-height: 1.65;
+        color: #475569;
+      }
+
+      .payment-modal-actions {
+        position: sticky;
+        bottom: 0;
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        margin-top: 0.15rem;
+        padding-top: 0.9rem;
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0), #fff 34%);
+      }
+
+      .payment-modal-actions > button {
+        min-width: 10rem;
+      }
+
+      .payment-modal-close {
+        box-shadow: 0 10px 24px -18px rgba(15, 23, 42, 0.65);
+      }
+
+      @media (max-width: 767px) {
+        .payment-modal-shell {
+          align-items: flex-start;
+          padding: 0.75rem;
+        }
+
+        .payment-modal-panel {
+          width: 100%;
+          max-height: none;
+          border-radius: 1.45rem;
+        }
+
+        .payment-modal-scroll {
+          padding: 0.8rem;
+        }
+
+        .payment-modal-hero {
+          padding: 0.95rem;
+          border-radius: 1.25rem;
+        }
+
+        .payment-modal-grid {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.65rem;
+        }
+
+        .payment-modal-grid .payment-modal-stat:last-child {
+          grid-column: 1 / -1;
+        }
+
+        .payment-modal-number-card {
+          flex-direction: column;
+          align-items: flex-start;
+          padding: 0.95rem;
+        }
+
+        .payment-modal-number-note {
+          max-width: none;
+        }
+
+        .payment-modal-actions {
+          flex-direction: column-reverse;
+          background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), #fff 24%);
+        }
+
+        .payment-modal-actions > button {
+          width: 100%;
+          min-width: 0;
+        }
+      }
+
+      @media (max-width: 479px) {
+        .payment-modal-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .payment-modal-title {
+          font-size: 1.35rem;
+        }
+
+        .payment-modal-number {
+          font-size: 1.6rem;
+        }
+      }
+    </style>
   </head>
   <body class="portal-page overflow-x-hidden text-slate-900">
     <nav class="glass-nav z-50 border-b border-slate-200 px-4 py-3 shadow-sm">
@@ -653,19 +900,19 @@
 
     <div
       id="paymentModal"
-      class="fixed inset-0 z-[82] hidden items-start justify-center overflow-y-auto px-4 py-4 sm:items-center sm:p-4"
+      class="payment-modal-shell fixed inset-0 z-[85] hidden justify-center"
     >
       <div
         id="paymentBackdrop"
         class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
       ></div>
       <div
-        class="relative my-auto w-full max-w-2xl overflow-y-auto rounded-[2rem] border border-amber-100 bg-white p-5 shadow-2xl max-h-[calc(100vh-2rem)] sm:max-h-[92vh] sm:p-8"
+        class="payment-modal-panel"
       >
         <button
           id="closePaymentBtn"
           type="button"
-          class="absolute right-4 top-4 z-10 rounded-full bg-slate-100 p-2 text-slate-500 transition hover:bg-slate-900 hover:text-white"
+          class="payment-modal-close absolute right-4 top-4 z-10 rounded-full bg-white p-2 text-slate-500 transition hover:bg-slate-900 hover:text-white"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -683,36 +930,38 @@
           </svg>
         </button>
 
-        <span class="inline-flex rounded-full bg-amber-50 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.28em] text-amber-700">
-          Course Payment
-        </span>
-        <h3 id="paymentCourseName" class="mt-4 pr-12 text-xl font-extrabold leading-tight text-slate-950 sm:text-2xl">
-          Selected Course
-        </h3>
-        <p class="mt-3 text-sm leading-6 text-slate-600">
-          Orientation classes stay visible. Full course access opens after the payment review is completed.
-        </p>
+        <div class="payment-modal-scroll">
+          <div class="payment-modal-hero">
+            <span class="payment-modal-kicker">Course Payment</span>
+            <h3 id="paymentCourseName" class="payment-modal-title">Selected Course</h3>
+            <p class="payment-modal-copy">
+              Orientation classes stay visible. Full course access opens after the payment review is completed.
+            </p>
+          </div>
 
-        <div class="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div class="min-w-0 rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-4">
-            <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Course Fee</p>
-            <p id="paymentCourseFee" class="mt-2 text-base font-bold text-slate-950">Amount shared in popup</p>
+          <div class="payment-modal-grid">
+            <div class="payment-modal-stat">
+              <p class="payment-modal-label">Course Fee</p>
+              <p id="paymentCourseFee" class="payment-modal-value">Amount shared in popup</p>
+            </div>
+            <div class="payment-modal-stat">
+              <p class="payment-modal-label">Student ID</p>
+              <p id="paymentStudentId" class="payment-modal-value">-</p>
+            </div>
+            <div class="payment-modal-stat">
+              <p class="payment-modal-label">Payment Method</p>
+              <p class="payment-modal-value">bKash Send Money</p>
+            </div>
           </div>
-          <div class="min-w-0 rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-4">
-            <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Student ID</p>
-            <p id="paymentStudentId" class="mt-2 break-all text-base font-bold text-slate-950">-</p>
-          </div>
-          <div class="min-w-0 rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-4">
-            <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-slate-400">Payment Method</p>
-            <p class="mt-2 text-base font-bold text-slate-950">bKash Send Money</p>
-          </div>
-        </div>
 
-        <div class="mt-5 rounded-[1.5rem] border border-amber-100 bg-amber-50 p-4">
-          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="payment-modal-number-card">
             <div class="min-w-0">
-              <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-amber-700">Send Money To This Number</p>
-              <p id="paymentBkashNumber" class="mt-2 break-all text-2xl font-extrabold tracking-wide text-slate-950">01975341714</p>
+              <p class="payment-modal-number-caption">Send Money To This Number</p>
+              <p id="paymentBkashNumber" class="payment-modal-number">01975341714</p>
+              <p class="payment-modal-number-note">
+                Use <span class="font-bold text-slate-900">Send Money</span> to this number, then submit the exact
+                transaction ID. Access opens only after the matching transaction is confirmed.
+              </p>
             </div>
             <button
               id="copyBkashNumberBtn"
@@ -736,57 +985,53 @@
               Copy Number
             </button>
           </div>
-          <p class="mt-4 text-sm leading-6 text-slate-700">
-            You must use <span class="font-bold">Send Money</span> to this number and then submit the exact transaction
-            ID below. Access opens only after the matching transaction is confirmed.
-          </p>
+
+          <form id="paymentForm" class="payment-modal-form">
+            <label class="payment-modal-field">
+              <span class="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">bKash Transaction ID</span>
+              <input
+                id="paymentTransactionId"
+                type="text"
+                autocomplete="off"
+                placeholder="Enter your bKash transaction ID"
+                class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:bg-white"
+              />
+            </label>
+            <label class="payment-modal-field">
+              <span class="text-xs font-bold uppercase tracking-[0.22em] text-slate-500">Optional Note</span>
+              <textarea
+                id="paymentNote"
+                rows="2"
+                placeholder="Optional note for the admin"
+                class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:bg-white"
+              ></textarea>
+            </label>
+
+            <div class="payment-modal-helper">
+              The transaction ID you submit goes to the payment sheet for verification. When the submitted ID matches
+              the confirmed transaction, the course unlocks for one month automatically.
+            </div>
+
+            <p id="paymentFeedback" class="hidden"></p>
+
+            <div class="payment-modal-actions">
+              <button
+                type="button"
+                class="rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+                onclick="document.getElementById('closePaymentBtn').click()"
+              >
+                Cancel
+              </button>
+              <button
+                id="paymentSubmitBtn"
+                type="submit"
+                class="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+              >
+                Submit Payment
+              </button>
+            </div>
+          </form>
         </div>
-
-        <form id="paymentForm" class="mt-6 space-y-4">
-          <label class="block">
-            <span class="mb-2 block text-xs font-bold uppercase tracking-[0.22em] text-slate-500">bKash Transaction ID</span>
-            <input
-              id="paymentTransactionId"
-              type="text"
-              autocomplete="off"
-              placeholder="Enter your bKash transaction ID"
-              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:bg-white"
-            />
-          </label>
-          <label class="block">
-            <span class="mb-2 block text-xs font-bold uppercase tracking-[0.22em] text-slate-500">Optional Note</span>
-            <textarea
-              id="paymentNote"
-              rows="3"
-              placeholder="Optional note for the admin"
-              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:bg-white"
-            ></textarea>
-          </label>
-
-          <div class="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-4 text-sm leading-6 text-slate-600">
-            The transaction ID you submit will go to the payment sheet for verification. When the submitted ID matches
-            the confirmed transaction, the course can be unlocked for one month.
-          </div>
-
-          <p id="paymentFeedback" class="hidden"></p>
-
-          <div class="flex flex-col gap-3 sm:flex-row sm:justify-end">
-            <button
-              type="button"
-              class="w-full rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 sm:w-auto"
-              onclick="document.getElementById('closePaymentBtn').click()"
-            >
-              Cancel
-            </button>
-            <button
-              id="paymentSubmitBtn"
-              type="submit"
-              class="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800 sm:w-auto"
-            >
-              Submit Payment
-            </button>
-          </div>
-        </form>
       </div>
     </div>
 
