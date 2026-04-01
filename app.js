@@ -150,6 +150,8 @@ const PAYMENT_FIELD_KEYS = Object.freeze({
 const DEMO_DATA_SCRIPT_URL = "./data/portal-demo-data.js?v=20260331-2";
 let demoDataPromise = null;
 let courseAccordionSyncFrame = 0;
+let activeActionNotice = null;
+let activeActionNoticeTimer = 0;
 
 function getLoadedDemoData() {
   if (typeof window !== "undefined" && window.AIN_PATHSHALA_DEMO_DATA) {
@@ -518,6 +520,12 @@ function getPortalCopyValue(key, fallback) {
   }
 
   return fallback || "";
+}
+
+function getPortalBrandName() {
+  const documentTitle =
+    typeof document !== "undefined" ? String(document.title || "").split("-")[0].trim() : "";
+  return getPortalCopyValue("academyName", documentTitle || "Ain Pathshala");
 }
 
 function normalizeLookupCharacters(value) {
@@ -1206,6 +1214,7 @@ function normalizeData(raw) {
     price: getFirstAvailableValue(course, COURSE_FIELD_KEYS.price, ""),
     description: course.description || "",
   }));
+  const courseMap = new Map(courses.map((course) => [course.id, course]));
 
   const lessons = (raw.lessons || []).map((lesson) => {
     const lessonVideoSource =
@@ -1376,7 +1385,7 @@ function normalizeData(raw) {
     payments,
     hasEnrollmentSheet: enrollments.length > 0,
     studentMap,
-    courseMap: new Map(courses.map((course) => [course.id, course])),
+    courseMap,
     courseReferenceMap: buildCourseReferenceMap(courses),
     lessonsByCourseId,
   };
@@ -2945,6 +2954,113 @@ function showToast(message, type = "success") {
   }, 2500);
 }
 
+function dismissActionNotice() {
+  if (activeActionNoticeTimer) {
+    window.clearTimeout(activeActionNoticeTimer);
+    activeActionNoticeTimer = 0;
+  }
+
+  if (!activeActionNotice) {
+    return;
+  }
+
+  activeActionNotice.style.opacity = "0";
+  activeActionNotice.style.transform = "translate(-50%, -18px)";
+  const noticeToRemove = activeActionNotice;
+  activeActionNotice = null;
+  window.setTimeout(() => {
+    noticeToRemove.remove();
+  }, 220);
+}
+
+function showActionNotice(options = {}) {
+  if (typeof document === "undefined" || !document.body) {
+    return;
+  }
+
+  dismissActionNotice();
+
+  const type = options.type === "info" ? "info" : "success";
+  const title = String(options.title || "Request received").trim();
+  const message = String(options.message || "").trim();
+  const durationMs = Math.max(1200, Number(options.durationMs) || 2200);
+  const accentColor = type === "info" ? "#0f172a" : "#166534";
+  const accentSoft = type === "info" ? "rgba(15, 23, 42, 0.08)" : "rgba(22, 101, 52, 0.08)";
+  const accentBorder = type === "info" ? "rgba(15, 23, 42, 0.14)" : "rgba(34, 197, 94, 0.24)";
+
+  const notice = document.createElement("div");
+  notice.setAttribute("role", "status");
+  notice.setAttribute("aria-live", "polite");
+  notice.style.position = "fixed";
+  notice.style.left = "50%";
+  notice.style.top = "20px";
+  notice.style.transform = "translateX(-50%)";
+  notice.style.zIndex = "120";
+  notice.style.width = "min(92vw, 34rem)";
+  notice.style.border = `1px solid ${accentBorder}`;
+  notice.style.borderRadius = "24px";
+  notice.style.background = "rgba(255,255,255,0.98)";
+  notice.style.boxShadow = "0 28px 70px -42px rgba(15, 23, 42, 0.55)";
+  notice.style.backdropFilter = "blur(10px)";
+  notice.style.padding = "16px 18px 16px";
+  notice.style.transition = "opacity 0.22s ease, transform 0.22s ease";
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.setAttribute("aria-label", "Close notice");
+  closeButton.textContent = "x";
+  closeButton.style.position = "absolute";
+  closeButton.style.top = "12px";
+  closeButton.style.right = "12px";
+  closeButton.style.width = "32px";
+  closeButton.style.height = "32px";
+  closeButton.style.border = "0";
+  closeButton.style.borderRadius = "999px";
+  closeButton.style.background = "transparent";
+  closeButton.style.color = "#64748b";
+  closeButton.style.fontSize = "18px";
+  closeButton.style.cursor = "pointer";
+  closeButton.addEventListener("click", dismissActionNotice);
+
+  const badge = document.createElement("div");
+  badge.textContent = type === "info" ? "PAYMENT REVIEW" : "PAYMENT RECEIVED";
+  badge.style.display = "inline-flex";
+  badge.style.alignItems = "center";
+  badge.style.borderRadius = "999px";
+  badge.style.background = accentSoft;
+  badge.style.color = accentColor;
+  badge.style.padding = "6px 10px";
+  badge.style.fontSize = "11px";
+  badge.style.fontWeight = "800";
+  badge.style.letterSpacing = "0.16em";
+
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  heading.style.margin = "12px 38px 6px 0";
+  heading.style.color = "#0f172a";
+  heading.style.fontSize = "20px";
+  heading.style.lineHeight = "1.2";
+  heading.style.fontWeight = "800";
+
+  const body = document.createElement("p");
+  body.textContent = message;
+  body.style.margin = "0";
+  body.style.color = "#475569";
+  body.style.fontSize = "14px";
+  body.style.lineHeight = "1.6";
+
+  notice.appendChild(closeButton);
+  notice.appendChild(badge);
+  notice.appendChild(heading);
+  notice.appendChild(body);
+  document.body.appendChild(notice);
+
+  activeActionNotice = notice;
+  activeActionNoticeTimer = window.setTimeout(() => {
+    dismissActionNotice();
+  }, durationMs);
+}
+
 function openVideo(videoConfig, title) {
   const payload = typeof videoConfig === "object" && videoConfig !== null ? videoConfig : { videoId: videoConfig, title };
   const resolvedVideoId = extractYouTubeVideoId(payload.videoId);
@@ -3872,7 +3988,16 @@ async function handlePaymentSubmit(event) {
         ? "Please wait a little while. Your course will activate automatically after confirmation."
         : "Payment request submitted successfully.");
     setFeedback(feedbackMessage, isPendingReview ? "neutral" : "success");
-    showToast(feedbackMessage, isPendingReview ? "info" : "success");
+    showActionNotice({
+      type: isPendingReview ? "info" : "success",
+      title: isPendingReview
+        ? `Thank you. Welcome to ${getPortalBrandName()}.`
+        : `Payment confirmed. Welcome to ${getPortalBrandName()}.`,
+      message: isPendingReview
+        ? "Your payment data has been submitted successfully. Please wait a little while. Your course will activate automatically after confirmation."
+        : "Your payment was confirmed successfully. Your course is now active and ready to open.",
+      durationMs: isPendingReview ? 2600 : 2400,
+    });
   } catch (error) {
     const message = error.message || "Unable to submit the payment request.";
     if (dom.paymentFeedback) {
