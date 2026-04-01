@@ -31,6 +31,7 @@ const STUDENT_FIELD_KEYS = Object.freeze({
   portalAccessMode: ["portalAccessMode", "accessMode", "studentAccessMode", "videoAccessMode", "portalMode"],
   highlight: ["highlight", "note", "remarks", "message"],
   enrolledCourseIds: ["enrolledCourseIds", "courseIds", "courses", "assignedCourses", "enrolledCourses"],
+  maxDeviceCount: ["maxDeviceCount", "maxDevices", "deviceLimit", "allowedDevices", "approvedDeviceLimit"],
 });
 
 const COURSE_FIELD_KEYS = Object.freeze({
@@ -291,6 +292,7 @@ const dom = {
   editorStudentBatch: document.getElementById("editorStudentBatch"),
   editorStudentSession: document.getElementById("editorStudentSession"),
   editorStudentPassword: document.getElementById("editorStudentPassword"),
+  editorStudentMaxDevices: document.getElementById("editorStudentMaxDevices"),
   editorStudentStatus: document.getElementById("editorStudentStatus"),
   editorStudentApproval: document.getElementById("editorStudentApproval"),
   editorStudentAccessMode: document.getElementById("editorStudentAccessMode"),
@@ -832,6 +834,21 @@ function setButtonDisabled(button, disabled) {
   button.classList.toggle("cursor-not-allowed", !!disabled);
 }
 
+function normalizeStudentDeviceLimitValue(value, fallback = 2) {
+  const fallbackLimit = Math.max(1, Math.floor(Number(fallback || 2)) || 2);
+  const rawValue = String(value || "").trim();
+  if (!rawValue) {
+    return fallbackLimit;
+  }
+
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return fallbackLimit;
+  }
+
+  return Math.max(1, Math.floor(parsed));
+}
+
 function createCourseMap(courses) {
   return new Map(courses.map((course) => [course.id, course]));
 }
@@ -879,6 +896,10 @@ function normalizeDashboard(payload = {}) {
       portalAccessMode: String(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.portalAccessMode, "")).trim(),
       highlight: String(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.highlight, "")).trim(),
       enrolledCourseIds: parseList(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.enrolledCourseIds, "")),
+      maxDeviceCount: normalizeStudentDeviceLimitValue(
+        getFirstAvailableValue(student, STUDENT_FIELD_KEYS.maxDeviceCount, ""),
+        2
+      ),
     }))
     .filter((student) => student.id)
     .sort((left, right) => left.name.localeCompare(right.name));
@@ -1033,6 +1054,28 @@ function normalizeAdminSession(admin = null) {
 
 function getStudentById(studentId) {
   return state.data.students.find((student) => student.id === studentId) || null;
+}
+
+function getDevicesForStudent(studentId) {
+  if (!studentId) {
+    return [];
+  }
+
+  return state.data.devices.filter((device) => device.studentId === studentId);
+}
+
+function getActiveDevicesForStudent(studentId) {
+  return getDevicesForStudent(studentId).filter((device) => normalizeStatus(device.status) === "active");
+}
+
+function getStudentDeviceLimit(student) {
+  return normalizeStudentDeviceLimitValue(student?.maxDeviceCount, 2);
+}
+
+function buildStudentDeviceUsageLabel(student) {
+  const activeCount = student?.id ? getActiveDevicesForStudent(student.id).length : 0;
+  const allowedCount = getStudentDeviceLimit(student);
+  return `${activeCount}/${allowedCount} active device${allowedCount === 1 ? "" : "s"}`;
 }
 
 function getEnrollmentRecordsForStudent(studentId) {
@@ -1221,6 +1264,7 @@ function resetStudentEditor() {
   state.editingStudentId = "";
   dom.studentEditorForm.reset();
   dom.editorStudentId.value = "";
+  dom.editorStudentMaxDevices.value = "";
   dom.editorStudentStatus.value = "Active";
   dom.editorStudentApproval.value = "Approved";
   dom.editorStudentAccessMode.value = "";
@@ -2039,6 +2083,7 @@ function renderStudentEditor() {
   dom.editorStudentBatch.value = student?.batch || "";
   dom.editorStudentSession.value = student?.session || "";
   dom.editorStudentPassword.value = student?.password || "";
+  dom.editorStudentMaxDevices.value = student?.maxDeviceCount ? String(student.maxDeviceCount) : "";
   dom.editorStudentStatus.value = student?.status || "Active";
   dom.editorStudentApproval.value = isStudentPreviewOnly(student) ? "Approved" : student?.loginApproval || "Approved";
   dom.editorStudentAccessMode.value = isStudentPreviewOnly(student) ? "Preview" : student?.portalAccessMode || "";
@@ -2079,6 +2124,7 @@ function renderStudentMobileList(students) {
     .map((student) => {
       const isSelected = state.selectedStudentIds.has(student.id);
       const courseIds = getStudentCourseIds(student);
+      const deviceUsage = buildStudentDeviceUsageLabel(student);
       const courseSummary = courseIds.length
         ? courseIds
             .slice(0, 2)
@@ -2127,6 +2173,11 @@ function renderStudentMobileList(students) {
               <p class="mt-2 text-sm font-semibold text-slate-700">${courseIds.length}</p>
               <p class="mt-1 text-xs text-slate-500">${escapeHtml(courseSummary)}</p>
             </div>
+            <div class="sm:col-span-2">
+              <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Device Policy</p>
+              <p class="mt-2 text-sm font-semibold text-slate-700">${escapeHtml(deviceUsage)}</p>
+              <p class="mt-1 text-xs text-slate-500">Default is 2 devices unless you customize this student.</p>
+            </div>
           </div>
           <div class="mt-4 flex flex-col gap-2 sm:flex-row">
             <button
@@ -2162,6 +2213,7 @@ function renderStudentTable() {
     .map((student) => {
       const isSelected = state.selectedStudentIds.has(student.id);
       const courseIds = getStudentCourseIds(student);
+      const deviceUsage = buildStudentDeviceUsageLabel(student);
       const courseSummary = courseIds.length
         ? courseIds
             .slice(0, 2)
@@ -2197,6 +2249,7 @@ function renderStudentTable() {
               ${renderPill(student.loginApproval || "Pending", "approval")}
               ${renderStudentAccessBadge(student)}
             </div>
+            <p class="mt-2 text-xs text-slate-500">${escapeHtml(deviceUsage)}</p>
           </td>
           <td class="px-3 py-4 align-top">${renderPill(student.status || "Active")}</td>
           <td class="px-3 py-4 align-top">
@@ -2454,6 +2507,17 @@ function buildDeviceLocationLabel(device) {
   return device.locationPermission || "Not Requested";
 }
 
+function getOrderedDeviceRegistryEntries() {
+  const focusedStudentId = state.editingStudentId || getSelectedStudentIds()[0] || "";
+  if (!focusedStudentId) {
+    return state.data.devices.slice();
+  }
+
+  const focusedDevices = state.data.devices.filter((device) => device.studentId === focusedStudentId);
+  const otherDevices = state.data.devices.filter((device) => device.studentId !== focusedStudentId);
+  return focusedDevices.concat(otherDevices);
+}
+
 function renderDeviceRegistry() {
   if (!dom.deviceRegistryPanel) {
     return;
@@ -2465,16 +2529,30 @@ function renderDeviceRegistry() {
     return;
   }
 
-  dom.deviceRegistryPanel.innerHTML = state.data.devices
-    .slice(0, 24)
+  const focusedStudent = state.editingStudentId ? getStudentById(state.editingStudentId) : null;
+  const orderedDevices = getOrderedDeviceRegistryEntries();
+
+  dom.deviceRegistryPanel.innerHTML = [
+    focusedStudent
+      ? `<div class="rounded-[1.25rem] border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-900">Showing ${getDevicesForStudent(
+          focusedStudent.id
+        ).length} device record${getDevicesForStudent(focusedStudent.id).length === 1 ? "" : "s"} for ${escapeHtml(
+          focusedStudent.name || focusedStudent.id
+        )} first. Policy: ${escapeHtml(buildStudentDeviceUsageLabel(focusedStudent))}.</div>`
+      : "",
+    orderedDevices
+      .slice(0, 32)
     .map((device) => {
       const student = getStudentById(device.studentId) || null;
       const studentLabel = student?.name || device.studentId || "Student";
       const studentMeta = [device.studentId, student?.phone || ""].filter(Boolean).join(" | ");
-      const canRemove = normalizeStatus(device.status) === "active";
+      const canForceLogout = normalizeStatus(device.status) === "active";
+      const deviceUsage = student ? buildStudentDeviceUsageLabel(student) : "Unknown device policy";
 
       return `
-        <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4">
+        <div class="rounded-[1.5rem] border ${
+          focusedStudent && device.studentId === focusedStudent.id ? "border-blue-200 bg-blue-50/70" : "border-slate-100 bg-slate-50"
+        } p-4">
           <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div class="min-w-0">
               <div class="flex flex-wrap items-center gap-2">
@@ -2483,6 +2561,7 @@ function renderDeviceRegistry() {
               </div>
               <h4 class="mt-2 text-lg font-extrabold text-slate-950">${escapeHtml(device.deviceName || "Unknown Device")}</h4>
               <p class="mt-1 text-sm text-slate-500">${escapeHtml(studentMeta || "Student details unavailable")}</p>
+              <p class="mt-2 text-xs font-semibold text-slate-500">Device policy: ${escapeHtml(deviceUsage)}</p>
               <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <div>
                   <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">IP / Timezone</p>
@@ -2514,18 +2593,26 @@ function renderDeviceRegistry() {
             <div class="flex shrink-0 flex-wrap gap-2">
               <button
                 type="button"
-                data-device-remove="${escapeHtml(device.id)}"
-                class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-bold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100 ${canRemove ? "" : "opacity-50 cursor-not-allowed"}"
-                ${canRemove ? "" : "disabled"}
+                data-device-logout="${escapeHtml(device.id)}"
+                class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-bold text-amber-700 transition hover:border-amber-300 hover:bg-amber-100 ${canForceLogout ? "" : "opacity-50 cursor-not-allowed"}"
+                ${canForceLogout ? "" : "disabled"}
               >
-                Remove Device
+                Force Logout
+              </button>
+              <button
+                type="button"
+                data-device-delete="${escapeHtml(device.id)}"
+                class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-bold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100"
+              >
+                Delete Record
               </button>
             </div>
           </div>
         </div>
       `;
     })
-    .join("");
+    .join(""),
+  ].join("");
 }
 
 function renderMessageLog() {
@@ -2795,6 +2882,7 @@ async function handleStudentSave(event) {
     batch: dom.editorStudentBatch.value.trim(),
     session: dom.editorStudentSession.value.trim(),
     password: normalizePasswordValue(dom.editorStudentPassword.value),
+    maxDeviceCount: dom.editorStudentMaxDevices.value.trim(),
     status: dom.editorStudentStatus.value.trim(),
     loginApproval: dom.editorStudentApproval.value.trim(),
     portalAccessMode: dom.editorStudentAccessMode.value.trim(),
@@ -3050,7 +3138,7 @@ async function handleCourseDelete(courseId) {
   }
 }
 
-async function handleDeviceRemove(deviceRecordId) {
+async function handleDeviceLogout(deviceRecordId) {
   const device = state.data.devices.find((entry) => entry.id === deviceRecordId) || null;
   if (!device) {
     setFeedback(dom.adminTopFeedback, "Device record could not be found.", "error");
@@ -3067,18 +3155,50 @@ async function handleDeviceRemove(deviceRecordId) {
   }
 
   try {
-    setFeedback(dom.adminTopFeedback, "Removing approved device...", "info");
-    const response = await requestAction("adminremovedevice", {
+    setFeedback(dom.adminTopFeedback, "Forcing logout from this device...", "info");
+    const response = await requestAction("adminlogoutdevice", {
       deviceRecordId,
     });
 
     if (!response.ok) {
-      throw new Error(response.message || "Unable to remove the approved device.");
+      throw new Error(response.message || "Unable to force logout on this device.");
     }
 
-    applyDashboardPayload(response, "Approved device removed.");
+    applyDashboardPayload(response, "Device logged out from the admin panel.");
   } catch (error) {
-    setFeedback(dom.adminTopFeedback, error.message || "Unable to remove the approved device.", "error");
+    setFeedback(dom.adminTopFeedback, error.message || "Unable to force logout on this device.", "error");
+  }
+}
+
+async function handleDeviceDelete(deviceRecordId) {
+  const device = state.data.devices.find((entry) => entry.id === deviceRecordId) || null;
+  if (!device) {
+    setFeedback(dom.adminTopFeedback, "Device record could not be found.", "error");
+    return;
+  }
+
+  const student = getStudentById(device.studentId) || null;
+  const confirmed = window.confirm(
+    `Delete the device record for "${device.deviceName || "this device"}" from ${student?.name || device.studentId || "this student"}? This removes the row from the spreadsheet and kicks the session out if it is still active.`
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    setFeedback(dom.adminTopFeedback, "Deleting device record from the spreadsheet...", "info");
+    const response = await requestAction("admindeletedevice", {
+      deviceRecordId,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.message || "Unable to delete the device record.");
+    }
+
+    applyDashboardPayload(response, "Device record deleted from the spreadsheet.");
+  } catch (error) {
+    setFeedback(dom.adminTopFeedback, error.message || "Unable to delete the device record.", "error");
   }
 }
 
@@ -3273,9 +3393,15 @@ function handlePaymentQueueChange(event) {
 }
 
 function handleDeviceRegistryClick(event) {
-  const removeButton = event.target.closest("[data-device-remove]");
-  if (removeButton) {
-    handleDeviceRemove(String(removeButton.dataset.deviceRemove || "").trim());
+  const logoutButton = event.target.closest("[data-device-logout]");
+  if (logoutButton) {
+    handleDeviceLogout(String(logoutButton.dataset.deviceLogout || "").trim());
+    return;
+  }
+
+  const deleteButton = event.target.closest("[data-device-delete]");
+  if (deleteButton) {
+    handleDeviceDelete(String(deleteButton.dataset.deviceDelete || "").trim());
   }
 }
 

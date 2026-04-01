@@ -326,6 +326,18 @@
                     <input id="editorStudentBatch" type="text" placeholder="Batch" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
                     <input id="editorStudentSession" type="text" placeholder="Session" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
                     <input id="editorStudentPassword" type="text" placeholder="Password" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                    <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                      <label for="editorStudentMaxDevices" class="block text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Device Limit</label>
+                      <input
+                        id="editorStudentMaxDevices"
+                        type="number"
+                        min="1"
+                        step="1"
+                        placeholder="Leave blank for default 2"
+                        class="mt-2 w-full border-0 bg-transparent px-0 py-0 text-sm outline-none"
+                      />
+                      <p class="mt-2 text-xs text-slate-500">All students default to 2 devices. Set a custom number only when you want to override that student's limit.</p>
+                    </div>
                     <div class="grid gap-3 sm:grid-cols-3">
                       <select id="editorStudentStatus" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none">
                         <option value="Active">Active</option>
@@ -499,7 +511,7 @@
               <p class="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Device Registry</p>
               <h3 class="mt-2 text-2xl font-extrabold text-slate-950">Approved Student Devices</h3>
               <p class="mt-2 text-sm text-slate-500">
-                Each student can stay approved on up to two devices. Remove a device here to force that session to log out.
+                Every student defaults to 2 devices unless you customize the limit. From here you can force logout any device or delete the record from the spreadsheet-backed registry.
               </p>
               <div id="deviceRegistryPanel" class="mt-5 grid gap-4"></div>
             </article>
@@ -514,6 +526,6 @@
     </main>
 
     <script src="./portal-copy.js?v=20260315-1" defer></script>
-    <script src="./admin-app.js?v=20260401-6" defer></script>
+    <script src="./admin-app.js?v=20260401-7" defer></script>
   </body>
 </html>

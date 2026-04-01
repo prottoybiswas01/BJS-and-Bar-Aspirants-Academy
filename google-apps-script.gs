@@ -31,6 +31,7 @@ const SHEET_HEADERS = {
     "highlight",
     "enrolledCourseIds",
     "completedLessonIds",
+    "maxDeviceCount",
   ],
   courses: [
     "id",
@@ -185,6 +186,7 @@ const STUDENT_FIELD_KEYS_ = {
   highlight: ["highlight", "note", "remarks", "message"],
   enrolledCourseIds: ["enrolledCourseIds", "courseIds", "courses", "assignedCourses", "enrolledCourses"],
   completedLessonIds: ["completedLessonIds", "completed", "completedLessons"],
+  maxDeviceCount: ["maxDeviceCount", "maxDevices", "deviceLimit", "allowedDevices", "approvedDeviceLimit"],
 };
 
 const COURSE_FIELD_KEYS_ = {
@@ -254,6 +256,7 @@ const SAMPLE_DATA = {
       highlight: "Preparing for judiciary exams.",
       enrolledCourseIds: "",
       completedLessonIds: "",
+      maxDeviceCount: "",
     },
     {
       id: "BAR-2026-008",
@@ -272,6 +275,7 @@ const SAMPLE_DATA = {
       highlight: "Focused on bar viva and procedure.",
       enrolledCourseIds: "",
       completedLessonIds: "",
+      maxDeviceCount: "",
     },
   ],
   courses: [
@@ -462,12 +466,14 @@ function doPost(e) {
     if (action === "studentvalidate") return handleStudentValidate_(request);
     if (action === "studentlogoutdevice") return handleStudentLogoutDevice_(request);
     if (action === "admingetdashboard") return handleAdminGetDashboard_(request);
+    if (action === "adminlogoutdevice") return handleAdminLogoutDevice_(request);
     if (action === "adminupdatestudent") return handleAdminUpdateStudent_(request);
     if (action === "adminbulkstudentaction") return handleAdminBulkStudentAction_(request);
     if (action === "adminassigncourses") return handleAdminAssignCourses_(request);
     if (action === "admincreatecourse") return handleAdminCreateCourse_(request);
     if (action === "admindeletecourse") return handleAdminDeleteCourse_(request);
     if (action === "adminremovedevice") return handleAdminRemoveDevice_(request);
+    if (action === "admindeletedevice") return handleAdminDeleteDevice_(request);
     if (action === "adminapproveregistration") return handleAdminApproveRegistration_(request);
     if (action === "adminrejectregistration") return handleAdminRejectRegistration_(request);
     if (action === "adminreviewpayment") return handleAdminReviewPayment_(request);
@@ -626,7 +632,7 @@ function handleLogin_(request) {
       approved: true,
       studentId: getStudentId_(student),
       deviceLimitReached: !!deviceLoginResult.deviceLimitReached,
-      maxDevices: MAX_ACTIVE_DEVICES_PER_STUDENT_,
+      maxDevices: Number(deviceLoginResult.maxDevices || getStudentMaxDeviceCount_(student)),
       activeDevices: sanitizeStudentDevices_(deviceLoginResult.activeDevices || []),
       message: deviceLoginResult.message || "This device could not be approved for login.",
     });
@@ -673,7 +679,7 @@ function handleLogin_(request) {
     spreadsheetId: spreadsheet.getId(),
     spreadsheetName: spreadsheet.getName(),
     sessionToken: deviceLoginResult.sessionToken,
-    maxDevices: MAX_ACTIVE_DEVICES_PER_STUDENT_,
+    maxDevices: Number(deviceLoginResult.maxDevices || getStudentMaxDeviceCount_(student)),
     activeDevices: sanitizeStudentDevices_(deviceLoginResult.activeDevices || []),
     previewOnly: previewOnly,
     studentId: studentId,
@@ -1754,9 +1760,10 @@ function findLatestStudentDeviceIndex_(devices, studentId, deviceId) {
   return -1;
 }
 
-function buildDeviceLimitExceededMessage_(devices) {
+function buildDeviceLimitExceededMessage_(devices, maxDevices) {
+  const allowedDeviceCount = Math.max(1, Number(maxDevices || MAX_ACTIVE_DEVICES_PER_STUDENT_));
   const labels = (devices || [])
-    .slice(0, MAX_ACTIVE_DEVICES_PER_STUDENT_)
+    .slice(0, allowedDeviceCount)
     .map(function (device) {
       return buildDeviceRegistryDisplayName_(device);
     })
@@ -1764,7 +1771,7 @@ function buildDeviceLimitExceededMessage_(devices) {
 
   return (
     "This account is already active on " +
-    MAX_ACTIVE_DEVICES_PER_STUDENT_ +
+    allowedDeviceCount +
     " devices. Remove one approved device or log out an older device before continuing. " +
     (labels.length ? "Active devices: " + labels.join(", ") + "." : "")
   );
@@ -1843,12 +1850,14 @@ function revokeStudentDeviceRecord_(record, revokedBy, note, status) {
 
 function registerStudentLoginDevice_(spreadsheet, student, request) {
   const studentId = getStudentId_(student);
+  const maxDevices = getStudentMaxDeviceCount_(student);
   const deviceInfo = buildStudentDevicePayloadFromRequest_(request);
   if (!studentId) {
     return {
       ok: false,
       message: "Student ID is missing for device registration.",
       activeDevices: [],
+      maxDevices: maxDevices,
     };
   }
 
@@ -1857,6 +1866,7 @@ function registerStudentLoginDevice_(spreadsheet, student, request) {
       ok: false,
       message: "Device verification is required for login. Please refresh the page and try again.",
       activeDevices: [],
+      maxDevices: maxDevices,
     };
   }
 
@@ -1875,7 +1885,7 @@ function registerStudentLoginDevice_(spreadsheet, student, request) {
   const replaceOldestDevice = normalizeValue_(request.replaceOldestDevice || "") === "true";
   let nextDevices = devicesData.records.slice();
 
-  if (!existingDeviceAlreadyActive && activeDevices.length >= MAX_ACTIVE_DEVICES_PER_STUDENT_) {
+  if (!existingDeviceAlreadyActive && activeDevices.length >= maxDevices) {
     let targetDevice = null;
     if (replaceDeviceId) {
       targetDevice = activeDevices.find(function (device) {
@@ -1890,9 +1900,10 @@ function registerStudentLoginDevice_(spreadsheet, student, request) {
     if (!targetDevice) {
       return {
         ok: false,
-        message: buildDeviceLimitExceededMessage_(activeDevices),
+        message: buildDeviceLimitExceededMessage_(activeDevices, maxDevices),
         activeDevices: activeDevices,
         deviceLimitReached: true,
+        maxDevices: maxDevices,
       };
     }
 
@@ -1929,6 +1940,7 @@ function registerStudentLoginDevice_(spreadsheet, student, request) {
     ok: true,
     sessionToken: sessionToken,
     activeDevices: getStudentActiveDeviceRecords_(nextDevices, studentId),
+    maxDevices: maxDevices,
   };
 }
 
@@ -2779,6 +2791,7 @@ function handleAdminUpdateStudent_(request) {
       highlight: "Updated from admin panel.",
       enrolledCourseIds: "",
       completedLessonIds: "",
+      maxDeviceCount: "",
     },
     existingStudent || {}
   );
@@ -2797,6 +2810,7 @@ function handleAdminUpdateStudent_(request) {
     "portalAccessMode",
     "passwordResetUrl",
     "highlight",
+    "maxDeviceCount",
   ].forEach(function (field) {
     if (payload[field] !== undefined && payload[field] !== null) {
       nextStudent[field] = String(payload[field]);
@@ -2818,6 +2832,7 @@ function handleAdminUpdateStudent_(request) {
     nextStudent.highlight = "Access restored from admin panel.";
   }
   nextStudent.enrolledCourseIds = buildPipeList_(courseIds);
+  nextStudent.maxDeviceCount = normalizeStudentMaxDeviceCountStorageValue_(nextStudent.maxDeviceCount);
 
   writeSheetEntries_(
     studentsData.sheet,
@@ -3080,7 +3095,7 @@ function handleAdminDeleteCourse_(request) {
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
 }
 
-function handleAdminRemoveDevice_(request) {
+function handleAdminLogoutDevice_(request) {
   const auth = getAuthorizedAdminSession_(request);
   if (!auth) {
     return unauthorizedOutput_();
@@ -3110,11 +3125,49 @@ function handleAdminRemoveDevice_(request) {
   nextDevices[deviceIndex] = revokeStudentDeviceRecord_(
     nextDevices[deviceIndex],
     auth.username || auth.name || auth.id || "",
-    "Removed from the admin device registry.",
-    "Revoked"
+    "Forced logout from the admin panel.",
+    "Logged Out"
   );
   writeSheetEntries_(devicesData.sheet, devicesData.headers, nextDevices);
 
+  return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
+}
+
+function handleAdminRemoveDevice_(request) {
+  return handleAdminLogoutDevice_(request);
+}
+
+function handleAdminDeleteDevice_(request) {
+  const auth = getAuthorizedAdminSession_(request);
+  if (!auth) {
+    return unauthorizedOutput_();
+  }
+
+  const deviceRecordId = String(request.deviceRecordId || request.deviceIdRecord || request.id || "").trim();
+  const deviceId = String(request.deviceId || "").trim();
+  const studentId = String(request.studentId || "").trim();
+  if (!deviceRecordId && (!deviceId || !studentId)) {
+    return jsonOutput_({ ok: false, message: "Device record ID is required." });
+  }
+
+  const spreadsheet = getSpreadsheet_();
+  const devicesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.devices);
+  const nextDevices = devicesData.records.filter(function (device) {
+    if (deviceRecordId) {
+      return getDeviceRecordId_(device) !== deviceRecordId;
+    }
+
+    return !(
+      getDeviceStudentId_(device) === studentId &&
+      getDeviceIdValue_(device) === deviceId
+    );
+  });
+
+  if (nextDevices.length === devicesData.records.length) {
+    return jsonOutput_({ ok: false, message: "Approved device was not found." });
+  }
+
+  writeSheetEntries_(devicesData.sheet, devicesData.headers, nextDevices);
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
 }
 
@@ -3829,6 +3882,33 @@ function getStudentPassword_(student) {
 
 function getStudentStatus_(student) {
   return getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.status, "");
+}
+
+function normalizeStudentMaxDeviceCountStorageValue_(value) {
+  if (!hasProvidedValue_(value)) {
+    return "";
+  }
+
+  const parsed = Number(String(value || "").trim());
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return String(MAX_ACTIVE_DEVICES_PER_STUDENT_);
+  }
+
+  return String(Math.max(1, Math.floor(parsed)));
+}
+
+function getStudentMaxDeviceCount_(student) {
+  const rawValue = String(getFirstAvailableValue_(student || {}, STUDENT_FIELD_KEYS_.maxDeviceCount, "")).trim();
+  if (!rawValue) {
+    return MAX_ACTIVE_DEVICES_PER_STUDENT_;
+  }
+
+  const parsed = Number(rawValue);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    return MAX_ACTIVE_DEVICES_PER_STUDENT_;
+  }
+
+  return Math.max(1, Math.floor(parsed));
 }
 
 function buildDeniedLoginResponse_(student, accessState) {
