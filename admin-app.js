@@ -43,6 +43,7 @@ const COURSE_FIELD_KEYS = Object.freeze({
   session: ["session", "sessionName", "shift"],
   schedule: ["schedule", "routine", "time", "classSchedule"],
   nextLive: ["nextLive", "nextClass", "nextLiveClass", "upcomingClass"],
+  price: ["price", "fee", "courseFee", "monthlyFee", "amount"],
   description: ["description", "details", "summary", "note"],
 });
 
@@ -102,6 +103,31 @@ const MESSAGE_FIELD_KEYS = Object.freeze({
   createdBy: ["createdBy", "sender", "sentBy"],
   audience: ["audience", "visibility", "channel"],
   recipientState: ["recipientStateJson", "recipientState", "recipientStatus"],
+});
+
+const PAYMENT_FIELD_KEYS = Object.freeze({
+  id: ["id", "paymentId", "requestId"],
+  studentId: ["studentId", "studentID", "approvedStudentId"],
+  studentName: ["studentName", "name", "fullName"],
+  studentPhone: ["studentPhone", "phone", "mobile"],
+  courseId: ["courseId", "courseID"],
+  courseTitle: ["courseTitle", "courseName", "title"],
+  amount: ["amount", "fee", "price", "monthlyFee"],
+  paymentMethod: ["paymentMethod", "method"],
+  paymentNumber: ["paymentNumber", "merchantNumber", "bkashNumber"],
+  studentTransactionId: ["studentTransactionId", "transactionId", "submittedTransactionId"],
+  confirmedTransactionId: ["confirmedTransactionId", "merchantTransactionId", "reviewTransactionId"],
+  status: ["status", "paymentStatus"],
+  submittedOn: ["submittedOn", "createdOn", "requestedOn"],
+  reviewedOn: ["reviewedOn", "updatedOn", "approvedOn"],
+  reviewedBy: ["reviewedBy", "approvedBy", "handledBy"],
+  paymentDate: ["paymentDate", "paidOn", "approvedPaymentDate"],
+  accessStartDate: ["accessStartDate", "startDate", "activeFrom"],
+  accessEndDate: ["accessEndDate", "endDate", "validUntil"],
+  paymentDueDate: ["paymentDueDate", "nextPaymentDueDate", "lastPaymentDueDate"],
+  approvalMode: ["approvalMode", "matchMode"],
+  note: ["note", "studentNote", "remarks"],
+  reviewNote: ["reviewNote", "adminNote", "comment"],
 });
 
 const ADMIN_FIELD_KEYS = Object.freeze({
@@ -272,11 +298,13 @@ const dom = {
   courseSessionInput: document.getElementById("courseSessionInput"),
   courseScheduleInput: document.getElementById("courseScheduleInput"),
   courseNextLiveInput: document.getElementById("courseNextLiveInput"),
+  coursePriceInput: document.getElementById("coursePriceInput"),
   courseDescriptionInput: document.getElementById("courseDescriptionInput"),
   courseFeedback: document.getElementById("courseFeedback"),
   courseListPanel: document.getElementById("courseListPanel"),
   courseCountBadge: document.getElementById("courseCountBadge"),
   registrationQueue: document.getElementById("registrationQueue"),
+  paymentQueue: document.getElementById("paymentQueue"),
   messageLogPanel: document.getElementById("messageLogPanel"),
 };
 
@@ -291,6 +319,7 @@ function createEmptyDashboard() {
     enrollments: [],
     registrations: [],
     messages: [],
+    payments: [],
     courseMap: new Map(),
   };
 }
@@ -531,6 +560,29 @@ function formatDateTime(value, fallback = "-") {
   return DATE_TIME_FORMATTER.format(date);
 }
 
+function formatCoursePrice(value, fallback = "Not set") {
+  const amount = String(value || "").trim();
+  if (!amount) {
+    return fallback;
+  }
+
+  return `Tk ${amount}`;
+}
+
+function normalizePaymentStatus(value) {
+  return normalizeLookupText(value).replace(/\s+/g, "");
+}
+
+function isPendingPaymentStatus(value) {
+  return ["pending", "submitted", "underreview", "awaitingreview", "awaitingconfirmation"].includes(
+    normalizePaymentStatus(value)
+  );
+}
+
+function getTodayInputValue() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 function parseDashboardDate(value) {
   const raw = normalizeLocalizedDigits(String(value || "")).trim();
   if (!raw) {
@@ -620,6 +672,8 @@ function renderPill(value, type = "status") {
       : {
           active: "bg-blue-50 text-blue-700 ring-blue-100",
           pending: "bg-amber-50 text-amber-700 ring-amber-100",
+          submitted: "bg-amber-50 text-amber-700 ring-amber-100",
+          underreview: "bg-amber-50 text-amber-700 ring-amber-100",
           sent: "bg-blue-50 text-blue-700 ring-blue-100",
           replied: "bg-emerald-50 text-emerald-700 ring-emerald-100",
           "replies received": "bg-emerald-50 text-emerald-700 ring-emerald-100",
@@ -703,6 +757,7 @@ function normalizeDashboard(payload = {}) {
       session: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.session, "")).trim(),
       schedule: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.schedule, "")).trim(),
       nextLive: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.nextLive, "")).trim(),
+      price: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.price, "")).trim(),
       description: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.description, "")).trim(),
     }))
     .filter((course) => course.id)
@@ -800,6 +855,36 @@ function normalizeDashboard(payload = {}) {
     }))
     .sort((left, right) => new Date(right.createdOn || 0) - new Date(left.createdOn || 0));
 
+  const payments = (payload.payments || [])
+    .map((payment, index) => ({
+      id: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.id, `payment-${index + 1}`)).trim(),
+      studentId: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.studentId, "")).trim(),
+      studentName: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.studentName, "")).trim(),
+      studentPhone: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.studentPhone, "")).trim(),
+      courseId: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.courseId, "")).trim(),
+      courseTitle: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.courseTitle, "")).trim(),
+      amount: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.amount, "")).trim(),
+      paymentMethod: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.paymentMethod, "bKash Send Money")).trim(),
+      paymentNumber: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.paymentNumber, "")).trim(),
+      studentTransactionId: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.studentTransactionId, "")).trim(),
+      confirmedTransactionId: String(
+        getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.confirmedTransactionId, "")
+      ).trim(),
+      status: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.status, "Pending")).trim() || "Pending",
+      submittedOn: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.submittedOn, "")).trim(),
+      reviewedOn: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.reviewedOn, "")).trim(),
+      reviewedBy: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.reviewedBy, "")).trim(),
+      paymentDate: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.paymentDate, "")).trim(),
+      accessStartDate: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.accessStartDate, "")).trim(),
+      accessEndDate: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.accessEndDate, "")).trim(),
+      paymentDueDate: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.paymentDueDate, "")).trim(),
+      approvalMode: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.approvalMode, "")).trim(),
+      note: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.note, "")).trim(),
+      reviewNote: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.reviewNote, "")).trim(),
+    }))
+    .filter((payment) => payment.id && payment.studentId && payment.courseId)
+    .sort((left, right) => new Date(right.submittedOn || 0) - new Date(left.submittedOn || 0));
+
   return {
     generatedAt: String(payload.generatedAt || "").trim(),
     spreadsheetName: String(payload.spreadsheetName || "").trim(),
@@ -810,6 +895,7 @@ function normalizeDashboard(payload = {}) {
     enrollments,
     registrations,
     messages,
+    payments,
     courseMap,
   };
 }
@@ -1444,15 +1530,18 @@ function applyDashboardPayload(payload, feedbackMessage = "", tone = "success") 
   const pendingRegistrationCount = state.data.registrations.filter(
     (registration) => normalizeStatus(registration.status) === "pending"
   ).length;
+  const pendingPaymentCount = state.data.payments.filter((payment) => isPendingPaymentStatus(payment.status)).length;
 
   if (feedbackMessage) {
     setFeedback(dom.adminTopFeedback, feedbackMessage, tone);
-  } else if (pendingRegistrationCount) {
+  } else if (pendingRegistrationCount || pendingPaymentCount) {
     setFeedback(
       dom.adminTopFeedback,
       `${pendingRegistrationCount} registration request${
-        pendingRegistrationCount === 1 ? " is" : "s are"
-      } waiting for approval in the queue.`,
+        pendingRegistrationCount === 1 ? "" : "s"
+      } and ${pendingPaymentCount} payment review${
+        pendingPaymentCount === 1 ? "" : "s"
+      } are waiting in the queue.`,
       "info"
     );
   } else if (state.data.spreadsheetName) {
@@ -1478,9 +1567,10 @@ function renderSummaryCards() {
   const pendingRegistrations = state.data.registrations.filter(
     (registration) => normalizeStatus(registration.status) === "pending"
   ).length;
+  const pendingPayments = state.data.payments.filter((payment) => isPendingPaymentStatus(payment.status)).length;
 
   dom.summaryStudents.textContent = String(state.data.students.length);
-  dom.summaryPending.textContent = String(pendingRegistrations);
+  dom.summaryPending.textContent = String(pendingRegistrations + pendingPayments);
   dom.summaryCourses.textContent = String(state.data.courses.length);
   dom.summaryMessages.textContent = String(state.data.messages.length);
 
@@ -2033,6 +2123,7 @@ function renderCourseList() {
       ]
         .filter(Boolean)
         .join(" | ");
+      const priceLabel = formatCoursePrice(course.price, "");
 
       return `
         <div class="rounded-[1.5rem] border border-white bg-white p-5">
@@ -2047,6 +2138,11 @@ function renderCourseList() {
                   : ""
               }
               <p class="mt-3 text-sm text-slate-600">${escapeHtml(course.schedule || "Schedule pending")}</p>
+              ${
+                priceLabel
+                  ? `<p class="mt-2 text-sm font-semibold text-amber-700">Course Fee: ${escapeHtml(priceLabel)}</p>`
+                  : ""
+              }
               <p class="mt-2 text-xs text-slate-400">ID: ${escapeHtml(course.id)} | Students: ${assignedCount}</p>
             </div>
             <div class="flex shrink-0 gap-2">
@@ -2129,6 +2225,108 @@ function renderRegistrationQueue() {
                 <button
                   type="button"
                   data-registration-reject="${escapeHtml(registration.id)}"
+                  class="rounded-2xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-700"
+                >
+                  Reject
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+}
+
+function renderPaymentQueue() {
+  const pendingPayments = state.data.payments.filter((payment) => isPendingPaymentStatus(payment.status));
+
+  if (!pendingPayments.length) {
+    dom.paymentQueue.innerHTML =
+      '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-500">No submitted payment is waiting for review.</div>';
+    return;
+  }
+
+  dom.paymentQueue.innerHTML = pendingPayments
+    .map((payment) => {
+      const course = state.data.courseMap.get(payment.courseId) || null;
+      const courseTitle = course?.title || payment.courseTitle || payment.courseId;
+      const submittedDateValue = String(payment.submittedOn || "").trim();
+      const paymentDateValue = submittedDateValue ? submittedDateValue.slice(0, 10) : getTodayInputValue();
+      return `
+        <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+          <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+            <div class="min-w-0">
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Pending Payment</p>
+                ${renderPill(payment.status || "Pending")}
+              </div>
+              <h4 class="mt-2 break-words text-lg font-extrabold text-slate-950">${escapeHtml(
+                payment.studentName || payment.studentId || "Student"
+              )}</h4>
+              <p class="mt-1 text-sm text-slate-600">${escapeHtml(payment.studentPhone || "-")} | ${escapeHtml(
+                payment.studentId || "-"
+              )}</p>
+              <p class="mt-3 text-sm text-slate-600">Course: <span class="font-semibold text-slate-900">${escapeHtml(
+                courseTitle
+              )}</span></p>
+              <p class="mt-2 text-sm text-slate-600">Fee: <span class="font-semibold text-amber-700">${escapeHtml(
+                formatCoursePrice(payment.amount, "Not set")
+              )}</span> | Method: ${escapeHtml(payment.paymentMethod || "bKash Send Money")}</p>
+              <p class="mt-2 text-sm text-slate-600">Send Money number: <span class="font-semibold text-slate-900">${escapeHtml(
+                payment.paymentNumber || "01975341714"
+              )}</span></p>
+              <p class="mt-2 text-sm text-slate-600">Student transaction ID: <span class="font-semibold text-slate-900">${escapeHtml(
+                payment.studentTransactionId || "-"
+              )}</span></p>
+              ${
+                payment.note
+                  ? `<p class="mt-2 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">Student note: ${escapeHtml(
+                      payment.note
+                    )}</p>`
+                  : ""
+              }
+              <p class="mt-3 text-xs text-slate-400">Submitted: ${escapeHtml(
+                formatDateTime(payment.submittedOn, "Not recorded")
+              )}</p>
+            </div>
+            <div class="w-full max-w-md rounded-[1.25rem] border border-white bg-white p-4">
+              <label class="mb-2 block text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Confirmed Transaction ID</label>
+              <input
+                type="text"
+                value="${escapeHtml(payment.confirmedTransactionId || "")}"
+                data-payment-confirmed="${escapeHtml(payment.id)}"
+                class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none"
+                placeholder="Enter the transaction ID received in bKash"
+              />
+              <label class="mt-4 block text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Payment Date</label>
+              <input
+                type="date"
+                value="${escapeHtml(paymentDateValue)}"
+                data-payment-date="${escapeHtml(payment.id)}"
+                class="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none"
+              />
+              <label class="mt-4 block text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Review Note</label>
+              <textarea
+                rows="3"
+                data-payment-note="${escapeHtml(payment.id)}"
+                class="mt-2 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none"
+                placeholder="Optional approval or rejection note"
+              >${escapeHtml(payment.reviewNote || "")}</textarea>
+              <p class="mt-3 text-xs leading-5 text-slate-500">
+                Matching submitted and confirmed transaction IDs will be stored as Auto Match. If the IDs differ, the approval is still saved as Manual Review.
+              </p>
+              <div class="mt-4 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  data-payment-approve="${escapeHtml(payment.id)}"
+                  class="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-emerald-700"
+                >
+                  Approve 1 Month
+                </button>
+                <button
+                  type="button"
+                  data-payment-reject="${escapeHtml(payment.id)}"
                   class="rounded-2xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-700"
                 >
                   Reject
@@ -2257,6 +2455,7 @@ function renderDashboard() {
   renderBulkCourseSelector();
   renderCourseList();
   renderRegistrationQueue();
+  renderPaymentQueue();
   renderMessageLog();
 
   if (state.editingCourseId) {
@@ -2278,6 +2477,7 @@ function populateCourseForm(course) {
   dom.courseSessionInput.value = course.session || "";
   dom.courseScheduleInput.value = course.schedule || "";
   dom.courseNextLiveInput.value = course.nextLive || "";
+  dom.coursePriceInput.value = course.price || "";
   dom.courseDescriptionInput.value = course.description || "";
 
   const submitButton = dom.courseForm.querySelector('button[type="submit"]');
@@ -2553,6 +2753,7 @@ async function handleCourseSave(event) {
     session: dom.courseSessionInput.value.trim(),
     schedule: dom.courseScheduleInput.value.trim(),
     nextLive: dom.courseNextLiveInput.value.trim(),
+    price: dom.coursePriceInput.value.trim(),
     description: dom.courseDescriptionInput.value.trim(),
   };
 
@@ -2661,6 +2862,40 @@ async function handleRegistrationReview(registrationId, action) {
   }
 }
 
+async function handlePaymentReview(paymentId, action) {
+  const confirmedField = dom.paymentQueue.querySelector(`[data-payment-confirmed="${paymentId}"]`);
+  const paymentDateField = dom.paymentQueue.querySelector(`[data-payment-date="${paymentId}"]`);
+  const noteField = dom.paymentQueue.querySelector(`[data-payment-note="${paymentId}"]`);
+  const confirmedTransactionId = confirmedField?.value.trim() || "";
+  const paymentDate = paymentDateField?.value.trim() || "";
+  const reviewNote = noteField?.value.trim() || "";
+
+  if (action === "approve" && !confirmedTransactionId) {
+    setFeedback(dom.adminTopFeedback, "Enter the confirmed bKash transaction ID before approving.", "error");
+    confirmedField?.focus();
+    return;
+  }
+
+  try {
+    setFeedback(dom.adminTopFeedback, `${action === "approve" ? "Approving" : "Rejecting"} payment...`, "info");
+    const response = await requestAction("adminreviewpayment", {
+      paymentId,
+      reviewAction: action,
+      confirmedTransactionId,
+      paymentDate,
+      reviewNote,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.message || "Unable to update the payment review.");
+    }
+
+    applyDashboardPayload(response, `Payment ${action === "approve" ? "approved" : "rejected"}.`);
+  } catch (error) {
+    setFeedback(dom.adminTopFeedback, error.message || "Unable to update the payment review.", "error");
+  }
+}
+
 function handleStudentTableClick(event) {
   const editButton = event.target.closest("[data-edit-student]");
   if (!editButton) {
@@ -2748,6 +2983,19 @@ function handleRegistrationQueueClick(event) {
   const rejectButton = event.target.closest("[data-registration-reject]");
   if (rejectButton) {
     handleRegistrationReview(rejectButton.dataset.registrationReject, "reject");
+  }
+}
+
+function handlePaymentQueueClick(event) {
+  const approveButton = event.target.closest("[data-payment-approve]");
+  if (approveButton) {
+    handlePaymentReview(approveButton.dataset.paymentApprove, "approve");
+    return;
+  }
+
+  const rejectButton = event.target.closest("[data-payment-reject]");
+  if (rejectButton) {
+    handlePaymentReview(rejectButton.dataset.paymentReject, "reject");
   }
 }
 
@@ -2873,6 +3121,7 @@ dom.courseForm.addEventListener("submit", handleCourseSave);
 dom.clearCourseFormBtn.addEventListener("click", clearCourseForm);
 dom.courseListPanel.addEventListener("click", handleCourseListClick);
 dom.registrationQueue.addEventListener("click", handleRegistrationQueueClick);
+dom.paymentQueue.addEventListener("click", handlePaymentQueueClick);
 dom.messageLogPanel.addEventListener("click", handleMessageLogClick);
 window.addEventListener("scroll", persistAdminScrollPosition, { passive: true });
 

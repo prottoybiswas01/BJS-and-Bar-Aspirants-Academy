@@ -7,6 +7,7 @@ const SHEET_NAMES = {
   admins: "Admins",
   registrations: "Registrations",
   messages: "Messages",
+  payments: "Payments",
 };
 
 const SPREADSHEET_ID = "1QvEuk1IL-yRZAtu8j54sNDIAHLoDUboBbxTZ6Bh4H20";
@@ -30,7 +31,19 @@ const SHEET_HEADERS = {
     "enrolledCourseIds",
     "completedLessonIds",
   ],
-  courses: ["id", "title", "shortTitle", "faculty", "category", "batch", "session", "schedule", "nextLive", "description"],
+  courses: [
+    "id",
+    "title",
+    "shortTitle",
+    "faculty",
+    "category",
+    "batch",
+    "session",
+    "schedule",
+    "nextLive",
+    "price",
+    "description",
+  ],
   lessons: [
     "id",
     "courseId",
@@ -74,6 +87,31 @@ const SHEET_HEADERS = {
     "reviewNote",
   ],
   messages: ["id", "studentIds", "title", "message", "status", "createdOn", "createdBy", "audience", "recipientStateJson"],
+  payments: [
+    "id",
+    "studentId",
+    "studentName",
+    "studentPhone",
+    "studentEmail",
+    "courseId",
+    "courseTitle",
+    "amount",
+    "paymentMethod",
+    "paymentNumber",
+    "studentTransactionId",
+    "confirmedTransactionId",
+    "status",
+    "submittedOn",
+    "reviewedOn",
+    "reviewedBy",
+    "paymentDate",
+    "accessStartDate",
+    "accessEndDate",
+    "paymentDueDate",
+    "approvalMode",
+    "note",
+    "reviewNote",
+  ],
 };
 
 const APPROVED_LOGIN_VALUES = ["approved", "yes", "true", "allow", "allowed", "active", "1"];
@@ -292,6 +330,7 @@ const SAMPLE_DATA = {
   ],
   registrations: [],
   messages: [],
+  payments: [],
 };
 
 function doGet(e) {
@@ -336,6 +375,7 @@ function doPost(e) {
     if (action === "adminlogin") return handleAdminLogin_(request);
     if (action === "registerstudent") return handleStudentRegistration_(request);
     if (action === "requeststudentcourses") return handleStudentCourseRequest_(request);
+    if (action === "studentsubmitpayment") return handleStudentSubmitPayment_(request);
     if (action === "studentgetinbox") return handleStudentGetInbox_(request);
     if (action === "admingetdashboard") return handleAdminGetDashboard_(request);
     if (action === "adminupdatestudent") return handleAdminUpdateStudent_(request);
@@ -345,6 +385,7 @@ function doPost(e) {
     if (action === "admindeletecourse") return handleAdminDeleteCourse_(request);
     if (action === "adminapproveregistration") return handleAdminApproveRegistration_(request);
     if (action === "adminrejectregistration") return handleAdminRejectRegistration_(request);
+    if (action === "adminreviewpayment") return handleAdminReviewPayment_(request);
     if (action === "adminsendmessage") return handleAdminSendMessage_(request);
     if (action === "admindeletemessage") return handleAdminDeleteMessage_(request);
     if (action === "studentrespondmessage") return handleStudentRespondMessage_(request);
@@ -445,6 +486,7 @@ function handleLogin_(request) {
   const enrollments = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.enrollments));
   const studentId = getStudentId_(student);
   const inboxMessages = getStudentInboxMessages_(spreadsheet, studentId);
+  const relatedPayments = getStudentPayments_(spreadsheet, studentId);
   const relatedEnrollments = enrollments.filter(function (enrollment) {
     return String(enrollment.studentId || "").trim() === studentId;
   });
@@ -473,6 +515,7 @@ function handleLogin_(request) {
     notices: notices,
     enrollments: relatedEnrollments,
     messages: inboxMessages,
+    payments: relatedPayments,
     message: previewOnly ? "Preview access approved." : "Login approved.",
   });
 }
@@ -803,6 +846,110 @@ function handleStudentCourseRequest_(request) {
   });
 }
 
+function handleStudentSubmitPayment_(request) {
+  const spreadsheet = getSpreadsheet_();
+  const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
+  const paymentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.payments);
+  const courses = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses));
+  const studentId = String(request.studentId || "").trim();
+  const courseId = String(request.courseId || "").trim();
+  const transactionId = String(request.transactionId || request.studentTransactionId || "").trim();
+  const note = String(request.note || "").trim();
+
+  if (!studentId) {
+    return jsonOutput_({ ok: false, message: "Student ID is required for payment submission." });
+  }
+
+  if (!courseId) {
+    return jsonOutput_({ ok: false, message: "Course ID is required for payment submission." });
+  }
+
+  if (!transactionId) {
+    return jsonOutput_({ ok: false, message: "Transaction ID is required for payment submission." });
+  }
+
+  const student = studentsData.records.find(function (entry) {
+    return getStudentId_(entry) === studentId;
+  });
+  if (!student) {
+    return jsonOutput_({ ok: false, message: "Student account was not found." });
+  }
+
+  const course = courses.find(function (entry) {
+    return String(entry.id || entry.courseId || "").trim() === courseId;
+  });
+  if (!course) {
+    return jsonOutput_({ ok: false, message: "Course was not found." });
+  }
+
+  const hasPendingPayment = paymentsData.records.some(function (payment) {
+    return (
+      String(payment.studentId || "").trim() === studentId &&
+      String(payment.courseId || "").trim() === courseId &&
+      isPendingPaymentStatus_(payment.status || "")
+    );
+  });
+  if (hasPendingPayment) {
+    return jsonOutput_({
+      ok: false,
+      message: "A payment request for this course is already waiting for review.",
+      payments: getStudentPayments_(spreadsheet, studentId),
+    });
+  }
+
+  const nextPayment = {
+    id: Utilities.getUuid(),
+    studentId: studentId,
+    studentName: String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.name, "Student")).trim(),
+    studentPhone: String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.phone, "")).trim(),
+    studentEmail: String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.email, "")).trim(),
+    courseId: courseId,
+    courseTitle: String(course.title || course.shortTitle || courseId).trim(),
+    amount: String(course.price || course.fee || course.courseFee || "").trim(),
+    paymentMethod: "bKash Send Money",
+    paymentNumber: "01975341714",
+    studentTransactionId: transactionId,
+    confirmedTransactionId: "",
+    status: "Pending",
+    submittedOn: getNowIso_(),
+    reviewedOn: "",
+    reviewedBy: "",
+    paymentDate: "",
+    accessStartDate: "",
+    accessEndDate: "",
+    paymentDueDate: "",
+    approvalMode: "",
+    note: note,
+    reviewNote: "",
+  };
+
+  writeSheetEntries_(paymentsData.sheet, paymentsData.headers, paymentsData.records.concat([nextPayment]));
+
+  appendSystemMessage_(spreadsheet, {
+    studentIds: buildPipeList_([studentId]),
+    title: "New Payment Submission",
+    message:
+      nextPayment.studentName +
+      " submitted a payment for " +
+      nextPayment.courseTitle +
+      ". Student ID: " +
+      studentId +
+      ". Submitted transaction ID: " +
+      transactionId +
+      ". Review it from the payment queue.",
+    status: "Sent",
+    createdBy: "Student Portal",
+  });
+
+  return jsonOutput_({
+    ok: true,
+    message: "Payment request submitted. Access will open after payment confirmation.",
+    paymentId: nextPayment.id,
+    studentId: studentId,
+    payments: getStudentPayments_(spreadsheet, studentId),
+  });
+}
+
 function handleStudentGetInbox_(request) {
   const spreadsheet = getSpreadsheet_();
   const studentId = String(request.studentId || "").trim();
@@ -1066,6 +1213,20 @@ function getStudentInboxMessages_(spreadsheet, studentId) {
     })
     .sort(function (left, right) {
       return new Date(right.createdOn || 0) - new Date(left.createdOn || 0);
+    });
+}
+
+function getStudentPayments_(spreadsheet, studentId) {
+  if (!spreadsheet || !studentId) {
+    return [];
+  }
+
+  return readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.payments))
+    .filter(function (payment) {
+      return String(payment.studentId || "").trim() === studentId;
+    })
+    .sort(function (left, right) {
+      return new Date(right.submittedOn || 0) - new Date(left.submittedOn || 0);
     });
 }
 
@@ -1386,6 +1547,7 @@ function handleAdminCreateCourse_(request) {
       session: String(payload.session || "").trim(),
       schedule: String(payload.schedule || "Schedule pending").trim(),
       nextLive: String(payload.nextLive || "").trim(),
+      price: String(payload.price || "").trim(),
       description: String(payload.description || "").trim(),
     },
     existing || {}
@@ -1400,6 +1562,7 @@ function handleAdminCreateCourse_(request) {
   nextCourse.session = String(payload.session || nextCourse.session || "").trim();
   nextCourse.schedule = String(payload.schedule || nextCourse.schedule || "").trim();
   nextCourse.nextLive = String(payload.nextLive || nextCourse.nextLive || "").trim();
+  nextCourse.price = String(payload.price || nextCourse.price || "").trim();
   nextCourse.description = String(payload.description || nextCourse.description || "").trim();
 
   writeSheetEntries_(
@@ -1641,6 +1804,131 @@ function handleAdminRejectRegistration_(request) {
       })
     );
   }
+
+  return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
+}
+
+function handleAdminReviewPayment_(request) {
+  const auth = getAuthorizedAdminSession_(request);
+  if (!auth) {
+    return unauthorizedOutput_();
+  }
+
+  const paymentId = String(request.paymentId || request.id || "").trim();
+  const reviewAction = normalizeValue_(request.reviewAction || request.actionType || "approve");
+  if (!paymentId) {
+    return jsonOutput_({ ok: false, message: "Payment ID is required." });
+  }
+
+  const spreadsheet = getSpreadsheet_();
+  const paymentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.payments);
+  const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
+  const courses = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses));
+  const payment = paymentsData.records.find(function (entry) {
+    return String(entry.id || "").trim() === paymentId;
+  });
+
+  if (!payment) {
+    return jsonOutput_({ ok: false, message: "Payment record was not found." });
+  }
+
+  const studentId = String(payment.studentId || "").trim();
+  const courseId = String(payment.courseId || "").trim();
+  const student = studentsData.records.find(function (entry) {
+    return getStudentId_(entry) === studentId;
+  });
+  if (!student) {
+    return jsonOutput_({ ok: false, message: "Student account was not found for this payment." });
+  }
+
+  if (!courseId) {
+    return jsonOutput_({ ok: false, message: "Course ID is missing from this payment record." });
+  }
+
+  if (reviewAction === "reject") {
+    writeSheetEntries_(
+      paymentsData.sheet,
+      paymentsData.headers,
+      paymentsData.records.map(function (entry) {
+        if (String(entry.id || "").trim() !== paymentId) {
+          return entry;
+        }
+
+        const nextEntry = Object.assign({}, entry);
+        nextEntry.status = "Rejected";
+        nextEntry.reviewedOn = getNowIso_();
+        nextEntry.reviewedBy = auth.username || auth.name || auth.id || "";
+        nextEntry.reviewNote = String(request.reviewNote || "Payment rejected from admin panel.");
+        return nextEntry;
+      })
+    );
+
+    return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
+  }
+
+  const confirmedTransactionId = String(request.confirmedTransactionId || request.merchantTransactionId || "").trim();
+  if (!confirmedTransactionId) {
+    return jsonOutput_({ ok: false, message: "Confirmed bKash transaction ID is required." });
+  }
+
+  const paymentDate = normalizeIsoDateValue_(request.paymentDate || payment.submittedOn || getTodayIso_());
+  const paymentDueDate = addMonthsIso_(paymentDate, 1);
+  const accessStartDate = getEarliestCourseLessonReleaseDate_(spreadsheet, courseId) || paymentDate;
+  const mergedCourseIds = getStudentAssignedCourseIds_(spreadsheet, student)
+    .concat([courseId])
+    .filter(function (entryCourseId, index, list) {
+      return entryCourseId && list.indexOf(entryCourseId) === index;
+    });
+  const approvalMode =
+    normalizeValue_(payment.studentTransactionId || "") === normalizeValue_(confirmedTransactionId)
+      ? "Auto Match"
+      : "Manual Review";
+  const course = courses.find(function (entry) {
+    return String(entry.id || entry.courseId || "").trim() === courseId;
+  });
+  const monthlyFee = String(payment.amount || (course ? course.price || course.fee || "" : "")).trim();
+
+  syncStudentCourses_(spreadsheet, [studentId], mergedCourseIds, {
+    replaceExisting: true,
+    courseRulesMap: (function () {
+      const courseRulesMap = {};
+      courseRulesMap[courseId] = {
+        accessStartDate: accessStartDate,
+        accessEndDate: paymentDueDate,
+        videoAccessUntil: paymentDueDate,
+        lastPaymentDate: paymentDate,
+        paymentDueDate: paymentDueDate,
+        monthlyFee: monthlyFee,
+        status: "Active",
+        paidMonths: "",
+        unlimitedAccess: "false",
+      };
+      return courseRulesMap;
+    })(),
+  });
+
+  writeSheetEntries_(
+    paymentsData.sheet,
+    paymentsData.headers,
+    paymentsData.records.map(function (entry) {
+      if (String(entry.id || "").trim() !== paymentId) {
+        return entry;
+      }
+
+      const nextEntry = Object.assign({}, entry);
+      nextEntry.confirmedTransactionId = confirmedTransactionId;
+      nextEntry.status = "Approved";
+      nextEntry.reviewedOn = getNowIso_();
+      nextEntry.reviewedBy = auth.username || auth.name || auth.id || "";
+      nextEntry.paymentDate = paymentDate;
+      nextEntry.accessStartDate = accessStartDate;
+      nextEntry.accessEndDate = paymentDueDate;
+      nextEntry.paymentDueDate = paymentDueDate;
+      nextEntry.approvalMode = approvalMode;
+      nextEntry.reviewNote = String(request.reviewNote || "Payment approved from admin panel.");
+      return nextEntry;
+    })
+  );
 
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
 }
@@ -2170,6 +2458,17 @@ function isPreviewAccessStudent_(student) {
 
 function normalizeValue_(value) {
   return normalizeLookupText_(value).trim().toLowerCase();
+}
+
+function isPendingPaymentStatus_(value) {
+  const normalized = normalizeValue_(value).replace(/\s+/g, "");
+  return (
+    normalized === "pending" ||
+    normalized === "submitted" ||
+    normalized === "underreview" ||
+    normalized === "awaitingreview" ||
+    normalized === "awaitingconfirmation"
+  );
 }
 
 function normalizeUnlimitedAccessValue_(value) {
@@ -3034,6 +3333,7 @@ function buildAdminPayload_(spreadsheet, adminSession) {
     admins: sanitizeAdmins_(readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.admins))),
     registrations: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.registrations)),
     messages: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.messages)),
+    payments: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.payments)),
   };
 }
 
@@ -3080,6 +3380,50 @@ function getTodayIso_() {
 
 function getNowIso_() {
   return new Date().toISOString();
+}
+
+function normalizeIsoDateValue_(value) {
+  const text = String(value || "").trim();
+  if (!text) {
+    return getTodayIso_();
+  }
+
+  const directDate = new Date(text);
+  if (!Number.isNaN(directDate.getTime())) {
+    return Utilities.formatDate(directDate, Session.getScriptTimeZone() || "Asia/Dhaka", "yyyy-MM-dd");
+  }
+
+  return getTodayIso_();
+}
+
+function addMonthsIso_(isoDate, monthCount) {
+  const baseDate = new Date(String(isoDate || getTodayIso_()).trim() + "T00:00:00");
+  if (Number.isNaN(baseDate.getTime())) {
+    return getTodayIso_();
+  }
+
+  baseDate.setMonth(baseDate.getMonth() + Number(monthCount || 0));
+  return Utilities.formatDate(baseDate, Session.getScriptTimeZone() || "Asia/Dhaka", "yyyy-MM-dd");
+}
+
+function getEarliestCourseLessonReleaseDate_(spreadsheet, courseId) {
+  if (!spreadsheet || !courseId) {
+    return "";
+  }
+
+  const lessons = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.lessons))
+    .filter(function (lesson) {
+      return String(lesson.courseId || "").trim() === courseId && String(lesson.releaseDate || "").trim();
+    })
+    .sort(function (left, right) {
+      return new Date(left.releaseDate || 0) - new Date(right.releaseDate || 0);
+    });
+
+  if (!lessons.length) {
+    return "";
+  }
+
+  return normalizeIsoDateValue_(lessons[0].releaseDate || "");
 }
 
 function jsonOutput_(payload) {

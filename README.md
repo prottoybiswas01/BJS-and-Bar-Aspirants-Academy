@@ -43,6 +43,7 @@ Compression is handled by the web server through `mod_deflate`, so this repo no 
 - Course lessons are rendered from full YouTube links that you can paste directly from YouTube
 - Student profile modal with course access and payment details
 - Payment-based video locking using monthly paid access or approval dates
+- Manual `bKash Send Money` payment submission with transaction ID review queue
 
 ## Admin workflow
 
@@ -53,7 +54,9 @@ The admin panel can:
 - log in using the `Admins` sheet
 - approve student registrations
 - create and delete courses
+- set a course fee
 - assign course access and payment rules
+- review submitted bKash payment requests and unlock one month of access
 - send internal admin messages
 - update student approval, password, and status
 
@@ -71,6 +74,7 @@ Create one spreadsheet with these tabs:
 6. `Admins`
 7. `Registrations`
 8. `Messages`
+9. `Payments`
 
 If you use more than one spreadsheet, this project should read from one main Google Sheet only. If your Apps Script is standalone or you keep switching files, paste the main sheet ID into `SPREADSHEET_ID` inside `google-apps-script.gs`.
 
@@ -99,8 +103,10 @@ Important login columns:
 ### Courses
 
 ```text
-id | title | shortTitle | faculty | category | schedule | nextLive | description
+id | title | shortTitle | faculty | category | schedule | nextLive | price | description
 ```
+
+- `price`: optional course fee shown in the student payment popup and admin payment queue
 
 ### Lessons
 
@@ -144,6 +150,29 @@ Meaning of the important columns:
 - `monthlyFee`: optional display value like `1500`
 - `status`: use `Active`, `Pending`, `Blocked`, `Suspended`, `Expired`
 - `paidMonths`: optional month list like `2026-01|2026-03`; when this field is used, only lessons uploaded in those months unlock
+
+### Payments
+
+```text
+id | studentId | studentName | studentPhone | studentEmail | courseId | courseTitle | amount | paymentMethod | paymentNumber | studentTransactionId | confirmedTransactionId | status | submittedOn | reviewedOn | reviewedBy | paymentDate | accessStartDate | accessEndDate | paymentDueDate | approvalMode | note | reviewNote
+```
+
+- `studentTransactionId`: the transaction ID submitted by the student from the portal popup
+- `confirmedTransactionId`: the bKash transaction ID verified by the admin
+- `status`: use `Pending`, `Approved`, or `Rejected`
+- `paymentDate`: the admin-confirmed payment date
+- `paymentDueDate`: the paid-through date that unlocks one month of access
+- `approvalMode`: saved as `Auto Match` when both transaction IDs match, otherwise `Manual Review`
+
+## bKash note
+
+This flow is a manual `bKash Send Money` review system. It does **not** use the official bKash merchant gateway.
+
+- Students send money to your number and submit the transaction ID
+- The request is saved in the `Payments` sheet
+- An admin confirms the matching bKash transaction from `admin.html`
+- After approval, the course is unlocked for one month automatically
+- If you want true direct gateway payments without manual confirmation, you still need an official bKash merchant account and merchant API integration
 
 ## Payment-based video locking
 
@@ -219,6 +248,7 @@ Connection flow:
 - `app.js` uses the deployed `/exec` URL as the live data source
 - The deployed Apps Script runs the logic from `google-apps-script.gs`
 - `google-apps-script.gs` reads the `Students`, `Courses`, `Lessons`, `Notices`, and `Enrollments` sheets
+- `google-apps-script.gs` also creates and uses the `Payments` sheet for transaction review
 - Admin login and admin dashboard requests also use the same Apps Script deployment
 - Student login validation also goes through the same deployed Apps Script via `doPost`
 - `google-apps-script.gs` can be locked to one spreadsheet with `SPREADSHEET_ID`

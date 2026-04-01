@@ -114,6 +114,35 @@ const STUDENT_FIELD_KEYS = Object.freeze({
   completedLessonIds: ["completedLessonIds", "completed", "completedLessons"],
 });
 
+const COURSE_FIELD_KEYS = Object.freeze({
+  price: ["price", "fee", "courseFee", "monthlyFee", "amount"],
+});
+
+const PAYMENT_FIELD_KEYS = Object.freeze({
+  id: ["id", "paymentId", "requestId"],
+  studentId: ["studentId", "studentID", "approvedStudentId"],
+  studentName: ["studentName", "name", "fullName"],
+  studentPhone: ["studentPhone", "phone", "mobile"],
+  courseId: ["courseId", "courseID"],
+  courseTitle: ["courseTitle", "courseName", "title"],
+  amount: ["amount", "fee", "price", "monthlyFee"],
+  paymentMethod: ["paymentMethod", "method"],
+  paymentNumber: ["paymentNumber", "merchantNumber", "bkashNumber"],
+  studentTransactionId: ["studentTransactionId", "transactionId", "submittedTransactionId"],
+  confirmedTransactionId: ["confirmedTransactionId", "merchantTransactionId", "reviewTransactionId"],
+  status: ["status", "paymentStatus"],
+  submittedOn: ["submittedOn", "createdOn", "requestedOn"],
+  reviewedOn: ["reviewedOn", "updatedOn", "approvedOn"],
+  reviewedBy: ["reviewedBy", "approvedBy", "handledBy"],
+  paymentDate: ["paymentDate", "paidOn", "approvedPaymentDate"],
+  accessStartDate: ["accessStartDate", "startDate", "activeFrom"],
+  accessEndDate: ["accessEndDate", "endDate", "validUntil"],
+  paymentDueDate: ["paymentDueDate", "nextPaymentDueDate", "lastPaymentDueDate"],
+  approvalMode: ["approvalMode", "matchMode"],
+  note: ["note", "studentNote", "remarks"],
+  reviewNote: ["reviewNote", "adminNote", "comment"],
+});
+
 const DEMO_DATA_SCRIPT_URL = "./data/portal-demo-data.js?v=20260331-2";
 let demoDataPromise = null;
 let courseAccordionSyncFrame = 0;
@@ -177,6 +206,7 @@ function createEmptyPortalData() {
     notices: [],
     enrollments: [],
     messages: [],
+    payments: [],
     hasEnrollmentSheet: false,
     courseMap: new Map(),
     courseReferenceMap: new Map(),
@@ -194,6 +224,8 @@ const state = {
   activeMessageId: "",
   dismissedMessageIds: new Set(),
   messageReplyBusy: false,
+  paymentSubmitBusy: false,
+  activePaymentCourseId: "",
   messageInboxPollHandle: 0,
   loginBusy: false,
 };
@@ -230,6 +262,19 @@ const dom = {
   messageInbox: document.getElementById("messageInbox"),
   messageInboxList: document.getElementById("messageInboxList"),
   courseList: document.getElementById("courseList"),
+  paymentModal: document.getElementById("paymentModal"),
+  paymentBackdrop: document.getElementById("paymentBackdrop"),
+  closePaymentBtn: document.getElementById("closePaymentBtn"),
+  paymentForm: document.getElementById("paymentForm"),
+  paymentCourseName: document.getElementById("paymentCourseName"),
+  paymentCourseFee: document.getElementById("paymentCourseFee"),
+  paymentBkashNumber: document.getElementById("paymentBkashNumber"),
+  paymentStudentId: document.getElementById("paymentStudentId"),
+  copyBkashNumberBtn: document.getElementById("copyBkashNumberBtn"),
+  paymentTransactionId: document.getElementById("paymentTransactionId"),
+  paymentNote: document.getElementById("paymentNote"),
+  paymentSubmitBtn: document.getElementById("paymentSubmitBtn"),
+  paymentFeedback: document.getElementById("paymentFeedback"),
   videoModal: document.getElementById("videoModal"),
   videoBackdrop: document.getElementById("videoBackdrop"),
   closeVideoBtn: document.getElementById("closeVideoBtn"),
@@ -364,6 +409,9 @@ function serializePortalDataSnapshot(data) {
   const enrollments = (data?.enrollments || []).filter((enrollment) => {
     return !activeStudentId || enrollment.studentId === activeStudentId;
   });
+  const payments = (data?.payments || []).filter((payment) => {
+    return !activeStudentId || payment.studentId === activeStudentId;
+  });
 
   return {
     students: students.map((student) => ({
@@ -375,6 +423,7 @@ function serializePortalDataSnapshot(data) {
     notices: data?.notices || [],
     enrollments,
     messages: data?.messages || [],
+    payments,
   };
 }
 
@@ -807,6 +856,37 @@ function hasPaidMonthAccess(entry) {
   return Array.isArray(entry.paidMonths) && entry.paidMonths.length > 0;
 }
 
+function formatCoursePrice(value, fallback = "Amount shared in popup") {
+  const amount = String(value || "").trim();
+  if (!amount) {
+    return fallback;
+  }
+
+  return `Tk ${amount}`;
+}
+
+function normalizePaymentStatusValue(value) {
+  return normalizeAccessModeValue(value).replace(/\s+/g, "");
+}
+
+function isPendingPaymentStatus(value) {
+  return ["pending", "submitted", "underreview", "awaitingreview", "awaitingconfirmation"].includes(
+    normalizePaymentStatusValue(value)
+  );
+}
+
+function getStudentPayments(studentId) {
+  return (state.data.payments || []).filter((payment) => payment.studentId === studentId);
+}
+
+function getLatestPendingPaymentForCourse(studentId, courseId) {
+  return (
+    getStudentPayments(studentId)
+      .filter((payment) => payment.courseId === courseId && isPendingPaymentStatus(payment.status))
+      .sort((left, right) => new Date(right.submittedOn || 0) - new Date(left.submittedOn || 0))[0] || null
+  );
+}
+
 function extractYouTubeVideoId(value) {
   const text = String(value || "").trim();
   if (!text) {
@@ -1099,6 +1179,7 @@ function normalizeData(raw) {
     category: course.category || "Course",
     schedule: course.schedule || "Schedule pending",
     nextLive: course.nextLive || course.nextClass || "",
+    price: getFirstAvailableValue(course, COURSE_FIELD_KEYS.price, ""),
     description: course.description || "",
   }));
 
@@ -1215,6 +1296,39 @@ function normalizeData(raw) {
         .filter((message) => message.id)
         .sort((left, right) => new Date(right.createdOn || 0) - new Date(left.createdOn || 0))
     : null;
+  const payments = Array.isArray(raw.payments)
+    ? raw.payments
+        .map((payment, index) => ({
+          id: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.id, `payment-${index + 1}`)).trim(),
+          studentId: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.studentId, "")).trim(),
+          studentName: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.studentName, "")).trim(),
+          studentPhone: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.studentPhone, "")).trim(),
+          courseId: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.courseId, "")).trim(),
+          courseTitle: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.courseTitle, "")).trim(),
+          amount: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.amount, "")).trim(),
+          paymentMethod: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.paymentMethod, "bKash Send Money")).trim(),
+          paymentNumber: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.paymentNumber, "")).trim(),
+          studentTransactionId: String(
+            getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.studentTransactionId, "")
+          ).trim(),
+          confirmedTransactionId: String(
+            getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.confirmedTransactionId, "")
+          ).trim(),
+          status: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.status, "Pending")).trim() || "Pending",
+          submittedOn: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.submittedOn, "")).trim(),
+          reviewedOn: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.reviewedOn, "")).trim(),
+          reviewedBy: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.reviewedBy, "")).trim(),
+          paymentDate: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.paymentDate, "")).trim(),
+          accessStartDate: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.accessStartDate, "")).trim(),
+          accessEndDate: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.accessEndDate, "")).trim(),
+          paymentDueDate: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.paymentDueDate, "")).trim(),
+          approvalMode: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.approvalMode, "")).trim(),
+          note: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.note, "")).trim(),
+          reviewNote: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.reviewNote, "")).trim(),
+        }))
+        .filter((payment) => payment.id && payment.studentId && payment.courseId)
+        .sort((left, right) => new Date(right.submittedOn || 0) - new Date(left.submittedOn || 0))
+    : null;
   const lessonsByCourseId = buildLessonsByCourseId(lessons);
 
   return {
@@ -1224,6 +1338,7 @@ function normalizeData(raw) {
     notices,
     enrollments,
     messages,
+    payments,
     hasEnrollmentSheet: enrollments.length > 0,
     courseMap: new Map(courses.map((course) => [course.id, course])),
     courseReferenceMap: buildCourseReferenceMap(courses),
@@ -1282,6 +1397,9 @@ function applyPortalData(result) {
 
   if (!Array.isArray(result.data.messages)) {
     result.data.messages = Array.isArray(state.data.messages) ? state.data.messages : [];
+  }
+  if (!Array.isArray(result.data.payments)) {
+    result.data.payments = Array.isArray(state.data.payments) ? state.data.payments : [];
   }
 
   state.data = result.data;
@@ -1895,8 +2013,12 @@ function getCourseCatalogEntries(student) {
           ...enrolledEntry,
           catalogOnly: false,
           pendingRequest: false,
+          pendingPayment: false,
+          latestPendingPayment: null,
         };
       }
+
+      const latestPendingPayment = getLatestPendingPaymentForCourse(student.id, course.id);
 
       return {
         id: `catalog-${student.id}-${course.id}`,
@@ -1906,6 +2028,8 @@ function getCourseCatalogEntries(student) {
         previewOnly: false,
         catalogOnly: true,
         pendingRequest: pendingCourseIds.has(course.id),
+        pendingPayment: !!latestPendingPayment,
+        latestPendingPayment,
         accessStartDate: "",
         accessEndDate: "",
         unlimitedAccess: false,
@@ -1914,12 +2038,16 @@ function getCourseCatalogEntries(student) {
         paymentDueDate: "",
         monthlyFee: "",
         paidMonths: [],
-        status: pendingCourseIds.has(course.id) ? "Pending Request" : "Catalog Locked",
+        status: latestPendingPayment
+          ? "Payment Submitted"
+          : pendingCourseIds.has(course.id)
+          ? "Pending Request"
+          : "Catalog Locked",
       };
     })
     .sort((left, right) => {
-      const leftRank = !left.catalogOnly ? 0 : left.pendingRequest ? 1 : 2;
-      const rightRank = !right.catalogOnly ? 0 : right.pendingRequest ? 1 : 2;
+      const leftRank = !left.catalogOnly ? 0 : left.pendingPayment || left.pendingRequest ? 1 : 2;
+      const rightRank = !right.catalogOnly ? 0 : right.pendingPayment || right.pendingRequest ? 1 : 2;
       if (leftRank !== rightRank) {
         return leftRank - rightRank;
       }
@@ -1935,12 +2063,16 @@ function getDefaultOpenCourseId(student) {
 }
 
 function getCourseEntryLockReason(entry) {
+  if (entry.pendingPayment) {
+    return "Your payment request is waiting for admin review. Access will open after the transaction is confirmed.";
+  }
+
   if (entry.pendingRequest) {
     return "Your access request is pending admin approval. Videos will unlock after review.";
   }
 
   if (entry.catalogOnly) {
-    return "This course is visible in your course map. Request access to unlock classes and videos.";
+    return "This course is visible in your course map. Use Buy Now to submit your bKash payment and unlock the full course.";
   }
 
   return "This video is not available right now.";
@@ -1948,6 +2080,17 @@ function getCourseEntryLockReason(entry) {
 
 function getCourseEntryStatusMeta(entry) {
   if (entry.catalogOnly) {
+    if (entry.pendingPayment) {
+      return {
+        label: "Payment Pending",
+        className: "bg-amber-100 text-amber-800",
+        summary:
+          "Your bKash payment details have been submitted. Access will unlock after the admin confirms the matching transaction.",
+        accessSummary: "Waiting for payment review",
+        videoSummary: "Locked until confirmation",
+      };
+    }
+
     return entry.pendingRequest
       ? {
           label: "Request Pending",
@@ -1959,9 +2102,10 @@ function getCourseEntryStatusMeta(entry) {
       : {
           label: "Catalog Locked",
           className: "bg-slate-200 text-slate-700",
-          summary: "This live course is visible in your course map. Request access to unlock all classes and videos.",
+          summary:
+            "Orientation classes stay visible from here. To unlock the full course, send bKash payment and submit the transaction ID from Buy Now.",
           accessSummary: "Not granted yet",
-          videoSummary: "Request access first",
+          videoSummary: "Submit payment first",
         };
   }
 
@@ -2142,7 +2286,7 @@ function getLessonAccessCtaLabel(entry, accessState) {
   }
 
   if (entry.catalogOnly) {
-    return entry.pendingRequest ? "Request Pending" : "Request Access First";
+    return entry.pendingPayment ? "Payment Pending" : entry.pendingRequest ? "Request Pending" : "Buy Course First";
   }
 
   if (entry.previewOnly) {
@@ -2174,7 +2318,7 @@ function getLessonAccessBadgeLabel(entry, accessState) {
   }
 
   if (entry.catalogOnly) {
-    return entry.pendingRequest ? "Pending Approval" : "Catalog Lock";
+    return entry.pendingPayment ? "Payment Review" : entry.pendingRequest ? "Pending Approval" : "Catalog Lock";
   }
 
   if (entry.previewOnly) {
@@ -2504,9 +2648,13 @@ function setLoginBusy(isBusy, busyLabel = "Checking...") {
 }
 
 function syncBodyOverflow() {
-  const modalElements = [dom.videoModal, dom.profileModal, dom.approvalStatusModal, dom.studentMessageModal].filter(
-    Boolean
-  );
+  const modalElements = [
+    dom.videoModal,
+    dom.profileModal,
+    dom.paymentModal,
+    dom.approvalStatusModal,
+    dom.studentMessageModal,
+  ].filter(Boolean);
   const hasVisibleModal = modalElements.some((element) => !element.classList.contains("hidden"));
   dom.body.style.overflow = hasVisibleModal ? "hidden" : "";
 }
@@ -2644,6 +2792,7 @@ function togglePage(page) {
 
   if (isLogin) {
     closeProfileModal();
+    closePaymentModal();
     closeStudentMessageModal();
   }
 
@@ -2652,7 +2801,7 @@ function togglePage(page) {
   }
   dom.loginSection.classList.toggle("hidden", !isLogin);
   dom.dashboardSection.classList.toggle("hidden", isLogin);
-  dom.loginBtn.classList.toggle("hidden", !isLogin);
+  dom.loginBtn?.classList.toggle("hidden", !isLogin);
   dom.registerNavLink?.classList.toggle("hidden", !isLogin);
   dom.userProfile.classList.toggle("hidden", isLogin);
 }
@@ -3340,13 +3489,49 @@ async function requestCourseAccess(courseId) {
     throw new Error("This course could not be found.");
   }
 
+  const transactionId = String(dom.paymentTransactionId?.value || "").trim();
+  const note = String(dom.paymentNote?.value || "").trim();
+  if (!transactionId) {
+    throw new Error("Enter the bKash transaction ID before submitting.");
+  }
+
   if (APP_CONFIG.dataMode !== "remote" || !APP_CONFIG.remoteEndpoint) {
-    state.pendingCourseRequestIds = new Set([...state.pendingCourseRequestIds, courseId]);
-    syncPortalSession();
+    const course = state.data.courseMap.get(courseId) || null;
+    state.data.payments = [
+      {
+        id: `demo-payment-${Date.now()}`,
+        studentId: student.id,
+        studentName: student.name,
+        studentPhone: student.phone,
+        courseId,
+        courseTitle: course?.title || courseId,
+        amount: String(course?.price || "").trim(),
+        paymentMethod: "bKash Send Money",
+        paymentNumber: "01975341714",
+        studentTransactionId: transactionId,
+        confirmedTransactionId: "",
+        status: "Pending",
+        submittedOn: new Date().toISOString(),
+        reviewedOn: "",
+        reviewedBy: "",
+        paymentDate: "",
+        accessStartDate: "",
+        accessEndDate: "",
+        paymentDueDate: "",
+        approvalMode: "",
+        note,
+        reviewNote: "",
+      },
+      ...(state.data.payments || []),
+    ];
+    persistPortalDataSnapshot({
+      data: state.data,
+      modeLabel: "Live Google Sheet",
+    });
     return {
       ok: true,
-      message: "Course request saved in demo mode.",
-      requestedCourseIds: [...state.pendingCourseRequestIds].join("|"),
+      message: "Payment request saved in demo mode.",
+      payments: state.data.payments,
     };
   }
 
@@ -3363,9 +3548,11 @@ async function requestCourseAccess(courseId) {
         "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
       },
       body: new URLSearchParams({
-        action: "requeststudentcourses",
+        action: "studentsubmitpayment",
         studentId: student.id,
-        requestedCourseIds: courseId,
+        courseId,
+        transactionId,
+        note,
       }),
       signal: controller ? controller.signal : undefined,
     });
@@ -3375,17 +3562,21 @@ async function requestCourseAccess(courseId) {
     }
 
     if (!response.ok) {
-      throw new Error("Unable to send the course request right now.");
+      throw new Error("Unable to submit the payment request right now.");
     }
 
     const result = await response.json();
     if (!result.ok) {
-      throw new Error(result.message || "Course request failed.");
+      throw new Error(result.message || "Payment request failed.");
     }
 
-    const requestedCourseIds = parseList(result.requestedCourseIds || [...state.pendingCourseRequestIds, courseId]);
-    state.pendingCourseRequestIds = new Set(requestedCourseIds);
-    syncPortalSession();
+    if (Array.isArray(result.payments)) {
+      state.data.payments = normalizeData({ payments: result.payments }).payments || state.data.payments;
+      persistPortalDataSnapshot({
+        data: state.data,
+        modeLabel: "Live Google Sheet",
+      });
+    }
     return result;
   } catch (error) {
     if (timeoutHandle) {
@@ -3393,10 +3584,112 @@ async function requestCourseAccess(courseId) {
     }
 
     if (error && error.name === "AbortError") {
-      throw new Error("Course request took too long. Please try again.");
+      throw new Error("Payment request took too long. Please try again.");
     }
 
     throw error;
+  }
+}
+
+function syncPaymentSubmitState() {
+  if (!dom.paymentSubmitBtn) {
+    return;
+  }
+
+  dom.paymentSubmitBtn.disabled = !!state.paymentSubmitBusy;
+  dom.paymentSubmitBtn.classList.toggle("cursor-wait", !!state.paymentSubmitBusy);
+  dom.paymentSubmitBtn.classList.toggle("opacity-80", !!state.paymentSubmitBusy);
+  dom.paymentSubmitBtn.textContent = state.paymentSubmitBusy ? "Submitting..." : "Submit Payment";
+}
+
+function closePaymentModal() {
+  state.activePaymentCourseId = "";
+  state.paymentSubmitBusy = false;
+  syncPaymentSubmitState();
+  if (dom.paymentForm) {
+    dom.paymentForm.reset();
+  }
+  if (dom.paymentFeedback) {
+    dom.paymentFeedback.textContent = "";
+    dom.paymentFeedback.className = "hidden";
+  }
+  dom.paymentModal?.classList.add("hidden");
+  dom.paymentModal?.classList.remove("flex");
+  syncBodyOverflow();
+}
+
+function openPaymentModal(courseId) {
+  const student = getActiveStudent();
+  const course = state.data.courseMap.get(courseId) || null;
+  if (!student || !course) {
+    return false;
+  }
+
+  state.activePaymentCourseId = courseId;
+  state.paymentSubmitBusy = false;
+  syncPaymentSubmitState();
+  if (dom.paymentForm) {
+    dom.paymentForm.reset();
+  }
+  if (dom.paymentCourseName) {
+    dom.paymentCourseName.textContent = course.title || "Selected Course";
+  }
+  if (dom.paymentCourseFee) {
+    dom.paymentCourseFee.textContent = formatCoursePrice(course.price);
+  }
+  if (dom.paymentBkashNumber) {
+    dom.paymentBkashNumber.textContent = "01975341714";
+  }
+  if (dom.paymentStudentId) {
+    dom.paymentStudentId.textContent = student.id || "-";
+  }
+  if (dom.paymentFeedback) {
+    dom.paymentFeedback.textContent = "";
+    dom.paymentFeedback.className = "hidden";
+  }
+  dom.paymentModal?.classList.remove("hidden");
+  dom.paymentModal?.classList.add("flex");
+  syncBodyOverflow();
+  window.setTimeout(() => dom.paymentTransactionId?.focus(), 80);
+  return true;
+}
+
+async function handlePaymentSubmit(event) {
+  event.preventDefault();
+
+  const courseId = String(state.activePaymentCourseId || "").trim();
+  if (!courseId || state.paymentSubmitBusy) {
+    return;
+  }
+
+  state.paymentSubmitBusy = true;
+  syncPaymentSubmitState();
+  if (dom.paymentFeedback) {
+    dom.paymentFeedback.textContent = "";
+    dom.paymentFeedback.className = "hidden";
+  }
+
+  try {
+    const result = await requestCourseAccess(courseId);
+    closePaymentModal();
+    const activeStudent = getActiveStudent();
+    if (activeStudent) {
+      state.openCourseId = courseId;
+      renderDashboard(activeStudent);
+    }
+    setFeedback(result.message || "Payment request submitted successfully.", "success");
+    showToast(result.message || "Payment request submitted successfully.");
+  } catch (error) {
+    const message = error.message || "Unable to submit the payment request.";
+    if (dom.paymentFeedback) {
+      dom.paymentFeedback.textContent = message;
+      dom.paymentFeedback.className =
+        "mt-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-medium text-red-600";
+    }
+    showToast(message, "error");
+  } finally {
+    state.paymentSubmitBusy = false;
+    syncPaymentSubmitState();
   }
 }
 
@@ -3418,8 +3711,9 @@ function renderCourseList(student, courseEntries) {
   syncPortalSession();
 
   const accessibleCount = courseEntries.filter((entry) => !entry.catalogOnly).length;
-  const pendingCount = courseEntries.filter((entry) => entry.pendingRequest).length;
-  const lockedCount = courseEntries.filter((entry) => entry.catalogOnly && !entry.pendingRequest).length;
+  const pendingCount = courseEntries.filter((entry) => entry.pendingPayment || entry.pendingRequest).length;
+  const lockedCount = courseEntries.filter((entry) => entry.catalogOnly && !entry.pendingPayment && !entry.pendingRequest)
+    .length;
 
   const courseMapMarkup = `
     <section class="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-6">
@@ -3428,7 +3722,7 @@ function renderCourseList(student, courseEntries) {
           <p class="text-xs font-bold uppercase tracking-[0.3em] text-blue-500">Course Map</p>
           <h2 class="mt-2 text-2xl font-bold text-blue-950">See Every Live Course After Login</h2>
           <p class="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-            Every live course stays visible here. Courses without access remain locked until you send a request and the admin approves it.
+            Every live course stays visible here. Courses without access remain locked until you submit payment and the admin confirms it.
           </p>
         </div>
         <div class="grid gap-3 sm:grid-cols-3">
@@ -3574,6 +3868,13 @@ function renderCourseList(student, courseEntries) {
                         Next Live: ${nextLiveLabel}
                       </span>
                       ${
+                        course.price
+                          ? `<span class="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-bold text-amber-700">Fee: ${escapeHtml(
+                              formatCoursePrice(course.price, "")
+                            )}</span>`
+                          : ""
+                      }
+                      ${
                         entry.catalogOnly
                           ? `<span class="rounded-full bg-rose-50 px-3 py-1 text-[10px] font-bold text-rose-700">Videos stay locked</span>`
                           : entry.previewOnly
@@ -3600,24 +3901,26 @@ function renderCourseList(student, courseEntries) {
                       ? `
                         <div class="w-full rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 xl:w-[320px]">
                           <p class="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">${
-                            entry.pendingRequest ? "Request Sent" : "Unlock This Course"
+                            entry.pendingPayment ? "Payment Submitted" : "Unlock This Course"
                           }</p>
                           <p class="mt-3 text-sm leading-6 text-slate-600">${
-                            entry.pendingRequest
-                              ? "The admin queue already has your request for this course."
-                              : "Send this course to the admin queue so access can be approved for your account."
+                            entry.pendingPayment
+                              ? "Your transaction ID is already waiting in the payment review queue."
+                              : `Send Money to bKash and submit the transaction ID to unlock this course.${
+                                  course.price ? ` Course fee: ${escapeHtml(formatCoursePrice(course.price, ""))}.` : ""
+                                }`
                           }</p>
                           <button
                             type="button"
                             data-request-course="${course.id}"
                             class="mt-4 w-full rounded-2xl ${
-                              entry.pendingRequest
+                              entry.pendingPayment
                                 ? "bg-slate-300 text-slate-600"
                                 : "bg-slate-950 text-white hover:bg-slate-800"
                             } px-4 py-3 text-sm font-bold transition ${requestBusy ? "cursor-wait opacity-80" : ""}"
-                            ${entry.pendingRequest ? "disabled" : ""}
+                            ${entry.pendingPayment ? "disabled" : ""}
                           >
-                            ${requestBusy ? "Sending..." : entry.pendingRequest ? "Request Sent" : "Request Access"}
+                            ${requestBusy ? "Opening..." : entry.pendingPayment ? "Payment Submitted" : "Buy Now"}
                           </button>
                         </div>
                       `
@@ -3779,24 +4082,20 @@ function renderCourseList(student, courseEntries) {
   });
 
   dom.courseList.querySelectorAll("[data-request-course]").forEach((button) => {
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", () => {
       const courseId = String(button.dataset.requestCourse || "").trim();
       if (!courseId || state.courseRequestBusyIds.has(courseId)) {
         return;
       }
 
-      state.courseRequestBusyIds.add(courseId);
-      button.disabled = true;
-      button.textContent = "Sending...";
-
       try {
-        const result = await requestCourseAccess(courseId);
-        state.openCourseId = courseId;
-        setFeedback(result.message || "Course request sent successfully.", "success");
-        showToast(result.message || "Course request sent successfully.");
+        state.courseRequestBusyIds.add(courseId);
+        button.disabled = true;
+        button.textContent = "Opening...";
+        openPaymentModal(courseId);
       } catch (error) {
-        setFeedback(error.message || "Unable to send the course request.", "error");
-        showToast(error.message || "Unable to send the course request.", "error");
+        setFeedback(error.message || "Unable to open the payment popup.", "error");
+        showToast(error.message || "Unable to open the payment popup.", "error");
       } finally {
         state.courseRequestBusyIds.delete(courseId);
         const activeStudent = getActiveStudent();
@@ -4002,7 +4301,7 @@ dom.form.addEventListener("submit", async (event) => {
   await performLogin();
 });
 
-dom.loginBtn.addEventListener("click", () => {
+dom.loginBtn?.addEventListener("click", () => {
   togglePage("login");
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
@@ -4047,6 +4346,41 @@ if (dom.videoModal) {
     }
   });
 }
+if (dom.closePaymentBtn) {
+  dom.closePaymentBtn.addEventListener("click", closePaymentModal);
+}
+if (dom.paymentBackdrop) {
+  dom.paymentBackdrop.addEventListener("click", closePaymentModal);
+}
+if (dom.paymentForm) {
+  dom.paymentForm.addEventListener("submit", handlePaymentSubmit);
+}
+if (dom.copyBkashNumberBtn) {
+  dom.copyBkashNumberBtn.addEventListener("click", async () => {
+    const paymentNumber = String(dom.paymentBkashNumber?.textContent || "").trim();
+    if (!paymentNumber) {
+      return;
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(paymentNumber);
+        showToast("bKash number copied.");
+        return;
+      }
+    } catch (error) {
+      console.warn("Clipboard copy failed.", error);
+    }
+
+    const helper = document.createElement("input");
+    helper.value = paymentNumber;
+    document.body.appendChild(helper);
+    helper.select();
+    document.execCommand("copy");
+    helper.remove();
+    showToast("bKash number copied.");
+  });
+}
 dom.closeProfileBtn.addEventListener("click", closeProfileModal);
 dom.profileBackdrop.addEventListener("click", closeProfileModal);
 dom.closeApprovalStatusBtn.addEventListener("click", closeApprovalStatusModal);
@@ -4087,6 +4421,11 @@ dom.profileResetLink.addEventListener("click", () => {
 
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape") {
+    if (dom.paymentModal && !dom.paymentModal.classList.contains("hidden")) {
+      closePaymentModal();
+      return;
+    }
+
     if (!dom.studentMessageModal.classList.contains("hidden")) {
       dismissStudentMessage();
       closeStudentMessageModal({ preserveActiveId: true });
