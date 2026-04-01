@@ -3717,8 +3717,13 @@ async function handlePaymentSubmit(event) {
       state.openCourseId = courseId;
       renderDashboard(activeStudent);
     }
-    setFeedback(result.message || "Payment request submitted successfully.", "success");
-    showToast(result.message || "Payment request submitted successfully.");
+    const isPendingReview = !!result.pendingReview;
+    const feedbackMessage = result.message ||
+      (isPendingReview
+        ? "Please wait a little while. Your course will activate automatically after confirmation."
+        : "Payment request submitted successfully.");
+    setFeedback(feedbackMessage, isPendingReview ? "neutral" : "success");
+    showToast(feedbackMessage, isPendingReview ? "info" : "success");
   } catch (error) {
     const message = error.message || "Unable to submit the payment request.";
     if (dom.paymentFeedback) {

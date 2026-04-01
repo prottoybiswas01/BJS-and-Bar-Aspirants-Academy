@@ -948,8 +948,11 @@ function handleStudentSubmitPayment_(request) {
   });
   if (hasPendingPayment) {
     return jsonOutput_({
-      ok: false,
-      message: "A payment request for this course is already waiting for review.",
+      ok: true,
+      pendingReview: true,
+      alreadyPending: true,
+      message:
+        "Your payment request is already in the review queue. Please wait a little while. The course will activate automatically after confirmation.",
       payments: getStudentPayments_(spreadsheet, studentId),
     });
   }
@@ -1000,7 +1003,10 @@ function handleStudentSubmitPayment_(request) {
 
   return jsonOutput_({
     ok: true,
-    message: "Payment request submitted. Access will open after payment confirmation.",
+    pendingReview: true,
+    alreadyPending: false,
+    message:
+      "Payment submitted successfully. Please wait a little while. Your course will activate automatically after the transaction is confirmed.",
     paymentId: nextPayment.id,
     studentId: studentId,
     payments: getStudentPayments_(spreadsheet, studentId),
