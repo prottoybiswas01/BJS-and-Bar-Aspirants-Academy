@@ -76,23 +76,6 @@ const ENROLLMENT_FIELD_KEYS = Object.freeze({
   paidMonths: ["paidMonths", "paymentMonths", "paidMonthList", "allowedMonths"],
 });
 
-const REGISTRATION_FIELD_KEYS = Object.freeze({
-  id: ["id", "registrationId", "requestId"],
-  studentId: ["studentId", "studentID", "approvedStudentId"],
-  name: ["name", "fullName", "studentName", "userName"],
-  phone: ["phone", "phoneNumber", "mobile", "mobileNumber", "contact", "contactNumber", "whatsapp", "whatsappNumber"],
-  email: ["email", "emailAddress", "mail", "gmail"],
-  batch: ["batch", "batchName", "group", "groupName"],
-  session: ["session", "sessionName", "shift"],
-  password: ["password", "loginPassword", "portalPassword", "studentPassword", "passcode", "pin", "loginPin"],
-  requestedCourseIds: ["requestedCourseIds", "courseIds", "courses", "requestedCourses", "requestedCourseList"],
-  status: ["status", "registrationStatus", "approvalStatus"],
-  submittedOn: ["submittedOn", "createdOn", "requestedOn", "appliedOn"],
-  reviewedOn: ["reviewedOn", "updatedOn", "approvedOn"],
-  reviewedBy: ["reviewedBy", "approvedBy", "handledBy"],
-  reviewNote: ["reviewNote", "note", "remarks", "comment"],
-});
-
 const MESSAGE_FIELD_KEYS = Object.freeze({
   id: ["id", "messageId"],
   studentIds: ["studentIds", "studentId", "recipientIds", "recipients"],
@@ -303,7 +286,6 @@ const dom = {
   courseFeedback: document.getElementById("courseFeedback"),
   courseListPanel: document.getElementById("courseListPanel"),
   courseCountBadge: document.getElementById("courseCountBadge"),
-  registrationQueue: document.getElementById("registrationQueue"),
   paymentQueue: document.getElementById("paymentQueue"),
   messageLogPanel: document.getElementById("messageLogPanel"),
 };
@@ -317,7 +299,6 @@ function createEmptyDashboard() {
     lessons: [],
     notices: [],
     enrollments: [],
-    registrations: [],
     messages: [],
     payments: [],
     studentMap: new Map(),
@@ -889,25 +870,6 @@ function normalizeDashboard(payload = {}) {
     })
     .filter((enrollment) => enrollment.studentId && enrollment.courseId);
 
-  const registrations = (payload.registrations || [])
-    .map((registration) => ({
-      id: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.id, "")).trim(),
-      studentId: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.studentId, "")).trim(),
-      name: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.name, "")).trim(),
-      phone: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.phone, "")).trim(),
-      email: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.email, "")).trim(),
-      batch: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.batch, "")).trim(),
-      session: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.session, "")).trim(),
-      password: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.password, "")).trim(),
-      requestedCourseIds: parseList(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.requestedCourseIds, "")),
-      status: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.status, "Pending")).trim() || "Pending",
-      submittedOn: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.submittedOn, "")).trim(),
-      reviewedOn: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.reviewedOn, "")).trim(),
-      reviewedBy: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.reviewedBy, "")).trim(),
-      reviewNote: String(getFirstAvailableValue(registration, REGISTRATION_FIELD_KEYS.reviewNote, "")).trim(),
-    }))
-    .sort((left, right) => new Date(right.submittedOn || 0) - new Date(left.submittedOn || 0));
-
   const messages = (payload.messages || [])
     .map((message) => ({
       id: String(getFirstAvailableValue(message, MESSAGE_FIELD_KEYS.id, "")).trim(),
@@ -974,7 +936,6 @@ function normalizeDashboard(payload = {}) {
     lessons: payload.lessons || [],
     notices: payload.notices || [],
     enrollments,
-    registrations,
     messages,
     payments,
     studentMap,
@@ -1609,21 +1570,14 @@ function applyDashboardPayload(payload, feedbackMessage = "", tone = "success") 
 
   renderDashboard();
 
-  const pendingRegistrationCount = state.data.registrations.filter(
-    (registration) => normalizeStatus(registration.status) === "pending"
-  ).length;
   const pendingPaymentCount = state.data.payments.filter((payment) => isPendingPaymentStatus(payment.status)).length;
 
   if (feedbackMessage) {
     setFeedback(dom.adminTopFeedback, feedbackMessage, tone);
-  } else if (pendingRegistrationCount || pendingPaymentCount) {
+  } else if (pendingPaymentCount) {
     setFeedback(
       dom.adminTopFeedback,
-      `${pendingRegistrationCount} registration request${
-        pendingRegistrationCount === 1 ? "" : "s"
-      } and ${pendingPaymentCount} payment review${
-        pendingPaymentCount === 1 ? "" : "s"
-      } are waiting in the queue.`,
+      `${pendingPaymentCount} payment review${pendingPaymentCount === 1 ? "" : "s"} ${pendingPaymentCount === 1 ? "is" : "are"} waiting in the queue.`,
       "info"
     );
   } else if (state.data.spreadsheetName) {
@@ -1660,13 +1614,10 @@ async function refreshDashboardInBackground() {
 }
 
 function renderSummaryCards() {
-  const pendingRegistrations = state.data.registrations.filter(
-    (registration) => normalizeStatus(registration.status) === "pending"
-  ).length;
   const pendingPayments = state.data.payments.filter((payment) => isPendingPaymentStatus(payment.status)).length;
 
   dom.summaryStudents.textContent = String(state.data.students.length);
-  dom.summaryPending.textContent = String(pendingRegistrations + pendingPayments);
+  dom.summaryPending.textContent = String(pendingPayments);
   dom.summaryCourses.textContent = String(state.data.courses.length);
   dom.summaryMessages.textContent = String(state.data.messages.length);
 
@@ -1731,12 +1682,6 @@ function buildAdmissionsAnalytics() {
     selectedYear === "all" ? datedStudents.length : yearTotals.get(Number(selectedYear)) || 0;
   const growthDelta =
     previousYear && selectedYear !== "all" ? selectedYearTotal - previousYearTotal : null;
-  const pendingRegistrations = state.data.registrations.filter(
-    (registration) =>
-      normalizeStatus(registration.status) === "pending" &&
-      (selectedCourseId === "all" || registration.requestedCourseIds.includes(selectedCourseId))
-  ).length;
-
   return {
     years,
     selectedYear,
@@ -1749,7 +1694,6 @@ function buildAdmissionsAnalytics() {
     peakMonthIndex,
     averagePerMonth,
     latestJoinedEntry,
-    pendingRegistrations,
     yearTotals,
     growthDelta,
     previousYear,
@@ -1819,8 +1763,8 @@ function renderAdmissionsAnalytics() {
 
     dom.adminAnalyticsHighlights.innerHTML = `
       <div class="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-3 py-3">
-        <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Pending approvals</p>
-        <p class="mt-2 text-2xl font-extrabold text-slate-950">${analytics.pendingRegistrations}</p>
+        <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Missing join dates</p>
+        <p class="mt-2 text-2xl font-extrabold text-slate-950">${analytics.recordsWithoutDate}</p>
       </div>
       <div class="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-3 py-3 text-sm leading-6 text-slate-600">
         ${
@@ -1910,11 +1854,9 @@ function renderAdmissionsAnalytics() {
       )}</p>
     </div>
     <div class="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-3 py-3">
-      <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Pending approvals</p>
-      <p class="mt-2 text-2xl font-extrabold text-slate-950">${analytics.pendingRegistrations}</p>
-      <p class="mt-1.5 text-sm text-slate-500">${
-        analytics.selectedCourse ? "Pending inside the selected course scope." : "Students currently waiting for approval."
-      }</p>
+      <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Missing join dates</p>
+      <p class="mt-2 text-2xl font-extrabold text-slate-950">${analytics.recordsWithoutDate}</p>
+      <p class="mt-1.5 text-sm text-slate-500">Student records in the current scope that still need a valid join date.</p>
     </div>
     <div class="rounded-[1.2rem] border border-slate-200 bg-slate-50 px-3 py-3">
       <p class="text-[10px] font-bold uppercase tracking-[0.22em] text-slate-400">Current scope</p>
@@ -2264,76 +2206,6 @@ function renderCourseList() {
     .join("");
 }
 
-function renderRegistrationQueue() {
-  const pendingRegistrations = state.data.registrations.filter(
-    (registration) => normalizeStatus(registration.status) === "pending"
-  );
-
-  if (!pendingRegistrations.length) {
-    dom.registrationQueue.innerHTML =
-      '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-500">No pending registration is waiting for approval.</div>';
-    return;
-  }
-
-  dom.registrationQueue.innerHTML = pendingRegistrations
-    .map((registration) => {
-      const courseTitles = registration.requestedCourseIds.length
-        ? registration.requestedCourseIds
-            .map((courseId) => state.data.courseMap.get(courseId)?.shortTitle || state.data.courseMap.get(courseId)?.title || courseId)
-            .join(", ")
-        : "No course requested";
-
-      return `
-        <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
-          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div class="min-w-0">
-              <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Pending Registration</p>
-              <h4 class="mt-2 break-words text-lg font-extrabold text-slate-950">${escapeHtml(
-                registration.name || "Unnamed Student"
-              )}</h4>
-              <p class="mt-1 text-sm text-slate-600">${escapeHtml(registration.phone || "-")} | ${escapeHtml(
-                registration.email || "No email"
-              )}</p>
-              <p class="mt-2 text-xs text-slate-400">${escapeHtml(getAdminCopyValue("studentIdLabel", "Student ID"))}: ${escapeHtml(
-                registration.studentId || "Will be generated"
-              )} | Submitted: ${escapeHtml(formatDateTime(registration.submittedOn, "Not recorded"))}</p>
-              <p class="mt-3 text-sm text-slate-600">Batch: ${escapeHtml(registration.batch || "-")} | Session: ${escapeHtml(
-                registration.session || "-"
-              )}</p>
-              <p class="mt-2 text-sm text-slate-600">Requested Courses: ${escapeHtml(courseTitles)}</p>
-            </div>
-            <div class="w-full max-w-sm rounded-[1.25rem] border border-white bg-white p-4">
-              <label class="mb-2 block text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Review Note</label>
-              <textarea
-                rows="3"
-                data-registration-note="${escapeHtml(registration.id)}"
-                class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none"
-                placeholder="Optional note for approval or rejection"
-              ></textarea>
-              <div class="mt-4 flex flex-wrap gap-3">
-                <button
-                  type="button"
-                  data-registration-approve="${escapeHtml(registration.id)}"
-                  class="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-emerald-700"
-                >
-                  Approve
-                </button>
-                <button
-                  type="button"
-                  data-registration-reject="${escapeHtml(registration.id)}"
-                  class="rounded-2xl bg-rose-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-rose-700"
-                >
-                  Reject
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      `;
-    })
-    .join("");
-}
-
 function renderPaymentQueue() {
   const pendingPayments = state.data.payments.filter((payment) => isPendingPaymentStatus(payment.status));
 
@@ -2578,7 +2450,6 @@ function renderDashboard() {
   renderStudentEditor();
   renderBulkCourseSelector();
   renderCourseList();
-  renderRegistrationQueue();
   renderPaymentQueue();
   renderMessageLog();
 
@@ -2964,28 +2835,6 @@ async function handleMessageDelete(messageId) {
   }
 }
 
-async function handleRegistrationReview(registrationId, action) {
-  const noteField = dom.registrationQueue.querySelector(`[data-registration-note="${registrationId}"]`);
-  const reviewNote = noteField?.value.trim() || "";
-  const endpointAction = action === "approve" ? "adminapproveregistration" : "adminrejectregistration";
-
-  try {
-    setFeedback(dom.adminTopFeedback, `${action === "approve" ? "Approving" : "Rejecting"} registration...`, "info");
-    const response = await requestAction(endpointAction, {
-      registrationId,
-      reviewNote,
-    });
-
-    if (!response.ok) {
-      throw new Error(response.message || "Unable to update the registration.");
-    }
-
-    applyDashboardPayload(response, `Registration ${action === "approve" ? "approved" : "rejected"}.`);
-  } catch (error) {
-    setFeedback(dom.adminTopFeedback, error.message || "Unable to update the registration.", "error");
-  }
-}
-
 async function handlePaymentReview(paymentId, action) {
   const confirmedField = dom.paymentQueue.querySelector(`[data-payment-confirmed="${paymentId}"]`);
   const paymentDateField = dom.paymentQueue.querySelector(`[data-payment-date="${paymentId}"]`);
@@ -3118,19 +2967,6 @@ function handleCourseListClick(event) {
   const deleteButton = event.target.closest("[data-course-delete]");
   if (deleteButton) {
     handleCourseDelete(deleteButton.dataset.courseDelete);
-  }
-}
-
-function handleRegistrationQueueClick(event) {
-  const approveButton = event.target.closest("[data-registration-approve]");
-  if (approveButton) {
-    handleRegistrationReview(approveButton.dataset.registrationApprove, "approve");
-    return;
-  }
-
-  const rejectButton = event.target.closest("[data-registration-reject]");
-  if (rejectButton) {
-    handleRegistrationReview(rejectButton.dataset.registrationReject, "reject");
   }
 }
 
@@ -3277,7 +3113,6 @@ dom.sendMessageBtn.addEventListener("click", handleSendMessage);
 dom.courseForm.addEventListener("submit", handleCourseSave);
 dom.clearCourseFormBtn.addEventListener("click", clearCourseForm);
 dom.courseListPanel.addEventListener("click", handleCourseListClick);
-dom.registrationQueue.addEventListener("click", handleRegistrationQueueClick);
 dom.paymentQueue.addEventListener("click", handlePaymentQueueClick);
 dom.paymentQueue.addEventListener("input", handlePaymentQueueChange);
 dom.paymentQueue.addEventListener("change", handlePaymentQueueChange);

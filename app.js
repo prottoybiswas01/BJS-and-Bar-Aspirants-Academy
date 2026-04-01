@@ -894,6 +894,18 @@ function isApprovedPaymentStatus(value) {
   return normalizePaymentStatusValue(value) === "approved";
 }
 
+function isRejectedPaymentStatus(value) {
+  return ["rejected", "declined", "failed", "cancelled", "canceled"].includes(
+    normalizePaymentStatusValue(value)
+  );
+}
+
+function getStudentVisiblePaymentReviewNote(payment) {
+  const reviewNote = String(payment?.reviewNote || "").trim();
+  const normalizedReviewNote = getCompactLookupValue(reviewNote);
+  return normalizedReviewNote === "paymentrejectedfromadminpanel" ? "" : reviewNote;
+}
+
 function getStudentPayments(studentId) {
   return (state.data.payments || []).filter((payment) => payment.studentId === studentId);
 }
@@ -1545,6 +1557,7 @@ async function refreshPortalDataInBackground() {
     }
 
     applyPortalData(result);
+    await refreshStudentPaymentsInBackground(activeStudentId);
     const refreshedStudent = state.data.students.find((student) => student.id === activeStudentId) || null;
     if (refreshedStudent) {
       renderDashboard(refreshedStudent);
@@ -2143,10 +2156,16 @@ function getCourseCatalogEntries(student) {
           pendingRequest: false,
           pendingPayment: false,
           latestPendingPayment: null,
+          latestPayment: null,
+          latestRejectedPayment: null,
+          paymentRejected: false,
         };
       }
 
-      const latestPendingPayment = getLatestPendingPaymentForCourse(student.id, course.id);
+      const latestPayment = getLatestPaymentForCourse(student.id, course.id);
+      const latestPendingPayment = latestPayment && isPendingPaymentStatus(latestPayment.status) ? latestPayment : null;
+      const latestRejectedPayment =
+        latestPayment && isRejectedPaymentStatus(latestPayment.status) ? latestPayment : null;
 
       return {
         id: `catalog-${student.id}-${course.id}`,
@@ -2157,7 +2176,10 @@ function getCourseCatalogEntries(student) {
         catalogOnly: true,
         pendingRequest: pendingCourseIds.has(course.id),
         pendingPayment: !!latestPendingPayment,
+        paymentRejected: !!latestRejectedPayment,
+        latestPayment,
         latestPendingPayment,
+        latestRejectedPayment,
         accessStartDate: "",
         accessEndDate: "",
         unlimitedAccess: false,
@@ -2168,14 +2190,16 @@ function getCourseCatalogEntries(student) {
         paidMonths: [],
         status: latestPendingPayment
           ? "Payment Submitted"
+          : latestRejectedPayment
+          ? "Payment Rejected"
           : pendingCourseIds.has(course.id)
           ? "Pending Request"
           : "Catalog Locked",
       };
     })
     .sort((left, right) => {
-      const leftRank = !left.catalogOnly ? 0 : left.pendingPayment || left.pendingRequest ? 1 : 2;
-      const rightRank = !right.catalogOnly ? 0 : right.pendingPayment || right.pendingRequest ? 1 : 2;
+      const leftRank = !left.catalogOnly ? 0 : left.pendingPayment || left.pendingRequest ? 1 : left.paymentRejected ? 2 : 3;
+      const rightRank = !right.catalogOnly ? 0 : right.pendingPayment || right.pendingRequest ? 1 : right.paymentRejected ? 2 : 3;
       if (leftRank !== rightRank) {
         return leftRank - rightRank;
       }
@@ -2193,6 +2217,13 @@ function getDefaultOpenCourseId(student) {
 function getCourseEntryLockReason(entry) {
   if (entry.pendingPayment) {
     return "Your payment request is waiting for admin review. Access will open after the transaction is confirmed.";
+  }
+
+  if (entry.paymentRejected) {
+    const reviewNote = getStudentVisiblePaymentReviewNote(entry.latestRejectedPayment);
+    return reviewNote
+      ? `Your previous payment was rejected. ${reviewNote} Submit a new payment to continue.`
+      : "Your previous payment was rejected. Submit a new payment to continue.";
   }
 
   if (entry.pendingRequest) {
@@ -2216,6 +2247,19 @@ function getCourseEntryStatusMeta(entry) {
           "Your bKash payment details have been submitted. Access will unlock after the admin confirms the matching transaction.",
         accessSummary: "Waiting for payment review",
         videoSummary: "Locked until confirmation",
+      };
+    }
+
+    if (entry.paymentRejected) {
+      const reviewNote = getStudentVisiblePaymentReviewNote(entry.latestRejectedPayment);
+      return {
+        label: "Payment Rejected",
+        className: "bg-rose-100 text-rose-700",
+        summary: reviewNote
+          ? `Your previous payment was rejected. ${reviewNote} Submit a new transaction ID to continue.`
+          : "Your previous payment was rejected. Submit a new transaction ID to continue.",
+        accessSummary: "Submit a new payment",
+        videoSummary: "Still locked",
       };
     }
 
@@ -2414,7 +2458,13 @@ function getLessonAccessCtaLabel(entry, accessState) {
   }
 
   if (entry.catalogOnly) {
-    return entry.pendingPayment ? "Payment Pending" : entry.pendingRequest ? "Request Pending" : "Buy Course First";
+    return entry.pendingPayment
+      ? "Payment Pending"
+      : entry.pendingRequest
+      ? "Request Pending"
+      : entry.paymentRejected
+      ? "Pay Again"
+      : "Buy Course First";
   }
 
   if (entry.previewOnly) {
@@ -2446,7 +2496,13 @@ function getLessonAccessBadgeLabel(entry, accessState) {
   }
 
   if (entry.catalogOnly) {
-    return entry.pendingPayment ? "Payment Review" : entry.pendingRequest ? "Pending Approval" : "Catalog Lock";
+    return entry.pendingPayment
+      ? "Payment Review"
+      : entry.pendingRequest
+      ? "Pending Approval"
+      : entry.paymentRejected
+      ? "Payment Rejected"
+      : "Catalog Lock";
   }
 
   if (entry.previewOnly) {
@@ -3570,6 +3626,69 @@ function replaceStudentInboxMessages(messages) {
   }
 }
 
+function replaceStudentPayments(payments) {
+  const normalized = normalizeData({
+    payments,
+  });
+
+  if (Array.isArray(normalized.payments)) {
+    state.data.payments = normalized.payments;
+    persistPortalDataSnapshot({
+      data: state.data,
+      modeLabel: state.dataModeLabel,
+      persistCache: state.dataModeLabel === "Live Google Sheet",
+    });
+  }
+}
+
+async function refreshStudentPaymentsInBackground(studentId = state.activeStudentId) {
+  if (!studentId || APP_CONFIG.dataMode !== "remote" || !APP_CONFIG.remoteEndpoint) {
+    return false;
+  }
+
+  const requestBody = new URLSearchParams({
+    action: "studentgetpayments",
+    studentId,
+  });
+
+  try {
+    const response = await fetchRemoteResponseWithTimeout(
+      APP_CONFIG.remoteEndpoint,
+      {
+        method: "POST",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+        },
+        body: requestBody,
+      },
+      {
+        timeoutMs: APP_CONFIG.remoteRequestTimeoutMs,
+        timeoutMessage: "Payment history refresh took too long.",
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Unable to refresh payment history (${response.status}).`);
+    }
+
+    const result = JSON.parse(await response.text());
+    if (!result?.ok) {
+      throw new Error(result?.message || "Unable to refresh payment history.");
+    }
+
+    if (state.activeStudentId !== studentId || !Array.isArray(result.payments)) {
+      return false;
+    }
+
+    replaceStudentPayments(result.payments);
+    return true;
+  } catch (error) {
+    console.warn("Unable to refresh student payments.", error);
+    return false;
+  }
+}
+
 async function requestStudentMessageResponse(responseType) {
   const student = getActiveStudent();
   const pendingMessage = getCurrentPendingStudentMessage(student);
@@ -4231,26 +4350,49 @@ function renderCourseList(student, courseEntries) {
                       ? `
                         <div class="w-full rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 xl:w-[320px]">
                           <p class="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">${
-                            entry.pendingPayment ? "Payment Submitted" : "Unlock This Course"
+                            entry.pendingPayment
+                              ? "Payment Submitted"
+                              : entry.paymentRejected
+                              ? "Payment Rejected"
+                              : "Unlock This Course"
                           }</p>
                           <p class="mt-3 text-sm leading-6 text-slate-600">${
                             entry.pendingPayment
                               ? "Your transaction ID is already waiting in the payment review queue."
+                              : entry.paymentRejected
+                              ? "Your previous payment was rejected. Submit a new transaction ID to try again."
                               : `Send Money to bKash and submit the transaction ID to unlock this course.${
                                   course.price ? ` Course fee: ${escapeHtml(formatCoursePrice(course.price, ""))}.` : ""
                                 }`
                           }</p>
+                          ${
+                            entry.paymentRejected && getStudentVisiblePaymentReviewNote(entry.latestRejectedPayment)
+                              ? `<p class="mt-3 rounded-2xl bg-rose-50 px-3 py-2 text-xs font-medium leading-5 text-rose-700">Admin note: ${escapeHtml(
+                                  getStudentVisiblePaymentReviewNote(entry.latestRejectedPayment)
+                                )}</p>`
+                              : ""
+                          }
                           <button
                             type="button"
                             data-request-course="${course.id}"
                             class="mt-4 w-full rounded-2xl ${
                               entry.pendingPayment
                                 ? "bg-slate-300 text-slate-600"
+                                : entry.paymentRejected
+                                ? "bg-rose-600 text-white hover:bg-rose-500"
                                 : "bg-slate-950 text-white hover:bg-slate-800"
                             } px-4 py-3 text-sm font-bold transition ${requestBusy ? "cursor-wait opacity-80" : ""}"
                             ${entry.pendingPayment ? "disabled" : ""}
                           >
-                            ${requestBusy ? "Opening..." : entry.pendingPayment ? "Payment Submitted" : "Buy Now"}
+                            ${
+                              requestBusy
+                                ? "Opening..."
+                                : entry.pendingPayment
+                                ? "Payment Submitted"
+                                : entry.paymentRejected
+                                ? "Pay Again"
+                                : "Buy Now"
+                            }
                           </button>
                         </div>
                       `

@@ -379,6 +379,7 @@ function doPost(e) {
     if (action === "requeststudentcourses") return handleStudentCourseRequest_(request);
     if (action === "studentsubmitpayment") return handleStudentSubmitPayment_(request);
     if (action === "studentgetinbox") return handleStudentGetInbox_(request);
+    if (action === "studentgetpayments") return handleStudentGetPayments_(request);
     if (action === "admingetdashboard") return handleAdminGetDashboard_(request);
     if (action === "adminupdatestudent") return handleAdminUpdateStudent_(request);
     if (action === "adminbulkstudentaction") return handleAdminBulkStudentAction_(request);
@@ -1039,6 +1040,35 @@ function handleStudentGetInbox_(request) {
   return jsonOutput_({
     ok: true,
     messages: getStudentInboxMessages_(spreadsheet, studentId),
+  });
+}
+
+function handleStudentGetPayments_(request) {
+  const spreadsheet = getSpreadsheet_();
+  const studentId = String(request.studentId || "").trim();
+
+  if (!studentId) {
+    return jsonOutput_({
+      ok: false,
+      message: "Student ID is required to load payment history.",
+    });
+  }
+
+  const students = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students));
+  const matchedStudent = students.find(function (student) {
+    return getStudentId_(student) === studentId;
+  });
+
+  if (!matchedStudent) {
+    return jsonOutput_({
+      ok: false,
+      message: "Student account was not found.",
+    });
+  }
+
+  return jsonOutput_({
+    ok: true,
+    payments: getStudentPayments_(spreadsheet, studentId),
   });
 }
 
