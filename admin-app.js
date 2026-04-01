@@ -7,7 +7,7 @@ const APP_CONFIG = Object.freeze({
 
 const STORAGE_KEYS = Object.freeze({
   adminToken: "ain-pathshala.adminToken",
-  adminDashboardCache: "ain-pathshala.adminDashboardCache",
+  adminDashboardCache: "ain-pathshala.adminDashboardCache.v2",
   adminScrollY: "ain-pathshala.adminScrollY",
 });
 
@@ -45,7 +45,21 @@ const COURSE_FIELD_KEYS = Object.freeze({
   nextLive: ["nextLive", "nextClass", "nextLiveClass", "upcomingClass"],
   price: ["price", "fee", "courseFee", "monthlyFee", "amount"],
   description: ["description", "details", "summary", "note"],
+  status: ["status", "courseStatus", "visibility", "publishStatus", "courseVisibility", "isActive"],
 });
+
+const INACTIVE_COURSE_STATUS_VALUES = Object.freeze([
+  "inactive",
+  "disabled",
+  "deactivated",
+  "hidden",
+  "draft",
+  "archived",
+  "blocked",
+  "off",
+  "false",
+  "0",
+]);
 
 const ENROLLMENT_FIELD_KEYS = Object.freeze({
   id: ["id", "enrollmentId"],
@@ -282,6 +296,7 @@ const dom = {
   courseScheduleInput: document.getElementById("courseScheduleInput"),
   courseNextLiveInput: document.getElementById("courseNextLiveInput"),
   coursePriceInput: document.getElementById("coursePriceInput"),
+  courseStatusInput: document.getElementById("courseStatusInput"),
   courseDescriptionInput: document.getElementById("courseDescriptionInput"),
   courseFeedback: document.getElementById("courseFeedback"),
   courseListPanel: document.getElementById("courseListPanel"),
@@ -676,6 +691,14 @@ function normalizeAccessMode(value) {
   return normalizeLookupText(value).replace(/\s+/g, "");
 }
 
+function normalizeCourseStatus(value) {
+  return INACTIVE_COURSE_STATUS_VALUES.includes(normalizeLookupText(value)) ? "Inactive" : "Active";
+}
+
+function isCourseActive(course) {
+  return normalizeCourseStatus(course?.status || "Active") === "Active";
+}
+
 function setFeedback(element, message, tone = "neutral") {
   if (!element) {
     return;
@@ -809,6 +832,7 @@ function normalizeDashboard(payload = {}) {
       nextLive: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.nextLive, "")).trim(),
       price: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.price, "")).trim(),
       description: String(getFirstAvailableValue(course, COURSE_FIELD_KEYS.description, "")).trim(),
+      status: normalizeCourseStatus(getFirstAvailableValue(course, COURSE_FIELD_KEYS.status, "Active")),
     }))
     .filter((course) => course.id)
     .sort((left, right) => left.title.localeCompare(right.title));
@@ -1204,6 +1228,9 @@ function prefillReplyToStudent(studentId, sourceMessageId) {
 function clearCourseForm() {
   state.editingCourseId = "";
   dom.courseForm.reset();
+  if (dom.courseStatusInput) {
+    dom.courseStatusInput.value = "Active";
+  }
   setFeedback(dom.courseFeedback, "");
 
   const submitButton = dom.courseForm.querySelector('button[type="submit"]');
@@ -1615,10 +1642,11 @@ async function refreshDashboardInBackground() {
 
 function renderSummaryCards() {
   const pendingPayments = state.data.payments.filter((payment) => isPendingPaymentStatus(payment.status)).length;
+  const activeCourses = state.data.courses.filter((course) => isCourseActive(course)).length;
 
   dom.summaryStudents.textContent = String(state.data.students.length);
   dom.summaryPending.textContent = String(pendingPayments);
-  dom.summaryCourses.textContent = String(state.data.courses.length);
+  dom.summaryCourses.textContent = String(activeCourses);
   dom.summaryMessages.textContent = String(state.data.messages.length);
 
   const adminName = state.admin?.name || state.admin?.username || "Admin";
@@ -2144,7 +2172,12 @@ function renderStudentTable() {
 }
 
 function renderCourseList() {
-  dom.courseCountBadge.textContent = String(state.data.courses.length);
+  const activeCourseCount = state.data.courses.filter((course) => isCourseActive(course)).length;
+  dom.courseCountBadge.textContent = state.data.courses.length
+    ? activeCourseCount === state.data.courses.length
+      ? `${activeCourseCount} active`
+      : `${activeCourseCount} active / ${state.data.courses.length} total`
+    : "0";
 
   if (!state.data.courses.length) {
     dom.courseListPanel.innerHTML =
@@ -2154,6 +2187,8 @@ function renderCourseList() {
 
   dom.courseListPanel.innerHTML = state.data.courses
     .map((course) => {
+      const courseStatus = normalizeCourseStatus(course.status);
+      const inactiveCourse = courseStatus !== "Active";
       const assignedCount = state.data.students.filter((student) => getStudentCourseIds(student).includes(course.id)).length;
       const batchSessionLabel = [
         course.batch ? `Batch: ${course.batch}` : "",
@@ -2162,12 +2197,21 @@ function renderCourseList() {
         .filter(Boolean)
         .join(" | ");
       const priceLabel = formatCoursePrice(course.price, "");
+      const cardClass = inactiveCourse
+        ? "border border-slate-200 bg-slate-50/80"
+        : "border border-white bg-white";
+      const toggleButtonClass = inactiveCourse
+        ? "rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
+        : "rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-bold text-amber-700 transition hover:bg-amber-100";
 
       return `
-        <div class="rounded-[1.5rem] border border-white bg-white p-5">
+        <div class="rounded-[1.5rem] ${cardClass} p-5">
           <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
             <div class="min-w-0">
-              <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">${escapeHtml(course.category || "Course")}</p>
+              <div class="flex flex-wrap items-center gap-2">
+                <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">${escapeHtml(course.category || "Course")}</p>
+                ${renderPill(courseStatus)}
+              </div>
               <h5 class="mt-2 break-words text-lg font-extrabold text-slate-950">${escapeHtml(course.title)}</h5>
               <p class="mt-1 break-words text-sm text-slate-500">${escapeHtml(course.faculty || "Faculty not set")}</p>
               ${
@@ -2177,13 +2221,25 @@ function renderCourseList() {
               }
               <p class="mt-3 text-sm text-slate-600">${escapeHtml(course.schedule || "Schedule pending")}</p>
               ${
+                inactiveCourse
+                  ? '<p class="mt-2 text-sm font-medium text-slate-600">This course is hidden from students, videos, and registration until you activate it again.</p>'
+                  : ""
+              }
+              ${
                 priceLabel
                   ? `<p class="mt-2 text-sm font-semibold text-amber-700">Course Fee: ${escapeHtml(priceLabel)}</p>`
                   : ""
               }
               <p class="mt-2 text-xs text-slate-400">ID: ${escapeHtml(course.id)} | Students: ${assignedCount}</p>
             </div>
-            <div class="flex shrink-0 gap-2">
+            <div class="flex shrink-0 flex-wrap gap-2">
+              <button
+                type="button"
+                data-course-toggle="${escapeHtml(course.id)}"
+                class="${toggleButtonClass}"
+              >
+                ${inactiveCourse ? "Activate" : "Deactivate"}
+              </button>
               <button
                 type="button"
                 data-course-edit="${escapeHtml(course.id)}"
@@ -2473,6 +2529,7 @@ function populateCourseForm(course) {
   dom.courseScheduleInput.value = course.schedule || "";
   dom.courseNextLiveInput.value = course.nextLive || "";
   dom.coursePriceInput.value = course.price || "";
+  dom.courseStatusInput.value = normalizeCourseStatus(course.status || "Active");
   dom.courseDescriptionInput.value = course.description || "";
 
   const submitButton = dom.courseForm.querySelector('button[type="submit"]');
@@ -2749,6 +2806,7 @@ async function handleCourseSave(event) {
     schedule: dom.courseScheduleInput.value.trim(),
     nextLive: dom.courseNextLiveInput.value.trim(),
     price: dom.coursePriceInput.value.trim(),
+    status: normalizeCourseStatus(dom.courseStatusInput.value),
     description: dom.courseDescriptionInput.value.trim(),
   };
 
@@ -2777,6 +2835,53 @@ async function handleCourseSave(event) {
     setFeedback(dom.courseFeedback, successMessage, "success");
   } catch (error) {
     setFeedback(dom.courseFeedback, error.message || "Unable to save the course.", "error");
+  }
+}
+
+async function handleCourseStatusToggle(courseId) {
+  const course = state.data.courseMap.get(courseId) || null;
+  if (!course) {
+    setFeedback(dom.courseFeedback, "Course could not be loaded.", "error");
+    return;
+  }
+
+  const nextStatus = isCourseActive(course) ? "Inactive" : "Active";
+
+  try {
+    setFeedback(
+      dom.courseFeedback,
+      `${nextStatus === "Active" ? "Activating" : "Hiding"} course...`,
+      "info"
+    );
+    const response = await requestAction("admincreatecourse", {
+      course: JSON.stringify({
+        ...course,
+        status: nextStatus,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(response.message || "Unable to update the course status.");
+    }
+
+    const successMessage =
+      nextStatus === "Active"
+        ? "Course activated. Students can see it again."
+        : "Course deactivated. It is now hidden from students.";
+
+    try {
+      await loadDashboard(successMessage);
+    } catch (refreshError) {
+      applyDashboardPayload(response, successMessage);
+    }
+
+    const refreshedCourse = state.data.courseMap.get(courseId) || null;
+    if (refreshedCourse && state.editingCourseId === courseId) {
+      populateCourseForm(refreshedCourse);
+    }
+    setFeedback(dom.courseFeedback, successMessage, "success");
+  } catch (error) {
+    setFeedback(dom.courseFeedback, error.message || "Unable to update the course status.", "error");
   }
 }
 
@@ -2954,6 +3059,12 @@ async function handleStudentQuickActionClick(event) {
 }
 
 function handleCourseListClick(event) {
+  const toggleButton = event.target.closest("[data-course-toggle]");
+  if (toggleButton) {
+    handleCourseStatusToggle(toggleButton.dataset.courseToggle);
+    return;
+  }
+
   const editButton = event.target.closest("[data-course-edit]");
   if (editButton) {
     const course = state.data.courseMap.get(editButton.dataset.courseEdit) || null;

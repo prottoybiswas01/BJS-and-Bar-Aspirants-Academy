@@ -43,6 +43,7 @@ const SHEET_HEADERS = {
     "nextLive",
     "price",
     "description",
+    "status",
   ],
   lessons: [
     "id",
@@ -118,6 +119,7 @@ const APPROVED_LOGIN_VALUES = ["approved", "yes", "true", "allow", "allowed", "a
 const PREVIEW_LOGIN_VALUES = ["preview", "viewonly", "readonly", "audit", "curriculum", "classlist", "listonly", "outline"];
 const UNLIMITED_ACCESS_VALUES_ = ["true", "1", "yes", "on", "enable", "enabled", "unlimited", "lifetime", "forever", "permanent"];
 const BLOCKED_STATUS_VALUES = ["inactive", "blocked", "suspended", "expired", "rejected"];
+const INACTIVE_COURSE_STATUS_VALUES_ = ["inactive", "disabled", "deactivated", "hidden", "draft", "archived", "blocked", "off", "false", "0"];
 // Use "approved" for instant login, "preview" for class-list-only access, or "pending" for manual approval.
 const SELF_REGISTRATION_ACCESS_MODE_ = "preview";
 const SELF_REGISTRATION_REVIEWED_BY_ = "Self Registration";
@@ -154,6 +156,11 @@ const STUDENT_FIELD_KEYS_ = {
   highlight: ["highlight", "note", "remarks", "message"],
   enrolledCourseIds: ["enrolledCourseIds", "courseIds", "courses", "assignedCourses", "enrolledCourses"],
   completedLessonIds: ["completedLessonIds", "completed", "completedLessons"],
+};
+
+const COURSE_FIELD_KEYS_ = {
+  id: ["id", "courseId", "courseID"],
+  status: ["status", "courseStatus", "visibility", "publishStatus", "courseVisibility", "isActive"],
 };
 
 const REGISTRATION_FIELD_KEYS_ = {
@@ -224,6 +231,7 @@ const SAMPLE_DATA = {
       schedule: "Sun, Tue, Thu at 8:30 PM",
       nextLive: "2026-03-14T20:30:00+06:00",
       description: "Constitution, core law topics, and MCQ preparation.",
+      status: "Active",
     },
     {
       id: "criminal-procedure-mastery",
@@ -236,6 +244,7 @@ const SAMPLE_DATA = {
       schedule: "Mon, Wed at 9:00 PM",
       nextLive: "2026-03-15T21:00:00+06:00",
       description: "From FIR to trial in a structured, exam-focused format.",
+      status: "Active",
     },
   ],
   lessons: [
@@ -352,6 +361,10 @@ function doGet(e) {
     }
 
     const students = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students));
+    const visibleCourses = getVisibleCoursesForStudents_(
+      readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses))
+    );
+    const visibleCourseLookup = buildCourseIdLookup_(visibleCourses);
 
     return jsonOutput_({
       ok: true,
@@ -359,10 +372,18 @@ function doGet(e) {
       spreadsheetId: spreadsheet.getId(),
       spreadsheetName: spreadsheet.getName(),
       students: sanitizeStudents_(students),
-      courses: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses)),
-      lessons: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.lessons)),
+      courses: visibleCourses,
+      lessons: filterRowsByCourseLookup_(
+        readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.lessons)),
+        visibleCourseLookup,
+        getRecordCourseId_
+      ),
       notices: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.notices)),
-      enrollments: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.enrollments)),
+      enrollments: filterRowsByCourseLookup_(
+        readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.enrollments)),
+        visibleCourseLookup,
+        getRecordCourseId_
+      ),
     });
   } catch (error) {
     return errorOutput_(error);
@@ -543,12 +564,23 @@ function handleLogin_(request) {
   const previewOnly = isPreviewAccessStudent_(student) || isSecurityLockedStudent_(student);
   const securityLocked = isSecurityLockedStudent_(student);
   const notices = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.notices));
-  const courses = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses));
-  const lessons = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.lessons));
-  const enrollments = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.enrollments));
+  const courses = getVisibleCoursesForStudents_(
+    readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses))
+  );
+  const visibleCourseLookup = buildCourseIdLookup_(courses);
+  const lessons = filterRowsByCourseLookup_(
+    readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.lessons)),
+    visibleCourseLookup,
+    getRecordCourseId_
+  );
+  const enrollments = filterRowsByCourseLookup_(
+    readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.enrollments)),
+    visibleCourseLookup,
+    getRecordCourseId_
+  );
   const studentId = getStudentId_(student);
   const inboxMessages = getStudentInboxMessages_(spreadsheet, studentId);
-  const relatedPayments = getStudentPayments_(spreadsheet, studentId);
+  const relatedPayments = getStudentPayments_(spreadsheet, studentId, visibleCourseLookup);
   const relatedEnrollments = enrollments.filter(function (enrollment) {
     return String(enrollment.studentId || "").trim() === studentId;
   });
@@ -625,7 +657,9 @@ function handleStudentRegistration_(request) {
   const spreadsheet = getSpreadsheet_();
   const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
   const registrationsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.registrations);
-  const courses = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses));
+  const courses = getVisibleCoursesForStudents_(
+    readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses))
+  );
   const selfRegistrationAccess = buildSelfRegistrationAccessState_();
 
   const requestedCourses = buildCourseIdList_(request.requestedCourseIds || request.courseIds || "", courses);
@@ -771,7 +805,9 @@ function handleStudentCourseRequest_(request) {
   const spreadsheet = getSpreadsheet_();
   const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
   const registrationsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.registrations);
-  const courses = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses));
+  const courses = getVisibleCoursesForStudents_(
+    readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses))
+  );
   const studentId = String(request.studentId || "").trim();
 
   if (!studentId) {
@@ -916,7 +952,9 @@ function handleStudentSubmitPayment_(request) {
   const spreadsheet = getSpreadsheet_();
   const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
   const paymentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.payments);
-  const courses = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses));
+  const courses = getVisibleCoursesForStudents_(
+    readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses))
+  );
   const studentId = String(request.studentId || "").trim();
   const courseId = String(request.courseId || "").trim();
   const transactionId = String(request.transactionId || request.studentTransactionId || "").trim();
@@ -957,7 +995,7 @@ function handleStudentSubmitPayment_(request) {
     return String(entry.id || entry.courseId || "").trim() === courseId;
   });
   if (!course) {
-    return jsonOutput_({ ok: false, message: "Course was not found." });
+    return jsonOutput_({ ok: false, message: "This course is not active right now." });
   }
 
   const hasPendingPayment = paymentsData.records.some(function (payment) {
@@ -1353,18 +1391,72 @@ function getStudentInboxMessages_(spreadsheet, studentId) {
     });
 }
 
-function getStudentPayments_(spreadsheet, studentId) {
+function getStudentPayments_(spreadsheet, studentId, courseLookup) {
   if (!spreadsheet || !studentId) {
     return [];
   }
 
+  const activeCourseLookup = courseLookup || buildCourseIdLookup_(
+    getVisibleCoursesForStudents_(
+      readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses))
+    )
+  );
+
   return readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.payments))
     .filter(function (payment) {
-      return String(payment.studentId || "").trim() === studentId;
+      return (
+        String(payment.studentId || "").trim() === studentId &&
+        !!activeCourseLookup[String(payment.courseId || "").trim()]
+      );
     })
     .sort(function (left, right) {
       return new Date(right.submittedOn || 0) - new Date(left.submittedOn || 0);
     });
+}
+
+function getCourseId_(course) {
+  return String(getFirstAvailableValue_(course || {}, COURSE_FIELD_KEYS_.id, "")).trim();
+}
+
+function getCourseStatus_(course) {
+  return String(getFirstAvailableValue_(course || {}, COURSE_FIELD_KEYS_.status, "Active")).trim() || "Active";
+}
+
+function normalizeCourseStatusLabel_(value) {
+  return INACTIVE_COURSE_STATUS_VALUES_.indexOf(normalizeValue_(value)) !== -1 ? "Inactive" : "Active";
+}
+
+function isCourseVisibleToStudents_(course) {
+  return INACTIVE_COURSE_STATUS_VALUES_.indexOf(normalizeValue_(getCourseStatus_(course))) === -1;
+}
+
+function getVisibleCoursesForStudents_(courses) {
+  return (courses || []).filter(function (course) {
+    return getCourseId_(course) && isCourseVisibleToStudents_(course);
+  });
+}
+
+function buildCourseIdLookup_(courses) {
+  return (courses || []).reduce(function (result, course) {
+    const courseId = getCourseId_(course);
+    if (courseId) {
+      result[courseId] = true;
+    }
+    return result;
+  }, {});
+}
+
+function getRecordCourseId_(record) {
+  return String((record && (record.courseId || record.courseID || "")) || "").trim();
+}
+
+function filterRowsByCourseLookup_(records, courseLookup, extractor) {
+  return (records || []).filter(function (record) {
+    const courseId = String(
+      (typeof extractor === "function" ? extractor(record) : getRecordCourseId_(record)) || ""
+    ).trim();
+    return !!courseId && !!courseLookup[courseId];
+  });
 }
 
 function normalizePaymentTransactionId_(value) {
@@ -2342,6 +2434,7 @@ function handleAdminCreateCourse_(request) {
       nextLive: String(payload.nextLive || "").trim(),
       price: String(payload.price || "").trim(),
       description: String(payload.description || "").trim(),
+      status: "Active",
     },
     existing || {}
   );
@@ -2357,6 +2450,7 @@ function handleAdminCreateCourse_(request) {
   nextCourse.nextLive = String(payload.nextLive || nextCourse.nextLive || "").trim();
   nextCourse.price = String(payload.price || nextCourse.price || "").trim();
   nextCourse.description = String(payload.description || nextCourse.description || "").trim();
+  nextCourse.status = normalizeCourseStatusLabel_(payload.status || nextCourse.status || "Active");
 
   writeSheetEntries_(
     coursesData.sheet,
@@ -2898,7 +2992,9 @@ function buildCachedCourseCatalogPayload_(spreadsheet) {
     generatedAt: new Date().toISOString(),
     spreadsheetId: spreadsheet.getId(),
     spreadsheetName: spreadsheet.getName(),
-    courses: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses)),
+    courses: getVisibleCoursesForStudents_(
+      readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses))
+    ),
   };
 
   if (canUseCache) {
@@ -3543,6 +3639,7 @@ function buildCourseIdList_(value, courses) {
     return [];
   }
 
+  const hasCourseCatalog = Array.isArray(courses) && courses.length > 0;
   const courseMap = {};
   (courses || []).forEach(function (course) {
     getCourseLookupTokens_(course).forEach(function (token) {
@@ -3561,7 +3658,7 @@ function buildCourseIdList_(value, courses) {
         }
       }
 
-      return item;
+      return hasCourseCatalog ? "" : item;
     })
     .filter(Boolean)
     .filter(function (item, index, list) {
@@ -3739,10 +3836,10 @@ function ensureDefaultAdminIfMissing_(adminsData) {
   const defaultAdmin = Object.assign(
     {
       id: "admin-01",
-      username: "admin",
+      username: "prottoy",
       name: "Portal Admin",
-      email: "support@ainpathshala.com",
-      password: "admin123",
+      email: "Prottoybiswas575358@gmail.com",
+      password: "Prottoy75@",
       status: "Active",
       role: "Super Admin",
     },

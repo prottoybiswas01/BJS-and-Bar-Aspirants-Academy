@@ -461,6 +461,10 @@
                   <input id="courseScheduleInput" type="text" placeholder="Schedule" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
                     <input id="courseNextLiveInput" type="text" placeholder="Next live date/time" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
                     <input id="coursePriceInput" type="text" placeholder="Course fee (example: 1500)" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none" />
+                    <select id="courseStatusInput" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none">
+                      <option value="Active">Active - visible to students</option>
+                      <option value="Inactive">Inactive - hidden from students</option>
+                    </select>
                     <textarea id="courseDescriptionInput" rows="4" placeholder="Description" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none"></textarea>
                   <button type="submit" class="rounded-2xl bg-slate-950 px-4 py-3 text-sm font-bold text-white transition hover:bg-slate-800">
                     Save Course
@@ -471,8 +475,8 @@
                 <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
                   <div class="flex items-center justify-between gap-3">
                     <div>
-                      <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Live Courses</p>
-                      <h4 class="mt-2 text-xl font-extrabold text-slate-950">Existing Course List</h4>
+                      <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Course Catalog</p>
+                      <h4 class="mt-2 text-xl font-extrabold text-slate-950">Active And Hidden Courses</h4>
                     </div>
                     <span id="courseCountBadge" class="rounded-full bg-white px-3 py-1 text-xs font-bold text-slate-500">0</span>
                   </div>
@@ -501,6 +505,6 @@
     </main>
 
     <script src="./portal-copy.js?v=20260315-1" defer></script>
-    <script src="./admin-app.js?v=20260401-4" defer></script>
+    <script src="./admin-app.js?v=20260401-5" defer></script>
   </body>
 </html>

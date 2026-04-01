@@ -20,11 +20,25 @@ const REGISTER_COURSE_FIELD_KEYS = Object.freeze({
   batch: ["batch", "batchName", "group", "groupName"],
   session: ["session", "sessionName", "shift"],
   schedule: ["schedule", "routine", "time", "classSchedule"],
+  status: ["status", "courseStatus", "visibility", "publishStatus", "courseVisibility", "isActive"],
 });
 
 const REGISTER_STORAGE_KEYS = Object.freeze({
-  courseCatalog: "ain-pathshala.register.courseCatalog",
+  courseCatalog: "ain-pathshala.register.courseCatalog.v2",
 });
+
+const INACTIVE_REGISTER_COURSE_STATUS_VALUES = Object.freeze([
+  "inactive",
+  "disabled",
+  "deactivated",
+  "hidden",
+  "draft",
+  "archived",
+  "blocked",
+  "off",
+  "false",
+  "0",
+]);
 
 const registerState = {
   courses: [],
@@ -149,6 +163,18 @@ function getFirstAvailableRegisterValue(record, keys, fallback = "") {
   }
 
   return fallback;
+}
+
+function normalizeRegisterCourseStatus(value) {
+  return INACTIVE_REGISTER_COURSE_STATUS_VALUES.includes(String(value || "").trim().toLowerCase())
+    ? "Inactive"
+    : "Active";
+}
+
+function isRegisterCourseVisible(course) {
+  return normalizeRegisterCourseStatus(
+    getFirstAvailableRegisterValue(course || {}, REGISTER_COURSE_FIELD_KEYS.status, "Active")
+  ) === "Active";
 }
 
 function getRegisterStore() {
@@ -333,8 +359,11 @@ async function loadRegisterCourses(options = {}) {
         batch: String(getFirstAvailableRegisterValue(course, REGISTER_COURSE_FIELD_KEYS.batch, "")).trim(),
         session: String(getFirstAvailableRegisterValue(course, REGISTER_COURSE_FIELD_KEYS.session, "")).trim(),
         schedule: String(getFirstAvailableRegisterValue(course, REGISTER_COURSE_FIELD_KEYS.schedule, "")).trim(),
+        status: normalizeRegisterCourseStatus(
+          getFirstAvailableRegisterValue(course, REGISTER_COURSE_FIELD_KEYS.status, "Active")
+        ),
       }))
-      .filter((course) => course.id && course.title)
+      .filter((course) => course.id && course.title && isRegisterCourseVisible(course))
       .sort((left, right) => left.title.localeCompare(right.title));
     cacheRegisterCourses(registerState.courses);
     applyRegisterCourses(registerState.courses);

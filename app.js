@@ -19,7 +19,7 @@ const SESSION_STORAGE_KEYS = Object.freeze({
   pendingCourseRequestIds: "ain-pathshala.pendingCourseRequestIds",
   loginQuery: "ain-pathshala.loginQuery",
   loginPassword: "ain-pathshala.loginPassword",
-  portalDataSnapshot: "ain-pathshala.portalDataSnapshot",
+  portalDataSnapshot: "ain-pathshala.portalDataSnapshot.v2",
 });
 
 const LOOKUP_DIGIT_MAP = Object.freeze({
@@ -85,6 +85,19 @@ const UNLIMITED_ACCESS_VALUES = Object.freeze([
   "permanent",
 ]);
 
+const INACTIVE_COURSE_STATUS_VALUES = Object.freeze([
+  "inactive",
+  "disabled",
+  "deactivated",
+  "hidden",
+  "draft",
+  "archived",
+  "blocked",
+  "off",
+  "false",
+  "0",
+]);
+
 const SECURITY_LOCK_LOGIN_MESSAGE =
   "The same transaction ID was used in multiple places. Contact the admin panel before trying another payment.";
 
@@ -126,6 +139,7 @@ const STUDENT_FIELD_KEYS = Object.freeze({
 
 const COURSE_FIELD_KEYS = Object.freeze({
   price: ["price", "fee", "courseFee", "monthlyFee", "amount"],
+  status: ["status", "courseStatus", "visibility", "publishStatus", "courseVisibility", "isActive"],
 });
 
 const PAYMENT_FIELD_KEYS = Object.freeze({
@@ -640,6 +654,16 @@ function getCourseLookupTokens(course) {
     getNormalizedLookupValue(course.category),
     getCompactLookupValue(course.category),
   ].filter(Boolean);
+}
+
+function normalizeCourseVisibilityStatus(value) {
+  return INACTIVE_COURSE_STATUS_VALUES.includes(getNormalizedLookupValue(value)) ? "Inactive" : "Active";
+}
+
+function isCourseVisibleToStudents(course) {
+  return normalizeCourseVisibilityStatus(
+    getFirstAvailableValue(course || {}, COURSE_FIELD_KEYS.status, "Active")
+  ) === "Active";
 }
 
 function buildCourseReferenceMap(courses) {
@@ -1240,26 +1264,32 @@ function normalizeData(raw) {
     nextLive: course.nextLive || course.nextClass || "",
     price: getFirstAvailableValue(course, COURSE_FIELD_KEYS.price, ""),
     description: course.description || "",
-  }));
+    status: normalizeCourseVisibilityStatus(
+      getFirstAvailableValue(course, COURSE_FIELD_KEYS.status, "Active")
+    ),
+  }))
+  .filter((course) => course.id && isCourseVisibleToStudents(course));
   const courseMap = new Map(courses.map((course) => [course.id, course]));
 
-  const lessons = (raw.lessons || []).map((lesson) => {
-    const lessonVideoSource =
-      lesson.youtubeUrl || lesson.youtubeLink || lesson.videoUrl || lesson.youtubeId || lesson.videoId || "";
-    const lessonVideoId = extractYouTubeVideoId(lessonVideoSource);
+  const lessons = (raw.lessons || [])
+    .map((lesson) => {
+      const lessonVideoSource =
+        lesson.youtubeUrl || lesson.youtubeLink || lesson.videoUrl || lesson.youtubeId || lesson.videoId || "";
+      const lessonVideoId = extractYouTubeVideoId(lessonVideoSource);
 
-    return {
-      id: lesson.id || lesson.lessonId || "",
-      courseId: lesson.courseId || "",
-      module: lesson.module || lesson.moduleTitle || "Module",
-      title: lesson.title || lesson.lessonTitle || "Untitled Lesson",
-      duration: lesson.duration || "N/A",
-      youtubeId: lessonVideoId,
-      releaseDate: lesson.releaseDate || lesson.date || "",
-      resources: parseList(lesson.resources || lesson.resourceList || ""),
-      note: lesson.note || "Sheet-linked lesson",
-    };
-  });
+      return {
+        id: lesson.id || lesson.lessonId || "",
+        courseId: lesson.courseId || "",
+        module: lesson.module || lesson.moduleTitle || "Module",
+        title: lesson.title || lesson.lessonTitle || "Untitled Lesson",
+        duration: lesson.duration || "N/A",
+        youtubeId: lessonVideoId,
+        releaseDate: lesson.releaseDate || lesson.date || "",
+        resources: parseList(lesson.resources || lesson.resourceList || ""),
+        note: lesson.note || "Sheet-linked lesson",
+      };
+    })
+    .filter((lesson) => lesson.id && courseMap.has(lesson.courseId));
 
   const enrollments = (raw.enrollments || [])
     .flatMap((enrollment, index) => {
@@ -1335,7 +1365,7 @@ function normalizeData(raw) {
         }))
       );
     })
-    .filter((enrollment) => enrollment.studentId && enrollment.courseId);
+    .filter((enrollment) => enrollment.studentId && enrollment.courseId && courseMap.has(enrollment.courseId));
   const notices = Array.isArray(raw.notices) ? raw.notices.slice() : [];
   const messages = Array.isArray(raw.messages)
     ? raw.messages
@@ -1397,7 +1427,7 @@ function normalizeData(raw) {
             reviewNote: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.reviewNote, "")).trim(),
           };
         })
-        .filter((payment) => payment.id && payment.studentId && payment.courseId)
+        .filter((payment) => payment.id && payment.studentId && payment.courseId && courseMap.has(payment.courseId))
         .sort((left, right) => new Date(right.submittedOn || 0) - new Date(left.submittedOn || 0))
     : null;
   const lessonsByCourseId = buildLessonsByCourseId(lessons);
