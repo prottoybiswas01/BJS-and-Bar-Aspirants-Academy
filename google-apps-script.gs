@@ -125,6 +125,8 @@ const STUDENT_LOGIN_QUERY_LABEL_ = "registration number, student ID, phone numbe
 const ADMIN_TOKEN_PREFIX_ = "ain-pathshala.admin-token.";
 const ADMIN_TOKEN_TTL_SECONDS_ = 21600;
 const SECURITY_LOCK_HIGHLIGHT_PREFIX_ = "Security lock:";
+const SECURITY_LOCK_LOGIN_MESSAGE_ =
+  "Security lock: the same transaction ID was used in multiple places. Contact the admin office.";
 const PUBLIC_CACHE_TTL_SECONDS_ = 0;
 const PUBLIC_CACHE_KEYS_ = Object.freeze({
   courses: "ain-pathshala.public-courses",
@@ -538,7 +540,8 @@ function handleLogin_(request) {
     return buildDeniedLoginResponse_(student, finalAccessState);
   }
 
-  const previewOnly = isPreviewAccessStudent_(student);
+  const previewOnly = isPreviewAccessStudent_(student) || isSecurityLockedStudent_(student);
+  const securityLocked = isSecurityLockedStudent_(student);
   const notices = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.notices));
   const courses = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses));
   const lessons = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.lessons));
@@ -575,7 +578,11 @@ function handleLogin_(request) {
     enrollments: relatedEnrollments,
     messages: inboxMessages,
     payments: relatedPayments,
-    message: previewOnly ? "Preview access approved." : "Login approved.",
+    message: securityLocked
+      ? getStudentSecurityLockMessage_(student, SECURITY_LOCK_LOGIN_MESSAGE_)
+      : previewOnly
+      ? "Preview access approved."
+      : "Login approved.",
   });
 }
 
@@ -1016,8 +1023,7 @@ function handleStudentSubmitPayment_(request) {
       blocked: true,
       pendingReview: false,
       alreadyPending: false,
-      message:
-        "Duplicate transaction ID detected. This account has been blocked automatically. Contact the admin office to restore access.",
+      message: SECURITY_LOCK_LOGIN_MESSAGE_,
       paymentId: nextPayment.id,
       studentId: studentId,
       payments: getStudentPayments_(spreadsheet, studentId),
@@ -1374,9 +1380,18 @@ function getStudentSecurityLockMessage_(student, fallback) {
   return isSecurityLockHighlight_(highlight) ? highlight : String(fallback || "").trim();
 }
 
+function isSecurityLockedStudent_(student) {
+  if (!student) {
+    return false;
+  }
+
+  const studentStatus = normalizeValue_(getStudentStatus_(student));
+  return (studentStatus === "blocked" || studentStatus === "suspended") &&
+    isSecurityLockHighlight_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.highlight, ""));
+}
+
 function buildDuplicateTransactionSecurityHighlight_() {
-  return SECURITY_LOCK_HIGHLIGHT_PREFIX_ +
-    " duplicate payment transaction ID detected across multiple submissions. Contact the admin office.";
+  return SECURITY_LOCK_LOGIN_MESSAGE_;
 }
 
 function buildDuplicateTransactionSecurityReviewNote_() {
@@ -3153,6 +3168,14 @@ function getStudentLoginAccessState_(spreadsheet, student) {
   }
 
   if (BLOCKED_STATUS_VALUES.indexOf(studentStatus) !== -1) {
+    if (isSecurityLockedStudent_(student)) {
+      return {
+        approvalStatus: "approved",
+        reviewNote: reviewNote,
+        message: getStudentSecurityLockMessage_(student, SECURITY_LOCK_LOGIN_MESSAGE_),
+      };
+    }
+
     return {
       approvalStatus: "inactive",
       reviewNote: reviewNote,

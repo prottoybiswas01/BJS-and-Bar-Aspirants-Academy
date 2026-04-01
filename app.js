@@ -85,6 +85,12 @@ const UNLIMITED_ACCESS_VALUES = Object.freeze([
   "permanent",
 ]);
 
+const SECURITY_LOCK_LOGIN_MESSAGE =
+  "The same transaction ID was used in multiple places. Contact the admin panel before trying another payment.";
+
+const SECURITY_LOCK_VIDEO_MESSAGE =
+  "Only orientation classes remain open. Every paid video, including previously unlocked courses, stays blocked until the admin removes this security lock.";
+
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   day: "2-digit",
   month: "2-digit",
@@ -903,6 +909,10 @@ function isRejectedPaymentStatus(value) {
 function getStudentSecurityLockMessage(student) {
   const highlight = String(student?.highlight || "").trim();
   return /^security lock:/i.test(highlight) ? highlight : "";
+}
+
+function isStudentSecurityLocked(student) {
+  return !!getStudentSecurityLockMessage(student);
 }
 
 function getStudentVisiblePaymentReviewNote(payment) {
@@ -1878,6 +1888,10 @@ function getStudentPortalAccessMode(student) {
     return "full";
   }
 
+  if (isStudentSecurityLocked(student)) {
+    return "security-lock";
+  }
+
   if (isPreviewAccessValue(student.portalAccessMode) || isPreviewAccessValue(student.loginApproval)) {
     return "preview";
   }
@@ -1886,7 +1900,7 @@ function getStudentPortalAccessMode(student) {
 }
 
 function isStudentPreviewOnly(student) {
-  return getStudentPortalAccessMode(student) === "preview";
+  return getStudentPortalAccessMode(student) !== "full";
 }
 
 function isLoginApprovalGranted(value) {
@@ -1896,7 +1910,7 @@ function isLoginApprovalGranted(value) {
 
 function isStudentLoginBlocked(student) {
   const normalized = String(student.status || "").trim().toLowerCase();
-  return ["inactive", "blocked", "suspended", "expired"].includes(normalized);
+  return ["inactive", "blocked", "suspended", "expired"].includes(normalized) && !isStudentSecurityLocked(student);
 }
 
 function getStudentApprovalState(student) {
@@ -1914,6 +1928,13 @@ function getStudentApprovalState(student) {
     return {
       approvalStatus: "pending",
       message: "Your registration is waiting for admin approval. Video access will open after approval.",
+    };
+  }
+
+  if (isStudentSecurityLocked(student)) {
+    return {
+      approvalStatus: "approved",
+      message: getStudentSecurityLockMessage(student) || SECURITY_LOCK_LOGIN_MESSAGE,
     };
   }
 
@@ -2103,6 +2124,7 @@ function parseTimestamp(dateValue) {
 
 function getStudentCourseEntries(student) {
   const previewOnly = isStudentPreviewOnly(student);
+  const securityLocked = isStudentSecurityLocked(student);
   const linkedEnrollments = state.data.enrollments
     .filter((enrollment) => isSameStudentReference(enrollment.studentId, student.id))
     .map((enrollment) => ({
@@ -2128,6 +2150,7 @@ function getStudentCourseEntries(student) {
     .map((enrollment) => ({
       ...enrollment,
       previewOnly,
+      securityLocked,
       course: state.data.courseMap.get(enrollment.courseId) || null,
     }))
     .filter((entry) => entry.course)
@@ -2169,6 +2192,7 @@ function getCourseCatalogEntries(student) {
   const enrolledEntries = getStudentCourseEntries(student);
   const enrolledEntryMap = new Map(enrolledEntries.map((entry) => [entry.course.id, entry]));
   const pendingCourseIds = getPendingCourseRequestIds(student);
+  const securityLocked = isStudentSecurityLocked(student);
 
   return state.data.courses
     .map((course) => {
@@ -2197,6 +2221,7 @@ function getCourseCatalogEntries(student) {
         courseId: course.id,
         course,
         previewOnly: false,
+        securityLocked,
         catalogOnly: true,
         pendingRequest: pendingCourseIds.has(course.id),
         pendingPayment: !!latestPendingPayment,
@@ -2212,7 +2237,9 @@ function getCourseCatalogEntries(student) {
         paymentDueDate: "",
         monthlyFee: "",
         paidMonths: [],
-        status: latestPendingPayment
+        status: securityLocked
+          ? "Security Lock"
+          : latestPendingPayment
           ? "Payment Submitted"
           : latestRejectedPayment
           ? "Payment Rejected"
@@ -2239,6 +2266,10 @@ function getDefaultOpenCourseId(student) {
 }
 
 function getCourseEntryLockReason(entry) {
+  if (entry.securityLocked) {
+    return `${getStudentSecurityLockMessage(getActiveStudent()) || SECURITY_LOCK_LOGIN_MESSAGE} ${SECURITY_LOCK_VIDEO_MESSAGE}`;
+  }
+
   if (entry.pendingPayment) {
     return "Your payment request is waiting for admin review. Access will open after the transaction is confirmed.";
   }
@@ -2262,6 +2293,17 @@ function getCourseEntryLockReason(entry) {
 }
 
 function getCourseEntryStatusMeta(entry) {
+  if (entry.securityLocked) {
+    return {
+      label: "Security Lock",
+      className: "bg-rose-100 text-rose-700",
+      summary:
+        "The same transaction ID was used in multiple places. Every paid course, including previously unlocked ones, stays blocked until the admin removes this security lock. Only orientation classes remain open.",
+      accessSummary: "Contact admin panel",
+      videoSummary: "Only orientation is open",
+    };
+  }
+
   if (entry.catalogOnly) {
     if (entry.pendingPayment) {
       return {
@@ -2365,6 +2407,10 @@ function getEffectiveVideoAccessTimestamp(entry) {
 }
 
 function getEnrollmentVideoAccessSummary(entry) {
+  if (entry.securityLocked) {
+    return "Only orientation is open";
+  }
+
   if (entry.catalogOnly) {
     return entry.pendingRequest ? "Pending approval" : "Locked";
   }
@@ -2386,6 +2432,14 @@ function getLessonAccessState(entry, lesson) {
       canWatch: true,
       reason: "",
       status: "public-open",
+    };
+  }
+
+  if (entry.securityLocked) {
+    return {
+      canWatch: false,
+      reason: `${getStudentSecurityLockMessage(getActiveStudent()) || SECURITY_LOCK_LOGIN_MESSAGE} ${SECURITY_LOCK_VIDEO_MESSAGE}`,
+      status: "security-lock",
     };
   }
 
@@ -2481,6 +2535,10 @@ function getLessonAccessCtaLabel(entry, accessState) {
     return "Play Video";
   }
 
+  if (accessState.status === "security-lock") {
+    return "Security Locked";
+  }
+
   if (entry.catalogOnly) {
     return entry.pendingPayment
       ? "Payment Pending"
@@ -2517,6 +2575,10 @@ function getLessonAccessBadgeLabel(entry, accessState) {
     }
 
     return "Unlocked";
+  }
+
+  if (accessState.status === "security-lock") {
+    return "Security Lock";
   }
 
   if (entry.catalogOnly) {
@@ -2570,16 +2632,17 @@ function getStudentStats(student, courseEntries) {
   ).length;
 
   if (isStudentPreviewOnly(student)) {
+    const lockedLessons = Math.max(totalLessons - unlockedLessons, 0);
     return {
       primaryCount: totalLessons,
       primaryLabel: "Visible Classes",
-      secondaryCount: totalLessons,
-      secondaryLabel: "Locked Videos",
+      secondaryCount: lockedLessons,
+      secondaryLabel: isStudentSecurityLocked(student) ? "Blocked Videos" : "Locked Videos",
       total: totalLessons,
       completed: 0,
       remaining: totalLessons,
-      unlocked: 0,
-      locked: totalLessons,
+      unlocked: unlockedLessons,
+      locked: lockedLessons,
     };
   }
 
@@ -2686,6 +2749,10 @@ function getProfileAccessSummary(courseEntries) {
 }
 
 function getProfileVideoAccessSummary(courseEntries) {
+  if (courseEntries.length && courseEntries.every((entry) => entry.securityLocked)) {
+    return "Only orientation is open";
+  }
+
   if (courseEntries.length && courseEntries.every((entry) => entry.previewOnly)) {
     return "Preview only";
   }
@@ -2916,6 +2983,19 @@ function openApprovalStatusModal(options = {}) {
   dom.approvalStatusModal.classList.remove("hidden");
   dom.approvalStatusModal.classList.add("flex");
   syncBodyOverflow();
+}
+
+function openSecurityLockNotice(student = getActiveStudent()) {
+  if (!student || !isStudentSecurityLocked(student)) {
+    return false;
+  }
+
+  openApprovalStatusModal({
+    title: "Security Lock Active",
+    message: getStudentSecurityLockMessage(student) || SECURITY_LOCK_LOGIN_MESSAGE,
+    note: SECURITY_LOCK_VIDEO_MESSAGE,
+  });
+  return true;
 }
 
 function closeApprovalStatusModal() {
@@ -3179,6 +3259,7 @@ function closeVideo() {
 function renderStudentHeader(student, stats) {
   const avatarInitials = getAvatarInitials(student.name);
   const previewOnly = isStudentPreviewOnly(student);
+  const securityLocked = isStudentSecurityLocked(student);
 
   dom.navStudentName.textContent = student.name;
   dom.navStudentId.textContent = `ID: ${student.id}`;
@@ -3187,7 +3268,9 @@ function renderStudentHeader(student, stats) {
   const firstName = student.name.split(" ")[0] || student.name;
   dom.heroStudentName.textContent = firstName;
   dom.heroWelcomeText.textContent =
-    previewOnly
+    securityLocked
+      ? `${getStudentSecurityLockMessage(student) || SECURITY_LOCK_LOGIN_MESSAGE} ${SECURITY_LOCK_VIDEO_MESSAGE}`
+      : previewOnly
       ? "Preview mode is active. You can review all class titles and total class count, but video playback is disabled."
       : student.highlight || "Your current lessons are listed below. Keep practicing consistently.";
 
@@ -3195,7 +3278,7 @@ function renderStudentHeader(student, stats) {
   dom.completedLabel.textContent = stats.primaryLabel;
   dom.remainingCount.textContent = formatNumber(stats.secondaryCount);
   dom.remainingLabel.textContent = stats.secondaryLabel;
-  dom.studentStatus.textContent = previewOnly ? "Preview Access" : formatStatus(student.status);
+  dom.studentStatus.textContent = securityLocked ? "Security Lock" : previewOnly ? "Preview Access" : formatStatus(student.status);
   dom.studentBatch.textContent = student.batch || "-";
   dom.studentSession.textContent = student.session || "-";
 }
@@ -4142,15 +4225,47 @@ async function handlePaymentSubmit(event) {
   try {
     const result = await requestCourseAccess(courseId);
     if (result.blocked) {
-      const blockedMessage =
-        result.message ||
-        "Duplicate transaction ID detected. This account has been blocked automatically. Contact the admin office.";
-      logout({
-        message: blockedMessage,
-        feedbackTone: "error",
-        toastMessage: blockedMessage,
-        toastType: "error",
-      });
+      const blockedMessage = result.message || SECURITY_LOCK_LOGIN_MESSAGE;
+      closePaymentModal();
+      let activeStudent = null;
+
+      try {
+        const refreshed = await loadData();
+        if (refreshed?.modeLabel === "Live Google Sheet") {
+          applyPortalData(refreshed);
+        }
+      } catch (refreshError) {
+        console.warn("Unable to refresh portal data after security lock.", refreshError);
+      }
+
+      activeStudent = getActiveStudent();
+      if (!activeStudent) {
+        state.data.students = (state.data.students || []).map((entry) =>
+          entry.id === state.activeStudentId
+            ? {
+                ...entry,
+                status: "Blocked",
+                highlight: `Security lock: ${blockedMessage.replace(/^security lock:\s*/i, "")}`,
+              }
+            : entry
+        );
+        persistPortalDataSnapshot({
+          data: state.data,
+          modeLabel: state.dataModeLabel || "Live Google Sheet",
+        });
+        activeStudent = getActiveStudent();
+      }
+
+      if (activeStudent) {
+        state.openCourseId = getDefaultOpenCourseId(activeStudent);
+        syncPortalSession();
+        renderDashboard(activeStudent);
+        togglePage("profile");
+        openSecurityLockNotice(activeStudent);
+      }
+
+      setFeedback(blockedMessage, "error");
+      showToast(blockedMessage, "error");
       return;
     }
 
@@ -4218,6 +4333,7 @@ function renderCourseList(student, courseEntries) {
   const pendingCount = courseEntries.filter((entry) => entry.pendingPayment || entry.pendingRequest).length;
   const lockedCount = courseEntries.filter((entry) => entry.catalogOnly && !entry.pendingPayment && !entry.pendingRequest)
     .length;
+  const securityLocked = courseEntries.some((entry) => entry.securityLocked);
 
   const courseMapMarkup = `
     <section class="rounded-[2rem] border border-slate-100 bg-white p-5 shadow-sm sm:p-6">
@@ -4226,12 +4342,18 @@ function renderCourseList(student, courseEntries) {
           <p class="text-xs font-bold uppercase tracking-[0.3em] text-blue-500">Course Map</p>
           <h2 class="mt-2 text-2xl font-bold text-blue-950">See Every Live Course After Login</h2>
           <p class="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
-            Every live course stays visible here. Courses without access remain locked until you submit payment and the admin confirms it.
+            ${
+              securityLocked
+                ? "You can still enter the portal and review every live course. Because a security lock is active, every paid video stays blocked until the admin removes it, and only orientation classes remain open."
+                : "Every live course stays visible here. Courses without access remain locked until you submit payment and the admin confirms it."
+            }
           </p>
         </div>
         <div class="grid gap-3 sm:grid-cols-3">
           <div class="rounded-[1.5rem] border border-blue-100 bg-blue-50 px-4 py-4">
-            <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-blue-500">Active Access</p>
+            <p class="text-[10px] font-bold uppercase tracking-[0.24em] text-blue-500">${
+              securityLocked ? "Restricted Courses" : "Active Access"
+            }</p>
             <p class="mt-2 text-2xl font-extrabold text-blue-950">${formatNumber(accessibleCount)}</p>
           </div>
           <div class="rounded-[1.5rem] border border-amber-100 bg-amber-50 px-4 py-4">
@@ -4250,6 +4372,8 @@ function renderCourseList(student, courseEntries) {
             const isActive = state.openCourseId === entry.course.id;
             const baseClass = isActive
               ? "border-blue-900 bg-blue-900 text-white"
+              : entry.securityLocked
+              ? "border-rose-200 bg-rose-50 text-rose-700"
               : !entry.catalogOnly
               ? "border-blue-100 bg-blue-50 text-blue-900"
               : entry.pendingRequest
@@ -4263,7 +4387,13 @@ function renderCourseList(student, courseEntries) {
                 class="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-bold transition hover:-translate-y-0.5 ${baseClass}"
               >
                 <span class="h-2.5 w-2.5 rounded-full ${
-                  !entry.catalogOnly ? "bg-emerald-400" : entry.pendingRequest ? "bg-amber-400" : "bg-slate-400"
+                  entry.securityLocked
+                    ? "bg-rose-400"
+                    : !entry.catalogOnly
+                    ? "bg-emerald-400"
+                    : entry.pendingRequest
+                    ? "bg-amber-400"
+                    : "bg-slate-400"
                 }"></span>
                 <span>${entry.course.shortTitle || entry.course.title}</span>
               </button>
@@ -4379,7 +4509,9 @@ function renderCourseList(student, courseEntries) {
                           : ""
                       }
                       ${
-                        entry.catalogOnly
+                        entry.securityLocked
+                          ? `<span class="rounded-full bg-rose-600 px-3 py-1 text-[10px] font-bold text-white">Security Lock: Videos disabled</span>`
+                          : entry.catalogOnly
                           ? `<span class="rounded-full bg-rose-50 px-3 py-1 text-[10px] font-bold text-rose-700">Videos stay locked</span>`
                           : entry.previewOnly
                           ? `<span class="rounded-full bg-slate-900 px-3 py-1 text-[10px] font-bold text-white">Preview Mode: Videos disabled</span>`
@@ -4390,7 +4522,9 @@ function renderCourseList(student, courseEntries) {
                       ${
                         totalLockedLessons
                           ? `<span class="rounded-full bg-amber-50 px-3 py-1 text-[10px] font-bold text-amber-700">${
-                              entry.catalogOnly
+                              entry.securityLocked
+                                ? "Blocked Videos"
+                                : entry.catalogOnly
                                 ? "Locked Lessons"
                                 : entry.previewOnly
                                 ? "Visible But Locked"
@@ -4401,7 +4535,19 @@ function renderCourseList(student, courseEntries) {
                     </div>
                   </div>
                   ${
-                    entry.catalogOnly
+                    entry.securityLocked
+                      ? `
+                        <div class="w-full rounded-[1.5rem] border border-rose-100 bg-rose-50 p-4 xl:w-[320px]">
+                          <p class="text-xs font-bold uppercase tracking-[0.24em] text-rose-600">Admin Contact Required</p>
+                          <p class="mt-3 text-sm leading-6 text-rose-900/80">${escapeHtml(
+                            getStudentSecurityLockMessage(student) || SECURITY_LOCK_LOGIN_MESSAGE
+                          )}</p>
+                          <p class="mt-3 rounded-2xl bg-white/80 px-3 py-3 text-xs font-medium leading-5 text-rose-700">${escapeHtml(
+                            SECURITY_LOCK_VIDEO_MESSAGE
+                          )}</p>
+                        </div>
+                      `
+                      : entry.catalogOnly
                       ? `
                         <div class="w-full rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 xl:w-[320px]">
                           <p class="text-xs font-bold uppercase tracking-[0.24em] text-slate-500">${
@@ -4776,9 +4922,16 @@ async function performLogin(query = dom.query.value) {
     dom.password.value = "";
     dom.password.type = "password";
     syncStudentPasswordToggle();
-    setFeedback(`${nextStudent.name} logged in successfully.`, "success");
-    showToast("Logged in successfully!");
-    const nextAutoOpenMessage = getNextAutoOpenStudentMessage(nextStudent);
+    const securityLocked = isStudentSecurityLocked(nextStudent);
+    setFeedback(
+      securityLocked ? getStudentSecurityLockMessage(nextStudent) || SECURITY_LOCK_LOGIN_MESSAGE : `${nextStudent.name} logged in successfully.`,
+      securityLocked ? "neutral" : "success"
+    );
+    showToast(securityLocked ? "Security lock is active. Orientation classes stay open." : "Logged in successfully!", securityLocked ? "info" : "success");
+    if (securityLocked) {
+      openSecurityLockNotice(nextStudent);
+    }
+    const nextAutoOpenMessage = securityLocked ? null : getNextAutoOpenStudentMessage(nextStudent);
     if (nextAutoOpenMessage) {
       state.activeMessageId = nextAutoOpenMessage.id;
       openStudentMessageModal(nextStudent);
