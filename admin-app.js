@@ -16,6 +16,7 @@ const LOCALIZED_DIGIT_RANGES = Object.freeze([
   Object.freeze({ start: 0x0660, end: 0x0669 }),
   Object.freeze({ start: 0x06f0, end: 0x06f9 }),
 ]);
+const TRUSTED_ADMIN_DEVICE_NOTE_PREFIX = "Trusted admin device:";
 
 const STUDENT_FIELD_KEYS = Object.freeze({
   id: ["id", "studentId", "studentID", "userId", "userID", "memberId", "registrationId", "roll", "rollNumber"],
@@ -1064,8 +1065,14 @@ function getDevicesForStudent(studentId) {
   return state.data.devices.filter((device) => device.studentId === studentId);
 }
 
+function isTrustedAdminDeviceRecord(device) {
+  return String(device?.note || "").trim().startsWith(TRUSTED_ADMIN_DEVICE_NOTE_PREFIX);
+}
+
 function getActiveDevicesForStudent(studentId) {
-  return getDevicesForStudent(studentId).filter((device) => normalizeStatus(device.status) === "active");
+  return getDevicesForStudent(studentId).filter((device) => {
+    return normalizeStatus(device.status) === "active" && !isTrustedAdminDeviceRecord(device);
+  });
 }
 
 function getStudentDeviceLimit(student) {

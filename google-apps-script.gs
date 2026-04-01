@@ -156,6 +156,14 @@ const ADMIN_TOKEN_TTL_SECONDS_ = 21600;
 const STUDENT_SESSION_TTL_SECONDS_ = 2592000;
 const MAX_ACTIVE_DEVICES_PER_STUDENT_ = 2;
 const DEVICE_HEARTBEAT_WINDOW_MS_ = 5 * 60 * 1000;
+const TRUSTED_ADMIN_DEVICE_NOTE_PREFIX_ = "Trusted admin device:";
+const TRUSTED_ADMIN_DEVICE_RULES_ = Object.freeze([
+  // Devices listed here can log into any student account without consuming the student's device limit.
+  Object.freeze({
+    label: "Main Admin Laptop",
+    deviceId: "0fa5a59f-2ea5-4ebd-97ef-4bd6f0e8f85b",
+  }),
+]);
 const SECURITY_LOCK_HIGHLIGHT_PREFIX_ = "Security lock:";
 const SECURITY_LOCK_LOGIN_MESSAGE_ =
   "Security lock: the same transaction ID was used in multiple places. Contact the admin office.";
@@ -1651,6 +1659,56 @@ function normalizeDeviceLocationPermissionStatus_(value) {
   return normalized ? "Unknown" : "Not Requested";
 }
 
+function doesTrustedAdminDeviceRuleMatch_(rule, deviceInfo) {
+  if (!rule || !deviceInfo) {
+    return false;
+  }
+
+  const checks = [
+    hasProvidedValue_(rule.deviceId) ? normalizeValue_(rule.deviceId) === normalizeValue_(deviceInfo.deviceId) : null,
+    hasProvidedValue_(rule.deviceFingerprint)
+      ? normalizeValue_(rule.deviceFingerprint) === normalizeValue_(deviceInfo.deviceFingerprint)
+      : null,
+    hasProvidedValue_(rule.publicIp) ? normalizeValue_(rule.publicIp) === normalizeValue_(deviceInfo.publicIp) : null,
+  ].filter(function (value) {
+    return value !== null;
+  });
+
+  return checks.length > 0 && checks.every(Boolean);
+}
+
+function findTrustedAdminDeviceRule_(request) {
+  const deviceInfo = buildStudentDevicePayloadFromRequest_(request || {});
+  return (
+    TRUSTED_ADMIN_DEVICE_RULES_.find(function (rule) {
+      return doesTrustedAdminDeviceRuleMatch_(rule, deviceInfo);
+    }) || null
+  );
+}
+
+function buildTrustedAdminDeviceNote_(rule) {
+  return TRUSTED_ADMIN_DEVICE_NOTE_PREFIX_ + " " + String((rule && rule.label) || "Admin override").trim();
+}
+
+function isTrustedAdminDeviceRecord_(device) {
+  const note = String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.note, "")).trim();
+  return note.indexOf(TRUSTED_ADMIN_DEVICE_NOTE_PREFIX_) === 0;
+}
+
+function applyTrustedAdminDeviceNoteToRecord_(record, trustedRule) {
+  const nextRecord = Object.assign({}, record || {});
+  if (trustedRule) {
+    nextRecord.note = buildTrustedAdminDeviceNote_(trustedRule);
+    return nextRecord;
+  }
+
+  if (isTrustedAdminDeviceRecord_(nextRecord)) {
+    nextRecord.note = "";
+  }
+
+  return nextRecord;
+}
+
 function getDeviceRecordId_(device) {
   return String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.id, "")).trim();
 }
@@ -1739,10 +1797,16 @@ function getStudentDeviceRecords_(spreadsheet, studentId) {
   });
 }
 
-function getStudentActiveDeviceRecords_(devices, studentId) {
+function getStudentActiveDeviceRecords_(devices, studentId, options) {
+  const includeTrustedAdminDevices = !!(options && options.includeTrustedAdminDevices);
   return (devices || [])
     .filter(function (device) {
-      return getDeviceStudentId_(device) === studentId && isActiveDeviceRecord_(device) && !isStudentDeviceSessionExpired_(device);
+      return (
+        getDeviceStudentId_(device) === studentId &&
+        isActiveDeviceRecord_(device) &&
+        !isStudentDeviceSessionExpired_(device) &&
+        (includeTrustedAdminDevices || !isTrustedAdminDeviceRecord_(device))
+      );
     })
     .sort(function (left, right) {
       return new Date(right.lastSeenOn || right.lastLoginOn || 0) - new Date(left.lastSeenOn || left.lastLoginOn || 0);
@@ -1852,6 +1916,7 @@ function registerStudentLoginDevice_(spreadsheet, student, request) {
   const studentId = getStudentId_(student);
   const maxDevices = getStudentMaxDeviceCount_(student);
   const deviceInfo = buildStudentDevicePayloadFromRequest_(request);
+  const trustedAdminRule = findTrustedAdminDeviceRule_(request);
   if (!studentId) {
     return {
       ok: false,
@@ -1885,7 +1950,7 @@ function registerStudentLoginDevice_(spreadsheet, student, request) {
   const replaceOldestDevice = normalizeValue_(request.replaceOldestDevice || "") === "true";
   let nextDevices = devicesData.records.slice();
 
-  if (!existingDeviceAlreadyActive && activeDevices.length >= maxDevices) {
+  if (!trustedAdminRule && !existingDeviceAlreadyActive && activeDevices.length >= maxDevices) {
     let targetDevice = null;
     if (replaceDeviceId) {
       targetDevice = activeDevices.find(function (device) {
@@ -1923,15 +1988,18 @@ function registerStudentLoginDevice_(spreadsheet, student, request) {
   }
 
   const sessionToken = Utilities.getUuid();
+  let nextRecord = null;
   if (existingDeviceIndex !== -1) {
-    nextDevices[existingDeviceIndex] = buildStudentDeviceRecord_(
+    nextRecord = buildStudentDeviceRecord_(
       studentId,
       deviceInfo,
       sessionToken,
       nextDevices[existingDeviceIndex]
     );
+    nextDevices[existingDeviceIndex] = applyTrustedAdminDeviceNoteToRecord_(nextRecord, trustedAdminRule);
   } else {
-    nextDevices.push(buildStudentDeviceRecord_(studentId, deviceInfo, sessionToken));
+    nextRecord = buildStudentDeviceRecord_(studentId, deviceInfo, sessionToken);
+    nextDevices.push(applyTrustedAdminDeviceNoteToRecord_(nextRecord, trustedAdminRule));
   }
 
   writeSheetEntries_(devicesData.sheet, devicesData.headers, nextDevices);
