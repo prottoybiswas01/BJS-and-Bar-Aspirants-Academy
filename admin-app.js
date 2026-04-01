@@ -17,6 +17,7 @@ const LOCALIZED_DIGIT_RANGES = Object.freeze([
   Object.freeze({ start: 0x06f0, end: 0x06f9 }),
 ]);
 const TRUSTED_ADMIN_DEVICE_NOTE_PREFIX = "Trusted admin device:";
+const SECURITY_LOCK_HIGHLIGHT_PREFIX = "Security lock:";
 
 const STUDENT_FIELD_KEYS = Object.freeze({
   id: ["id", "studentId", "studentID", "userId", "userID", "memberId", "registrationId", "roll", "rollNumber"],
@@ -229,6 +230,12 @@ const DATE_TIME_FORMATTER = new Intl.DateTimeFormat("en-GB", {
   minute: "2-digit",
 });
 
+const DATE_FORMATTER = new Intl.DateTimeFormat("en-GB", {
+  year: "numeric",
+  month: "short",
+  day: "2-digit",
+});
+
 const MONTH_LABELS = Object.freeze(
   Array.from({ length: 12 }, (_, index) =>
     new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date(2026, index, 1))
@@ -243,6 +250,7 @@ const state = {
   courseFilter: "all",
   studentQuery: "",
   editingStudentId: "",
+  previewStudentId: "",
   editingCourseId: "",
   selectedStudentIds: new Set(),
   visibleStudentIds: [],
@@ -330,6 +338,11 @@ const dom = {
   paymentQueue: document.getElementById("paymentQueue"),
   deviceRegistryPanel: document.getElementById("deviceRegistryPanel"),
   messageLogPanel: document.getElementById("messageLogPanel"),
+  studentPreviewModal: document.getElementById("studentPreviewModal"),
+  studentPreviewTitle: document.getElementById("studentPreviewTitle"),
+  studentPreviewMeta: document.getElementById("studentPreviewMeta"),
+  studentPreviewBody: document.getElementById("studentPreviewBody"),
+  studentPreviewOpenEditorBtn: document.getElementById("studentPreviewOpenEditorBtn"),
 };
 
 function createEmptyDashboard() {
@@ -585,6 +598,28 @@ function formatDateTime(value, fallback = "-") {
   return DATE_TIME_FORMATTER.format(date);
 }
 
+function formatDateValue(value, fallback = "-") {
+  if (!value) {
+    return fallback;
+  }
+
+  const date = parseDashboardDate(value) || new Date(value);
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+    return String(value || "").trim() || fallback;
+  }
+
+  return DATE_FORMATTER.format(date);
+}
+
+function formatDateTimeOrValue(value, fallback = "-") {
+  if (!value) {
+    return fallback;
+  }
+
+  const formattedValue = formatDateTime(value, "");
+  return formattedValue || String(value || "").trim() || fallback;
+}
+
 function formatCoursePrice(value, fallback = "Not set") {
   const amount = String(value || "").trim();
   if (!amount) {
@@ -806,6 +841,48 @@ function renderStudentAccessBadge(student) {
   }
 
   return renderPill("Class List Only", "access");
+}
+
+function isStudentSecurityLocked(student) {
+  const highlight = String(student?.highlight || "").trim();
+  const status = normalizeStatus(student?.status || "");
+  return highlight.startsWith(SECURITY_LOCK_HIGHLIGHT_PREFIX) && ["blocked", "suspended"].includes(status);
+}
+
+function getStudentPreviewMessages(studentId) {
+  return state.data.messages
+    .filter((message) => message.audience === "student" && message.studentIds.includes(studentId))
+    .map((message) => ({
+      ...message,
+      recipientEntry: message.recipientState?.[studentId] || {},
+    }))
+    .sort((left, right) => new Date(right.createdOn || 0) - new Date(left.createdOn || 0));
+}
+
+function getStudentPreviewPayments(studentId) {
+  const visibleCourseIds = new Set(
+    state.data.courses.filter((course) => isCourseActive(course)).map((course) => course.id)
+  );
+
+  return state.data.payments
+    .filter((payment) => payment.studentId === studentId && (!payment.courseId || visibleCourseIds.has(payment.courseId)))
+    .sort((left, right) => new Date(right.submittedOn || 0) - new Date(left.submittedOn || 0));
+}
+
+function getStudentPreviewNotices() {
+  return [...(state.data.notices || [])].sort(
+    (left, right) => new Date(right.publishedOn || right.createdOn || 0) - new Date(left.publishedOn || left.createdOn || 0)
+  );
+}
+
+function getCourseLessons(courseId) {
+  return (state.data.lessons || [])
+    .filter((lesson) => String(lesson?.courseId || lesson?.courseID || "").trim() === String(courseId || "").trim())
+    .sort((left, right) => {
+      const leftDate = new Date(left?.releaseDate || 0).getTime();
+      const rightDate = new Date(right?.releaseDate || 0).getTime();
+      return rightDate - leftDate;
+    });
 }
 
 function formatSelectedStudentNames(students) {
@@ -1109,6 +1186,39 @@ function getStudentCourseIds(student) {
   );
 
   return collected;
+}
+
+function getStudentVisibleCourseIds(student) {
+  return getStudentCourseIds(student).filter((courseId) => {
+    const course = state.data.courseMap.get(courseId);
+    return course && isCourseActive(course);
+  });
+}
+
+function getStudentHiddenCourseCount(student) {
+  return Math.max(0, getStudentCourseIds(student).length - getStudentVisibleCourseIds(student).length);
+}
+
+function buildStudentPreviewCourseEntries(student) {
+  const enrollmentMap = new Map(
+    getEnrollmentRecordsForStudent(student?.id || "").map((entry) => [entry.courseId, entry])
+  );
+
+  return getStudentVisibleCourseIds(student)
+    .map((courseId) => {
+      const course = state.data.courseMap.get(courseId) || null;
+      if (!course) {
+        return null;
+      }
+
+      return {
+        course,
+        enrollment: enrollmentMap.get(courseId) || null,
+        lessons: getCourseLessons(courseId),
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => (left.course.title || "").localeCompare(right.course.title || ""));
 }
 
 function normalizeCourseFilterValue(value) {
@@ -1588,6 +1698,7 @@ function toggleAuthView(isLoggedIn) {
 }
 
 function clearAdminSession() {
+  closeStudentPreview();
   state.token = "";
   state.admin = null;
   state.data = createEmptyDashboard();
@@ -1595,6 +1706,7 @@ function clearAdminSession() {
   state.courseFilter = "all";
   state.studentQuery = "";
   state.editingStudentId = "";
+  state.previewStudentId = "";
   state.editingCourseId = "";
   state.selectedStudentIds = new Set();
   state.visibleStudentIds = [];
@@ -1691,6 +1803,9 @@ function applyDashboardPayload(payload, feedbackMessage = "", tone = "success") 
 
   if (state.editingStudentId && !validStudentIds.has(state.editingStudentId)) {
     state.editingStudentId = "";
+  }
+  if (state.previewStudentId && !validStudentIds.has(state.previewStudentId)) {
+    state.previewStudentId = "";
   }
 
   const validCourseIds = new Set(state.data.courses.map((course) => course.id));
@@ -2189,6 +2304,13 @@ function renderStudentMobileList(students) {
           <div class="mt-4 flex flex-col gap-2 sm:flex-row">
             <button
               type="button"
+              data-view-student="${escapeHtml(student.id)}"
+              class="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
+            >
+              View
+            </button>
+            <button
+              type="button"
               data-edit-student="${escapeHtml(student.id)}"
               class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
             >
@@ -2265,13 +2387,22 @@ function renderStudentTable() {
             <p class="mt-1 text-xs text-slate-500">${escapeHtml(courseSummary)}</p>
           </td>
           <td class="px-3 py-4 align-top">
-            <button
-              type="button"
-              data-edit-student="${escapeHtml(student.id)}"
-              class="rounded-2xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
-            >
-              Edit
-            </button>
+            <div class="flex flex-wrap gap-2">
+              <button
+                type="button"
+                data-view-student="${escapeHtml(student.id)}"
+                class="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-bold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
+              >
+                View
+              </button>
+              <button
+                type="button"
+                data-edit-student="${escapeHtml(student.id)}"
+                class="rounded-2xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+              >
+                Edit
+              </button>
+            </div>
           </td>
         </tr>
       `;
@@ -2645,6 +2776,420 @@ function renderDeviceRegistry() {
   ].join("");
 }
 
+function renderStudentPreviewModePill(label, tone = "default") {
+  const palette = {
+    full: "bg-blue-100 text-blue-800",
+    preview: "bg-indigo-100 text-indigo-800",
+    pending: "bg-amber-100 text-amber-800",
+    security: "bg-rose-100 text-rose-800",
+    restricted: "bg-slate-200 text-slate-700",
+    default: "bg-white/15 text-white",
+  };
+
+  return `<span class="inline-flex rounded-full px-3 py-1 text-xs font-bold ${palette[tone] || palette.default}">${escapeHtml(
+    label
+  )}</span>`;
+}
+
+function getStudentPreviewAccessSummary(student) {
+  if (isStudentSecurityLocked(student)) {
+    return {
+      label: "Security Lock",
+      tone: "security",
+      note:
+        String(student?.highlight || "").trim() ||
+        "This student can review course titles, but full access is blocked until the lock is removed.",
+    };
+  }
+
+  if (isStudentPreviewOnly(student)) {
+    return {
+      label: "Preview Access",
+      tone: "preview",
+      note:
+        "This student can open the portal and review the course map, but full lesson playback remains restricted.",
+    };
+  }
+
+  const normalizedStatus = normalizeStatus(student?.status || "active");
+  if (normalizedStatus === "pending") {
+    return {
+      label: "Pending Approval",
+      tone: "pending",
+      note: "This student would see a waiting-for-approval message instead of full access right now.",
+    };
+  }
+
+  if (["inactive", "blocked", "suspended", "rejected", "expired"].includes(normalizedStatus)) {
+    return {
+      label: "Restricted",
+      tone: "restricted",
+      note: String(student?.highlight || "").trim() || "This account is not ready for full access right now.",
+    };
+  }
+
+  return {
+    label: "Full Access",
+    tone: "full",
+    note:
+      String(student?.highlight || "").trim() ||
+      "This student can open the live dashboard with current course, notice, and payment data.",
+  };
+}
+
+function setStudentPreviewModalOpen(isOpen) {
+  if (!dom.studentPreviewModal) {
+    return;
+  }
+
+  dom.studentPreviewModal.classList.toggle("hidden", !isOpen);
+  dom.studentPreviewModal.classList.toggle("flex", isOpen);
+  document.body.style.overflow = isOpen ? "hidden" : "";
+}
+
+function closeStudentPreview() {
+  state.previewStudentId = "";
+  if (dom.studentPreviewOpenEditorBtn) {
+    dom.studentPreviewOpenEditorBtn.dataset.studentId = "";
+  }
+  if (dom.studentPreviewBody) {
+    dom.studentPreviewBody.innerHTML = "";
+  }
+  setStudentPreviewModalOpen(false);
+}
+
+function openStudentPreview(studentId) {
+  const student = getStudentById(studentId);
+  if (!student) {
+    return;
+  }
+
+  state.previewStudentId = student.id;
+  renderStudentPreviewModal();
+}
+
+function renderStudentPreviewModal() {
+  if (!dom.studentPreviewModal || !dom.studentPreviewBody) {
+    return;
+  }
+
+  if (!state.previewStudentId) {
+    closeStudentPreview();
+    return;
+  }
+
+  const student = getStudentById(state.previewStudentId);
+  if (!student) {
+    closeStudentPreview();
+    return;
+  }
+
+  const courseEntries = buildStudentPreviewCourseEntries(student);
+  const messages = getStudentPreviewMessages(student.id);
+  const payments = getStudentPreviewPayments(student.id);
+  const devices = getDevicesForStudent(student.id);
+  const notices = getStudentPreviewNotices();
+  const accessSummary = getStudentPreviewAccessSummary(student);
+  const hiddenCourseCount = getStudentHiddenCourseCount(student);
+  const totalLessons = courseEntries.reduce((total, entry) => total + entry.lessons.length, 0);
+  const activeDeviceCount = getActiveDevicesForStudent(student.id).length;
+
+  const courseMarkup = courseEntries.length
+    ? courseEntries
+        .map((entry) => {
+          const course = entry.course || {};
+          const enrollment = entry.enrollment || {};
+          const lessonMarkup = entry.lessons.length
+            ? entry.lessons
+                .slice(0, 4)
+                .map((lesson, index) => {
+                  return `
+                    <li class="rounded-2xl border border-white bg-white px-4 py-3">
+                      <div class="flex items-start gap-3">
+                        <span class="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[11px] font-bold text-blue-700">${
+                          index + 1
+                        }</span>
+                        <div class="min-w-0">
+                          <p class="text-sm font-bold text-slate-900">${escapeHtml(lesson.title || "Untitled lesson")}</p>
+                          <p class="mt-1 text-xs text-slate-500">${escapeHtml(
+                            [lesson.module || "", formatDateValue(lesson.releaseDate, "Release pending"), lesson.duration || ""]
+                              .filter(Boolean)
+                              .join(" | ")
+                          )}</p>
+                        </div>
+                      </div>
+                    </li>
+                  `;
+                })
+                .join("")
+            : '<li class="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">No lesson is attached to this course yet.</li>';
+
+          return `
+            <article class="rounded-[1.75rem] border border-slate-100 bg-slate-50 p-5">
+              <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                <div class="min-w-0">
+                  <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">${escapeHtml(
+                    course.category || "Course"
+                  )}</p>
+                  <h4 class="mt-2 text-xl font-extrabold text-slate-950">${escapeHtml(course.title || course.id || "Untitled course")}</h4>
+                  <p class="mt-2 text-sm text-slate-500">${escapeHtml(
+                    [course.faculty || "", course.schedule || ""].filter(Boolean).join(" | ") || "Schedule pending"
+                  )}</p>
+                  <div class="mt-4 flex flex-wrap gap-2">
+                    ${renderPill(enrollment.status || "Active")}
+                    <span class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">${
+                      entry.lessons.length
+                    } lesson${entry.lessons.length === 1 ? "" : "s"}</span>
+                    <span class="inline-flex rounded-full bg-slate-200 px-3 py-1 text-xs font-bold text-slate-700">${escapeHtml(
+                      formatCoursePrice(course.price, "Fee not set")
+                    )}</span>
+                  </div>
+                </div>
+                <div class="grid gap-3 sm:grid-cols-2 xl:w-[320px]">
+                  <div class="rounded-2xl border border-white bg-white p-4">
+                    <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Access Start</p>
+                    <p class="mt-2 text-sm font-semibold text-slate-800">${escapeHtml(
+                      formatDateValue(enrollment.accessStartDate, "Not set")
+                    )}</p>
+                  </div>
+                  <div class="rounded-2xl border border-white bg-white p-4">
+                    <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Access End</p>
+                    <p class="mt-2 text-sm font-semibold text-slate-800">${escapeHtml(
+                      enrollment.unlimitedAccess ? "Unlimited" : formatDateValue(enrollment.accessEndDate, "Not set")
+                    )}</p>
+                  </div>
+                  <div class="rounded-2xl border border-white bg-white p-4">
+                    <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Next Live</p>
+                    <p class="mt-2 text-sm font-semibold text-slate-800">${escapeHtml(
+                      formatDateTimeOrValue(course.nextLive, "Schedule pending")
+                    )}</p>
+                  </div>
+                  <div class="rounded-2xl border border-white bg-white p-4">
+                    <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Payment Due</p>
+                    <p class="mt-2 text-sm font-semibold text-slate-800">${escapeHtml(
+                      enrollment.unlimitedAccess ? "Not required" : formatDateValue(enrollment.paymentDueDate, "Not set")
+                    )}</p>
+                  </div>
+                </div>
+              </div>
+              <div class="mt-5">
+                <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Visible Lessons</p>
+                <ul class="mt-3 grid gap-3">${lessonMarkup}</ul>
+              </div>
+            </article>
+          `;
+        })
+        .join("")
+    : '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-white px-5 py-8 text-sm text-slate-500">No active course is visible for this student right now.</div>';
+
+  const noticeMarkup = notices.length
+    ? notices
+        .slice(0, 5)
+        .map((notice) => {
+          return `
+            <article class="rounded-[1.5rem] border border-slate-100 bg-white p-4">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <p class="text-sm font-bold text-slate-900">${escapeHtml(notice.title || "Notice")}</p>
+                ${renderPill(notice.status || "Published")}
+              </div>
+              <p class="mt-3 text-sm leading-6 text-slate-600">${escapeHtml(notice.message || "")}</p>
+              <p class="mt-3 text-xs text-slate-400">${escapeHtml(
+                formatDateValue(notice.publishedOn || notice.createdOn, "Not recorded")
+              )}</p>
+            </article>
+          `;
+        })
+        .join("")
+    : '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-white px-5 py-6 text-sm text-slate-500">No notice is available right now.</div>';
+
+  const messageMarkup = messages.length
+    ? messages
+        .slice(0, 6)
+        .map((message) => {
+          const recipientStatus = String(message.recipientEntry?.status || "Pending").trim() || "Pending";
+          const replyText = String(message.recipientEntry?.reply || "").trim();
+          return `
+            <article class="rounded-[1.5rem] border border-slate-100 bg-white p-4">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <p class="text-sm font-bold text-slate-900">${escapeHtml(message.title || "Admin Message")}</p>
+                ${renderPill(recipientStatus)}
+              </div>
+              <p class="mt-3 text-sm leading-6 text-slate-600">${escapeHtml(message.message || "")}</p>
+              ${
+                replyText
+                  ? `<div class="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">Reply: ${escapeHtml(
+                      replyText
+                    )}</div>`
+                  : ""
+              }
+              <p class="mt-3 text-xs text-slate-400">${escapeHtml(
+                formatDateTime(message.createdOn, "Not recorded")
+              )}</p>
+            </article>
+          `;
+        })
+        .join("")
+    : '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-white px-5 py-6 text-sm text-slate-500">No popup message is waiting for this student.</div>';
+
+  const paymentMarkup = payments.length
+    ? payments
+        .slice(0, 6)
+        .map((payment) => {
+          return `
+            <article class="rounded-[1.5rem] border border-slate-100 bg-white p-4">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <p class="text-sm font-bold text-slate-900">${escapeHtml(payment.courseTitle || payment.courseId || "Course payment")}</p>
+                ${renderPill(payment.status || "Pending")}
+              </div>
+              <p class="mt-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">${escapeHtml(
+                formatCoursePrice(payment.amount, "Amount not set")
+              )}</p>
+              <p class="mt-3 text-sm text-slate-600">${escapeHtml(
+                payment.reviewNote || payment.note || payment.studentTransactionId || "No payment note recorded."
+              )}</p>
+              <p class="mt-3 text-xs text-slate-400">${escapeHtml(
+                formatDateTime(payment.submittedOn || payment.reviewedOn || payment.paymentDate, "Not recorded")
+              )}</p>
+            </article>
+          `;
+        })
+        .join("")
+    : '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-white px-5 py-6 text-sm text-slate-500">No payment history is visible for this student.</div>';
+
+  const deviceMarkup = devices.length
+    ? devices
+        .slice(0, 6)
+        .map((device) => {
+          return `
+            <article class="rounded-[1.5rem] border border-slate-100 bg-white p-4">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <p class="text-sm font-bold text-slate-900">${escapeHtml(device.deviceName || "Unknown device")}</p>
+                ${renderPill(device.status || "Active")}
+              </div>
+              <p class="mt-2 text-sm text-slate-600">${escapeHtml(
+                [device.publicIp || "", device.timezone || "", device.screenSize || ""].filter(Boolean).join(" | ") ||
+                  "Device details unavailable"
+              )}</p>
+              ${
+                device.note
+                  ? `<p class="mt-3 text-xs font-semibold text-slate-500">${escapeHtml(device.note)}</p>`
+                  : ""
+              }
+              <p class="mt-3 text-xs text-slate-400">${escapeHtml(
+                formatDateTime(device.lastSeenOn || device.lastLoginOn || device.firstSeenOn, "Not recorded")
+              )}</p>
+            </article>
+          `;
+        })
+        .join("")
+    : '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-white px-5 py-6 text-sm text-slate-500">No approved device record is saved for this student.</div>';
+
+  if (dom.studentPreviewTitle) {
+    dom.studentPreviewTitle.textContent = `${student.name || student.id} Live Preview`;
+  }
+  if (dom.studentPreviewMeta) {
+    dom.studentPreviewMeta.textContent = `Synced ${formatDateTime(
+      state.data.generatedAt,
+      "just now"
+    )} from ${state.data.spreadsheetName || "the live sheet"}.`;
+  }
+  if (dom.studentPreviewOpenEditorBtn) {
+    dom.studentPreviewOpenEditorBtn.dataset.studentId = student.id;
+  }
+
+  dom.studentPreviewBody.innerHTML = `
+    <div class="grid gap-6">
+      <section class="overflow-hidden rounded-[2rem] bg-gradient-to-br from-blue-950 via-blue-900 to-slate-900 p-6 text-white">
+        <div class="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+          <div class="min-w-0">
+            <p class="text-xs font-bold uppercase tracking-[0.28em] text-blue-200">Student Dashboard Mirror</p>
+            <h4 class="mt-3 text-3xl font-extrabold">${escapeHtml(student.name || "Unnamed Student")}</h4>
+            <p class="mt-2 text-sm text-blue-100">${escapeHtml(
+              [student.id || "-", student.batch || "-", student.session || "-"].filter(Boolean).join(" | ")
+            )}</p>
+            <div class="mt-4 flex flex-wrap gap-2">
+              ${renderPill(student.loginApproval || "Pending", "approval")}
+              ${renderStudentAccessBadge(student)}
+              ${renderPill(student.status || "Active")}
+              ${renderStudentPreviewModePill(accessSummary.label, accessSummary.tone)}
+            </div>
+            <p class="mt-4 max-w-3xl text-sm leading-6 text-blue-100">${escapeHtml(accessSummary.note)}</p>
+            ${
+              hiddenCourseCount
+                ? `<p class="mt-3 text-xs font-semibold text-blue-200">${hiddenCourseCount} assigned course${
+                    hiddenCourseCount === 1 ? "" : "s"
+                  } are inactive, so they would stay hidden in the student portal.</p>`
+                : ""
+            }
+          </div>
+          <div class="grid gap-3 sm:grid-cols-2 xl:w-[420px]">
+            <div class="rounded-[1.5rem] bg-white/10 p-4">
+              <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-blue-200">Visible Courses</p>
+              <p class="mt-2 text-3xl font-extrabold">${courseEntries.length}</p>
+            </div>
+            <div class="rounded-[1.5rem] bg-white/10 p-4">
+              <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-blue-200">Lessons</p>
+              <p class="mt-2 text-3xl font-extrabold">${totalLessons}</p>
+            </div>
+            <div class="rounded-[1.5rem] bg-white/10 p-4">
+              <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-blue-200">Popup Messages</p>
+              <p class="mt-2 text-3xl font-extrabold">${messages.length}</p>
+            </div>
+            <div class="rounded-[1.5rem] bg-white/10 p-4">
+              <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-blue-200">Active Devices</p>
+              <p class="mt-2 text-3xl font-extrabold">${activeDeviceCount}</p>
+              <p class="mt-1 text-xs text-blue-200">${escapeHtml(buildStudentDeviceUsageLabel(student))}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr),minmax(320px,0.85fr)]">
+        <div class="space-y-6">
+          <section class="rounded-[1.75rem] border border-slate-100 bg-white p-5">
+            <div class="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Course Map</p>
+                <h5 class="mt-2 text-2xl font-extrabold text-slate-950">Visible Courses And Lessons</h5>
+              </div>
+              <p class="text-sm text-slate-500">This mirrors the course area the student can currently open.</p>
+            </div>
+            <div class="mt-5 grid gap-4">${courseMarkup}</div>
+          </section>
+
+          <section class="rounded-[1.75rem] border border-slate-100 bg-white p-5">
+            <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Live Notices</p>
+            <h5 class="mt-2 text-2xl font-extrabold text-slate-950">Shared Portal Notices</h5>
+            <div class="mt-5 grid gap-4">${noticeMarkup}</div>
+          </section>
+        </div>
+
+        <div class="space-y-6">
+          <section class="rounded-[1.75rem] border border-slate-100 bg-white p-5">
+            <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Inbox</p>
+            <h5 class="mt-2 text-2xl font-extrabold text-slate-950">Student Popup Messages</h5>
+            <div class="mt-5 grid gap-4">${messageMarkup}</div>
+          </section>
+
+          <section class="rounded-[1.75rem] border border-slate-100 bg-white p-5">
+            <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Payments</p>
+            <h5 class="mt-2 text-2xl font-extrabold text-slate-950">Payment Timeline</h5>
+            <div class="mt-5 grid gap-4">${paymentMarkup}</div>
+          </section>
+
+          <section class="rounded-[1.75rem] border border-slate-100 bg-white p-5">
+            <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Devices</p>
+            <h5 class="mt-2 text-2xl font-extrabold text-slate-950">Approved Devices</h5>
+            <div class="mt-5 grid gap-4">${deviceMarkup}</div>
+          </section>
+        </div>
+      </div>
+    </div>
+  `;
+
+  setStudentPreviewModalOpen(true);
+}
+
 function renderMessageLog() {
   if (!state.data.messages.length) {
     dom.messageLogPanel.innerHTML =
@@ -2761,6 +3306,7 @@ function renderDashboard() {
   renderCourseList();
   renderPaymentQueue();
   renderMessageLog();
+  renderStudentPreviewModal();
 
   if (state.editingCourseId) {
     const course = state.data.courses.find((entry) => entry.id === state.editingCourseId) || null;
@@ -3317,6 +3863,12 @@ async function handlePaymentReview(paymentId, action) {
 }
 
 function handleStudentTableClick(event) {
+  const viewButton = event.target.closest("[data-view-student]");
+  if (viewButton) {
+    openStudentPreview(String(viewButton.dataset.viewStudent || "").trim());
+    return;
+  }
+
   const editButton = event.target.closest("[data-edit-student]");
   if (!editButton) {
     return;
@@ -3450,6 +4002,27 @@ function handleMessageLogClick(event) {
   }
 }
 
+function handleStudentPreviewModalClick(event) {
+  if (event.target.closest("[data-student-preview-close]")) {
+    closeStudentPreview();
+  }
+}
+
+function openStudentPreviewInEditor() {
+  const studentId = String(dom.studentPreviewOpenEditorBtn?.dataset.studentId || "").trim();
+  if (!studentId) {
+    return;
+  }
+
+  closeStudentPreview();
+  setEditingStudent(studentId);
+  dom.studentEditorForm?.scrollIntoView({
+    behavior: "smooth",
+    block: "start",
+  });
+  dom.editorStudentName?.focus();
+}
+
 async function bootstrap() {
   resetStudentEditor();
   clearCourseForm();
@@ -3560,7 +4133,14 @@ dom.paymentQueue.addEventListener("input", handlePaymentQueueChange);
 dom.paymentQueue.addEventListener("change", handlePaymentQueueChange);
 dom.deviceRegistryPanel?.addEventListener("click", handleDeviceRegistryClick);
 dom.messageLogPanel.addEventListener("click", handleMessageLogClick);
+dom.studentPreviewModal?.addEventListener("click", handleStudentPreviewModalClick);
+dom.studentPreviewOpenEditorBtn?.addEventListener("click", openStudentPreviewInEditor);
 window.addEventListener("scroll", persistAdminScrollPosition, { passive: true });
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && state.previewStudentId) {
+    closeStudentPreview();
+  }
+});
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && state.token) {
     refreshDashboardInBackground();
