@@ -6,6 +6,8 @@ const APP_CONFIG = Object.freeze({
   remoteEndpoint: `https://script.google.com/macros/s/${APPS_SCRIPT_DEPLOYMENT_ID}/exec`,
   remoteRequestTimeoutMs: 30000,
   remoteLoginRetryCount: 1,
+  remotePaymentTimeoutMs: 45000,
+  remotePaymentRetryCount: 1,
   remoteRetryDelayMs: 1200,
   portalDataCacheTtlMs: 5 * 60 * 1000,
   studentInboxPollIntervalMs: 15000,
@@ -880,8 +882,24 @@ function isPendingPaymentStatus(value) {
   );
 }
 
+function isApprovedPaymentStatus(value) {
+  return normalizePaymentStatusValue(value) === "approved";
+}
+
 function getStudentPayments(studentId) {
   return (state.data.payments || []).filter((payment) => payment.studentId === studentId);
+}
+
+function getLatestPaymentForCourse(studentId, courseId) {
+  return (
+    getStudentPayments(studentId)
+      .filter((payment) => payment.courseId === courseId)
+      .sort((left, right) => {
+        const leftTime = new Date(left.reviewedOn || left.submittedOn || 0).getTime();
+        const rightTime = new Date(right.reviewedOn || right.submittedOn || 0).getTime();
+        return rightTime - leftTime;
+      })[0] || null
+  );
 }
 
 function getLatestPendingPaymentForCourse(studentId, courseId) {
@@ -3636,85 +3654,130 @@ async function requestCourseAccess(courseId) {
     };
   }
 
-  const controller = typeof AbortController === "function" ? new AbortController() : null;
-  const timeoutHandle = controller
-    ? setTimeout(() => controller.abort(), APP_CONFIG.remoteRequestTimeoutMs)
-    : null;
-  let response;
-  let rawResponse = "";
+  const requestBody = new URLSearchParams({
+    action: "studentsubmitpayment",
+    studentId: student.id,
+    courseId,
+    transactionId,
+    note,
+  });
+  const totalAttempts = Math.max(1, Number(APP_CONFIG.remotePaymentRetryCount) + 1 || 1);
+  let lastError = null;
 
-  try {
-    response = await fetch(APP_CONFIG.remoteEndpoint, {
-      method: "POST",
-      headers: {
-        Accept: "application/json",
-        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-      },
-      body: new URLSearchParams({
-        action: "studentsubmitpayment",
-        studentId: student.id,
-        courseId,
-        transactionId,
-        note,
-      }),
-      signal: controller ? controller.signal : undefined,
-    });
-
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-    }
-
-    if (!response.ok) {
-      throw new Error(`Unable to submit the payment request right now (${response.status}).`);
-    }
+  for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
+    let rawResponse = "";
 
     try {
-      rawResponse = await response.text();
-    } catch (readError) {
-      throw new Error("Payment server response could not be read.");
-    }
+      const response = await fetchRemoteResponseWithTimeout(
+        APP_CONFIG.remoteEndpoint,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json",
+            "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+          },
+          body: requestBody,
+        },
+        {
+          timeoutMs: APP_CONFIG.remotePaymentTimeoutMs,
+          timeoutMessage:
+            "Payment confirmation is taking longer than usual. Please wait a moment while we verify your request.",
+        }
+      );
 
-    let result;
-    try {
-      result = JSON.parse(rawResponse);
-    } catch (parseError) {
-      if (/^\s*</.test(rawResponse)) {
-        throw new Error("Payment server returned HTML instead of JSON. Redeploy the latest Apps Script web app.");
+      if (!response.ok) {
+        throw new Error(`Unable to submit the payment request right now (${response.status}).`);
       }
 
-      throw new Error("Payment server returned an invalid JSON response.");
-    }
-
-    if (!result.ok) {
-      const normalizedMessage = getCompactLookupValue(result.message || "");
-      if (normalizedMessage === "unsupportedrequestaction") {
-        throw new Error(
-          "The payment endpoint is still using an older Apps Script deployment. Redeploy the latest web app so `studentsubmitpayment` works."
-        );
+      try {
+        rawResponse = await response.text();
+      } catch (readError) {
+        throw new Error("Payment server response could not be read.");
       }
 
-      throw new Error(result.message || "Payment request failed.");
-    }
+      let result;
+      try {
+        result = JSON.parse(rawResponse);
+      } catch (parseError) {
+        if (/^\s*</.test(rawResponse)) {
+          throw new Error("Payment server returned HTML instead of JSON. Redeploy the latest Apps Script web app.");
+        }
 
-    if (Array.isArray(result.payments)) {
-      state.data.payments = normalizeData({ payments: result.payments }).payments || state.data.payments;
-      persistPortalDataSnapshot({
-        data: state.data,
-        modeLabel: "Live Google Sheet",
-      });
-    }
-    return result;
-  } catch (error) {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
-    }
+        throw new Error("Payment server returned an invalid JSON response.");
+      }
 
-    if (error && error.name === "AbortError") {
-      throw new Error("Payment request took too long. Please try again.");
-    }
+      if (!result.ok) {
+        const normalizedMessage = getCompactLookupValue(result.message || "");
+        if (normalizedMessage === "unsupportedrequestaction") {
+          throw new Error(
+            "The payment endpoint is still using an older Apps Script deployment. Redeploy the latest web app so `studentsubmitpayment` works."
+          );
+        }
 
-    throw error;
+        throw new Error(result.message || "Payment request failed.");
+      }
+
+      if (Array.isArray(result.payments)) {
+        state.data.payments = normalizeData({ payments: result.payments }).payments || state.data.payments;
+        persistPortalDataSnapshot({
+          data: state.data,
+          modeLabel: "Live Google Sheet",
+        });
+      }
+
+      return result;
+    } catch (error) {
+      lastError = error;
+
+      if (!isRemoteTimeoutError(error)) {
+        throw error;
+      }
+
+      if (attempt < totalAttempts - 1) {
+        await delay(APP_CONFIG.remoteRetryDelayMs);
+        continue;
+      }
+    }
   }
+
+  await delay(APP_CONFIG.remoteRetryDelayMs);
+  try {
+    const refreshed = await loadData();
+    if (refreshed?.modeLabel === "Live Google Sheet") {
+      applyPortalData(refreshed);
+    }
+  } catch (refreshError) {
+    console.warn("Unable to verify payment submission after timeout.", refreshError);
+  }
+
+  const latestPayment = getLatestPaymentForCourse(student.id, courseId);
+  const hasEnrollment = (state.data.enrollments || []).some((entry) => {
+    return entry.studentId === student.id && entry.courseId === courseId;
+  });
+
+  if (latestPayment && (isPendingPaymentStatus(latestPayment.status) || isApprovedPaymentStatus(latestPayment.status))) {
+    return {
+      ok: true,
+      pendingReview: !isApprovedPaymentStatus(latestPayment.status),
+      alreadyPending: isPendingPaymentStatus(latestPayment.status),
+      message: isApprovedPaymentStatus(latestPayment.status)
+        ? "Payment was confirmed. Your course access is now active."
+        : "Your payment request was received. Please wait a little while. The course will activate automatically after confirmation.",
+      payments: getStudentPayments(student.id),
+    };
+  }
+
+  if (hasEnrollment) {
+    return {
+      ok: true,
+      pendingReview: false,
+      alreadyPending: false,
+      message: "Payment was confirmed. Your course access is now active.",
+      payments: getStudentPayments(student.id),
+    };
+  }
+
+  throw lastError || new Error("Unable to submit the payment request.");
 }
 
 function syncPaymentSubmitState() {
