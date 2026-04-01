@@ -208,6 +208,7 @@ function createEmptyPortalData() {
     messages: [],
     payments: [],
     hasEnrollmentSheet: false,
+    studentMap: new Map(),
     courseMap: new Map(),
     courseReferenceMap: new Map(),
     lessonsByCourseId: new Map(),
@@ -1170,6 +1171,7 @@ function normalizeData(raw) {
       getFirstAvailableValue(student, STUDENT_FIELD_KEYS.completedLessonIds, "")
     ),
   }));
+  const studentMap = new Map(students.map((student) => [student.id, student]));
 
   const courses = (raw.courses || []).map((course) => ({
     id: course.id || course.courseId || "",
@@ -1298,34 +1300,45 @@ function normalizeData(raw) {
     : null;
   const payments = Array.isArray(raw.payments)
     ? raw.payments
-        .map((payment, index) => ({
-          id: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.id, `payment-${index + 1}`)).trim(),
-          studentId: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.studentId, "")).trim(),
-          studentName: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.studentName, "")).trim(),
-          studentPhone: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.studentPhone, "")).trim(),
-          courseId: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.courseId, "")).trim(),
-          courseTitle: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.courseTitle, "")).trim(),
-          amount: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.amount, "")).trim(),
-          paymentMethod: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.paymentMethod, "bKash Send Money")).trim(),
-          paymentNumber: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.paymentNumber, "")).trim(),
-          studentTransactionId: String(
-            getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.studentTransactionId, "")
-          ).trim(),
-          confirmedTransactionId: String(
-            getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.confirmedTransactionId, "")
-          ).trim(),
-          status: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.status, "Pending")).trim() || "Pending",
-          submittedOn: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.submittedOn, "")).trim(),
-          reviewedOn: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.reviewedOn, "")).trim(),
-          reviewedBy: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.reviewedBy, "")).trim(),
-          paymentDate: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.paymentDate, "")).trim(),
-          accessStartDate: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.accessStartDate, "")).trim(),
-          accessEndDate: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.accessEndDate, "")).trim(),
-          paymentDueDate: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.paymentDueDate, "")).trim(),
-          approvalMode: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.approvalMode, "")).trim(),
-          note: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.note, "")).trim(),
-          reviewNote: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.reviewNote, "")).trim(),
-        }))
+        .map((payment, index) => {
+          const studentId = String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.studentId, "")).trim();
+          const courseId = String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.courseId, "")).trim();
+          const linkedStudent = studentMap.get(studentId) || null;
+          const linkedCourse = courseMap.get(courseId) || null;
+
+          return {
+            id: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.id, `payment-${index + 1}`)).trim(),
+            studentId,
+            studentName:
+              String(linkedStudent?.name || getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.studentName, "")).trim(),
+            studentPhone:
+              String(linkedStudent?.phone || getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.studentPhone, "")).trim(),
+            courseId,
+            courseTitle:
+              String(linkedCourse?.title || getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.courseTitle, "")).trim(),
+            amount:
+              String(linkedCourse?.price || getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.amount, "")).trim(),
+            paymentMethod: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.paymentMethod, "bKash Send Money")).trim(),
+            paymentNumber: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.paymentNumber, "")).trim(),
+            studentTransactionId: String(
+              getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.studentTransactionId, "")
+            ).trim(),
+            confirmedTransactionId: String(
+              getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.confirmedTransactionId, "")
+            ).trim(),
+            status: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.status, "Pending")).trim() || "Pending",
+            submittedOn: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.submittedOn, "")).trim(),
+            reviewedOn: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.reviewedOn, "")).trim(),
+            reviewedBy: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.reviewedBy, "")).trim(),
+            paymentDate: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.paymentDate, "")).trim(),
+            accessStartDate: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.accessStartDate, "")).trim(),
+            accessEndDate: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.accessEndDate, "")).trim(),
+            paymentDueDate: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.paymentDueDate, "")).trim(),
+            approvalMode: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.approvalMode, "")).trim(),
+            note: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.note, "")).trim(),
+            reviewNote: String(getFirstAvailableValue(payment, PAYMENT_FIELD_KEYS.reviewNote, "")).trim(),
+          };
+        })
         .filter((payment) => payment.id && payment.studentId && payment.courseId)
         .sort((left, right) => new Date(right.submittedOn || 0) - new Date(left.submittedOn || 0))
     : null;
@@ -1340,6 +1353,7 @@ function normalizeData(raw) {
     messages,
     payments,
     hasEnrollmentSheet: enrollments.length > 0,
+    studentMap,
     courseMap: new Map(courses.map((course) => [course.id, course])),
     courseReferenceMap: buildCourseReferenceMap(courses),
     lessonsByCourseId,
@@ -4473,12 +4487,14 @@ document.addEventListener("keydown", (event) => {
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden && state.activeStudentId) {
+    refreshPortalDataInBackground();
     refreshStudentInboxInBackground(state.activeStudentId, { openModal: true });
   }
 });
 
 window.addEventListener("focus", () => {
   if (state.activeStudentId) {
+    refreshPortalDataInBackground();
     refreshStudentInboxInBackground(state.activeStudentId, { openModal: true });
   }
 });

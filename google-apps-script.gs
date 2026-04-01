@@ -124,7 +124,7 @@ const SELF_REGISTRATION_REVIEWED_BY_ = "Self Registration";
 const STUDENT_LOGIN_QUERY_LABEL_ = "registration number, student ID, phone number, or email";
 const ADMIN_TOKEN_PREFIX_ = "ain-pathshala.admin-token.";
 const ADMIN_TOKEN_TTL_SECONDS_ = 21600;
-const PUBLIC_CACHE_TTL_SECONDS_ = 300;
+const PUBLIC_CACHE_TTL_SECONDS_ = 0;
 const PUBLIC_CACHE_KEYS_ = Object.freeze({
   courses: "ain-pathshala.public-courses",
 });
@@ -338,6 +338,7 @@ function doGet(e) {
     const request = parseRequest_(e);
     const action = normalizeValue_(request.action);
     const spreadsheet = ensurePortalSheets_(getSpreadsheet_());
+    syncPortalLinkedData_(spreadsheet);
 
     if (action === "status") {
       return jsonOutput_(buildStatusPayload_(spreadsheet));
@@ -369,7 +370,8 @@ function doPost(e) {
   try {
     const request = parseRequest_(e);
     const action = normalizeValue_(request.action);
-    ensurePortalSheets_(getSpreadsheet_());
+    const spreadsheet = ensurePortalSheets_(getSpreadsheet_());
+    syncPortalLinkedData_(spreadsheet);
 
     if (action === "login") return handleLogin_(request);
     if (action === "adminlogin") return handleAdminLogin_(request);
@@ -401,6 +403,7 @@ function doPost(e) {
 
 function setupLawPortalSheets() {
   const spreadsheet = ensurePortalSheets_(getSpreadsheet_());
+  syncPortalLinkedData_(spreadsheet);
 
   return buildStatusPayload_(spreadsheet);
 }
@@ -1228,6 +1231,195 @@ function getStudentPayments_(spreadsheet, studentId) {
     .sort(function (left, right) {
       return new Date(right.submittedOn || 0) - new Date(left.submittedOn || 0);
     });
+}
+
+function syncPortalLinkedData_(spreadsheet) {
+  if (!spreadsheet) {
+    return;
+  }
+
+  const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
+  const coursesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.courses);
+  syncLinkedRegistrations_(spreadsheet, studentsData.records);
+  syncLinkedPayments_(spreadsheet, studentsData.records, coursesData.records);
+}
+
+function syncLinkedRegistrations_(spreadsheet, students) {
+  const registrationsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.registrations);
+  if (!registrationsData.records.length) {
+    return;
+  }
+
+  const studentLookup = buildStudentLookupMaps_(students);
+  let hasChanges = false;
+  const nextRegistrations = registrationsData.records.map(function (registration) {
+    const matchedStudent = resolveLinkedStudentRecord_(
+      studentLookup,
+      registration.studentId || "",
+      registration.phone || "",
+      registration.email || ""
+    );
+
+    if (!matchedStudent) {
+      return registration;
+    }
+
+    const nextRegistration = Object.assign({}, registration);
+    nextRegistration.studentId = getStudentId_(matchedStudent) || String(nextRegistration.studentId || "").trim();
+    nextRegistration.name = String(
+      getFirstAvailableValue_(matchedStudent, STUDENT_FIELD_KEYS_.name, nextRegistration.name || "")
+    ).trim();
+    nextRegistration.phone = normalizePhoneLookupValue_(
+      getFirstAvailableValue_(matchedStudent, STUDENT_FIELD_KEYS_.phone, nextRegistration.phone || "")
+    );
+    nextRegistration.email = String(
+      getFirstAvailableValue_(matchedStudent, STUDENT_FIELD_KEYS_.email, nextRegistration.email || "")
+    ).trim();
+    nextRegistration.batch = String(
+      getFirstAvailableValue_(matchedStudent, STUDENT_FIELD_KEYS_.batch, nextRegistration.batch || "")
+    ).trim();
+    nextRegistration.session = String(
+      getFirstAvailableValue_(matchedStudent, STUDENT_FIELD_KEYS_.session, nextRegistration.session || "")
+    ).trim();
+    nextRegistration.password = normalizePasswordValue_(
+      getFirstAvailableValue_(matchedStudent, STUDENT_FIELD_KEYS_.password, nextRegistration.password || "")
+    );
+
+    if (hasRecordChangesForHeaders_(registration, nextRegistration, registrationsData.headers)) {
+      hasChanges = true;
+      return nextRegistration;
+    }
+
+    return registration;
+  });
+
+  if (hasChanges) {
+    writeSheetEntries_(registrationsData.sheet, registrationsData.headers, nextRegistrations);
+  }
+}
+
+function syncLinkedPayments_(spreadsheet, students, courses) {
+  const paymentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.payments);
+  if (!paymentsData.records.length) {
+    return;
+  }
+
+  const studentLookup = buildStudentLookupMaps_(students);
+  const courseLookup = buildCourseLookupMap_(courses);
+  let hasChanges = false;
+  const nextPayments = paymentsData.records.map(function (payment) {
+    const matchedStudent = resolveLinkedStudentRecord_(
+      studentLookup,
+      payment.studentId || "",
+      payment.studentPhone || "",
+      payment.studentEmail || ""
+    );
+    const matchedCourse = courseLookup[String(payment.courseId || "").trim()] || null;
+    const nextPayment = Object.assign({}, payment);
+
+    if (matchedStudent) {
+      nextPayment.studentId = getStudentId_(matchedStudent) || String(nextPayment.studentId || "").trim();
+      nextPayment.studentName = String(
+        getFirstAvailableValue_(matchedStudent, STUDENT_FIELD_KEYS_.name, nextPayment.studentName || "")
+      ).trim();
+      nextPayment.studentPhone = normalizePhoneLookupValue_(
+        getFirstAvailableValue_(matchedStudent, STUDENT_FIELD_KEYS_.phone, nextPayment.studentPhone || "")
+      );
+      nextPayment.studentEmail = String(
+        getFirstAvailableValue_(matchedStudent, STUDENT_FIELD_KEYS_.email, nextPayment.studentEmail || "")
+      ).trim();
+    }
+
+    if (matchedCourse) {
+      const liveCourseTitle = String(matchedCourse.title || matchedCourse.shortTitle || nextPayment.courseId || "").trim();
+      const liveCourseAmount = String(
+        matchedCourse.price || matchedCourse.fee || matchedCourse.courseFee || matchedCourse.amount || ""
+      ).trim();
+
+      if (liveCourseTitle) {
+        nextPayment.courseTitle = liveCourseTitle;
+      }
+      if (liveCourseAmount) {
+        nextPayment.amount = liveCourseAmount;
+      }
+    }
+
+    nextPayment.paymentMethod = String(nextPayment.paymentMethod || "bKash Send Money").trim() || "bKash Send Money";
+    nextPayment.paymentNumber = String(nextPayment.paymentNumber || "01975341714").trim() || "01975341714";
+
+    if (hasRecordChangesForHeaders_(payment, nextPayment, paymentsData.headers)) {
+      hasChanges = true;
+      return nextPayment;
+    }
+
+    return payment;
+  });
+
+  if (hasChanges) {
+    writeSheetEntries_(paymentsData.sheet, paymentsData.headers, nextPayments);
+  }
+}
+
+function buildStudentLookupMaps_(students) {
+  return (students || []).reduce(
+    function (result, student) {
+      const studentId = getStudentId_(student);
+      const studentPhone = normalizePhoneLookupValue_(
+        getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.phone, "")
+      );
+      const studentEmail = normalizeValue_(
+        getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.email, "")
+      );
+
+      if (studentId && !result.byId[studentId]) {
+        result.byId[studentId] = student;
+      }
+      if (studentPhone && !result.byPhone[studentPhone]) {
+        result.byPhone[studentPhone] = student;
+      }
+      if (studentEmail && !result.byEmail[studentEmail]) {
+        result.byEmail[studentEmail] = student;
+      }
+
+      return result;
+    },
+    { byId: {}, byPhone: {}, byEmail: {} }
+  );
+}
+
+function resolveLinkedStudentRecord_(studentLookup, studentId, phone, email) {
+  const normalizedStudentId = String(studentId || "").trim();
+  if (normalizedStudentId && studentLookup.byId[normalizedStudentId]) {
+    return studentLookup.byId[normalizedStudentId];
+  }
+
+  const normalizedPhone = normalizePhoneLookupValue_(phone);
+  if (normalizedPhone && studentLookup.byPhone[normalizedPhone]) {
+    return studentLookup.byPhone[normalizedPhone];
+  }
+
+  const normalizedEmail = normalizeValue_(email);
+  if (normalizedEmail && studentLookup.byEmail[normalizedEmail]) {
+    return studentLookup.byEmail[normalizedEmail];
+  }
+
+  return null;
+}
+
+function buildCourseLookupMap_(courses) {
+  return (courses || []).reduce(function (result, course) {
+    const courseId = String(course.id || course.courseId || "").trim();
+    if (courseId && !result[courseId]) {
+      result[courseId] = course;
+    }
+    return result;
+  }, {});
+}
+
+function hasRecordChangesForHeaders_(currentRecord, nextRecord, headers) {
+  return (headers || []).some(function (header) {
+    return serializeRowValue_(currentRecord[header]) !== serializeRowValue_(nextRecord[header]);
+  });
 }
 
 function getStudentAssignedCourseIds_(spreadsheet, student) {
@@ -2133,7 +2325,8 @@ function parseRequest_(e) {
 
 function buildCachedCourseCatalogPayload_(spreadsheet) {
   const cache = getScriptCache_();
-  if (cache) {
+  const canUseCache = !!cache && PUBLIC_CACHE_TTL_SECONDS_ > 0;
+  if (canUseCache) {
     const cached = cache.get(PUBLIC_CACHE_KEYS_.courses);
     if (cached) {
       const parsed = parseJsonField_(cached);
@@ -2151,7 +2344,7 @@ function buildCachedCourseCatalogPayload_(spreadsheet) {
     courses: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses)),
   };
 
-  if (cache) {
+  if (canUseCache) {
     try {
       cache.put(PUBLIC_CACHE_KEYS_.courses, JSON.stringify(payload), PUBLIC_CACHE_TTL_SECONDS_);
     } catch (error) {
