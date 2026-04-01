@@ -4,7 +4,9 @@ const APPS_SCRIPT_DEPLOYMENT_ID =
 const APP_CONFIG = Object.freeze({
   dataMode: "remote",
   remoteEndpoint: `https://script.google.com/macros/s/${APPS_SCRIPT_DEPLOYMENT_ID}/exec`,
-  remoteRequestTimeoutMs: 15000,
+  remoteRequestTimeoutMs: 30000,
+  remoteLoginRetryCount: 1,
+  remoteRetryDelayMs: 1200,
   portalDataCacheTtlMs: 5 * 60 * 1000,
   studentInboxPollIntervalMs: 15000,
 });
@@ -230,6 +232,8 @@ const state = {
   messageInboxPollHandle: 0,
   loginBusy: false,
 };
+
+let remoteWarmupPromise = null;
 
 const dom = {
   body: document.body,
@@ -1404,6 +1408,84 @@ async function loadData() {
   };
 }
 
+function delay(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, Math.max(0, Number(ms) || 0));
+  });
+}
+
+function createRemoteTimeoutError(message) {
+  const error = new Error(message || "The server took too long to respond.");
+  error.code = "REMOTE_TIMEOUT";
+  return error;
+}
+
+function isRemoteTimeoutError(error) {
+  return !!error && (error.code === "REMOTE_TIMEOUT" || error.name === "AbortError");
+}
+
+async function fetchRemoteResponseWithTimeout(url, options = {}, timeoutOptions = {}) {
+  const controller = typeof AbortController === "function" ? new AbortController() : null;
+  const timeoutMs = Math.max(1000, Number(timeoutOptions.timeoutMs) || APP_CONFIG.remoteRequestTimeoutMs);
+  const timeoutHandle = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+
+  try {
+    return await fetch(url, {
+      ...options,
+      signal: controller ? controller.signal : options.signal,
+    });
+  } catch (error) {
+    if (isRemoteTimeoutError(error)) {
+      throw createRemoteTimeoutError(timeoutOptions.timeoutMessage);
+    }
+
+    throw error;
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
+}
+
+function warmRemoteConnection() {
+  if (APP_CONFIG.dataMode !== "remote" || !APP_CONFIG.remoteEndpoint) {
+    return Promise.resolve();
+  }
+
+  if (remoteWarmupPromise) {
+    return remoteWarmupPromise;
+  }
+
+  remoteWarmupPromise = fetchRemoteResponseWithTimeout(
+    `${APP_CONFIG.remoteEndpoint}?action=status`,
+    {
+      method: "GET",
+      headers: { Accept: "application/json" },
+    },
+    {
+      timeoutMs: 12000,
+      timeoutMessage: "Login server warm-up timed out.",
+    }
+  )
+    .then(async (response) => {
+      if (!response?.ok) {
+        return;
+      }
+
+      try {
+        await response.text();
+      } catch (error) {
+        console.warn("Login server warm-up response could not be read.", error);
+      }
+    })
+    .catch(() => {})
+    .finally(() => {
+      remoteWarmupPromise = null;
+    });
+
+  return remoteWarmupPromise;
+}
+
 function applyPortalData(result) {
   if (!result || !result.data) {
     return;
@@ -1861,16 +1943,11 @@ function authenticateLocalStudent(query, password) {
   };
 }
 
-async function authenticateRemoteStudent(query, password) {
-  const controller = typeof AbortController === "function" ? new AbortController() : null;
-  const timeoutHandle = controller
-    ? setTimeout(() => controller.abort(), APP_CONFIG.remoteRequestTimeoutMs)
-    : null;
-  let response;
+async function authenticateRemoteStudentOnce(query, password) {
   let rawResponse = "";
-
-  try {
-    response = await fetch(APP_CONFIG.remoteEndpoint, {
+  const response = await fetchRemoteResponseWithTimeout(
+    APP_CONFIG.remoteEndpoint,
+    {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -1881,23 +1958,11 @@ async function authenticateRemoteStudent(query, password) {
         query: String(query || "").trim(),
         password: String(password || ""),
       }),
-      signal: controller ? controller.signal : undefined,
-    });
-  } catch (error) {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
+    },
+    {
+      timeoutMessage: "Login server is taking longer than usual. Please wait a few seconds and try again.",
     }
-
-    if (error && error.name === "AbortError") {
-      throw new Error("Login server took too long to respond. Please try again.");
-    }
-
-    throw error;
-  }
-
-  if (timeoutHandle) {
-    clearTimeout(timeoutHandle);
-  }
+  );
 
   if (!response.ok) {
     throw new Error(`Remote login validation failed (${response.status}).`);
@@ -1918,6 +1983,27 @@ async function authenticateRemoteStudent(query, password) {
 
     throw new Error("Login server returned an invalid JSON response.");
   }
+}
+
+async function authenticateRemoteStudent(query, password) {
+  const totalAttempts = Math.max(1, Number(APP_CONFIG.remoteLoginRetryCount) + 1 || 1);
+  let lastError = null;
+
+  for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
+    try {
+      return await authenticateRemoteStudentOnce(query, password);
+    } catch (error) {
+      lastError = error;
+
+      if (!isRemoteTimeoutError(error) || attempt >= totalAttempts - 1) {
+        break;
+      }
+
+      await delay(APP_CONFIG.remoteRetryDelayMs);
+    }
+  }
+
+  throw lastError;
 }
 
 async function authenticateStudent(query, password) {
@@ -4218,8 +4304,8 @@ async function performLogin(query = dom.query.value) {
   }
 
   let authResult;
-  setLoginBusy(true, "Checking...");
-  setFeedback("Checking your student credentials...", "neutral");
+  setLoginBusy(true, "Connecting...");
+  setFeedback("Connecting to the login server and checking your credentials...", "neutral");
 
   try {
     authResult = await authenticateStudent(studentQuery, password);
@@ -4339,6 +4425,7 @@ async function initialize() {
 
   restoreLoginDraft();
   togglePage("login");
+  warmRemoteConnection();
 }
 
 dom.form.addEventListener("submit", async (event) => {
