@@ -33,6 +33,7 @@ const STUDENT_FIELD_KEYS = Object.freeze({
   portalAccessMode: ["portalAccessMode", "accessMode", "studentAccessMode", "videoAccessMode", "portalMode"],
   highlight: ["highlight", "note", "remarks", "message"],
   enrolledCourseIds: ["enrolledCourseIds", "courseIds", "courses", "assignedCourses", "enrolledCourses"],
+  completedLessonIds: ["completedLessonIds", "completed", "completedLessons"],
   maxDeviceCount: ["maxDeviceCount", "maxDevices", "deviceLimit", "allowedDevices", "approvedDeviceLimit"],
 });
 
@@ -135,6 +136,7 @@ const DEVICE_FIELD_KEYS = Object.freeze({
   studentId: ["studentId", "studentID"],
   deviceId: ["deviceId", "browserDeviceId", "clientDeviceId"],
   deviceName: ["deviceName", "deviceLabel", "label"],
+  deviceFingerprint: ["deviceFingerprint", "fingerprint", "deviceSignature"],
   publicIp: ["publicIp", "ip", "ipAddress"],
   userAgent: ["userAgent", "ua"],
   platform: ["platform", "devicePlatform"],
@@ -670,6 +672,38 @@ function isPendingPaymentStatus(value) {
   );
 }
 
+function isRejectedPaymentStatus(value) {
+  return ["rejected", "declined", "failed", "cancelled"].includes(normalizePaymentStatus(value));
+}
+
+function parseTimestamp(value) {
+  if (!value) {
+    return null;
+  }
+
+  const parsedDate = parseDashboardDate(value) || new Date(value);
+  if (!(parsedDate instanceof Date) || Number.isNaN(parsedDate.getTime())) {
+    return null;
+  }
+
+  return parsedDate.getTime();
+}
+
+function hasUnlimitedCourseAccess(entry) {
+  return !!entry?.unlimitedAccess;
+}
+
+function isEnrollmentBlocked(entry) {
+  const normalized = normalizeStatus(entry?.status || "");
+  return normalized === "blocked" || normalized === "suspended";
+}
+
+function isPublicOrientationLesson(lesson) {
+  const title = normalizeLookupText(lesson?.title || "");
+  const moduleTitle = normalizeLookupText(lesson?.module || "");
+  return title.includes("orientation class") || title === "orientation" || moduleTitle.includes("orientation class");
+}
+
 function getTodayInputValue() {
   return new Date().toISOString().slice(0, 10);
 }
@@ -891,12 +925,8 @@ function getStudentPreviewMessages(studentId) {
 }
 
 function getStudentPreviewPayments(studentId) {
-  const visibleCourseIds = new Set(
-    state.data.courses.filter((course) => isCourseActive(course)).map((course) => course.id)
-  );
-
   return state.data.payments
-    .filter((payment) => payment.studentId === studentId && (!payment.courseId || visibleCourseIds.has(payment.courseId)))
+    .filter((payment) => payment.studentId === studentId)
     .sort((left, right) => new Date(right.submittedOn || 0) - new Date(left.submittedOn || 0));
 }
 
@@ -914,6 +944,260 @@ function getCourseLessons(courseId) {
       const rightDate = new Date(right?.releaseDate || 0).getTime();
       return rightDate - leftDate;
     });
+}
+
+function getLatestPaymentForCourse(studentId, courseId) {
+  if (!studentId || !courseId) {
+    return null;
+  }
+
+  return (
+    state.data.payments.find(
+      (payment) => payment.studentId === studentId && payment.courseId === courseId
+    ) || null
+  );
+}
+
+function buildStudentFallbackEnrollment(student, courseId, index) {
+  return {
+    id: `preview-fallback-${student.id}-${index + 1}`,
+    studentId: student.id,
+    courseId,
+    accessStartDate: student.joinedOn || "",
+    accessEndDate: "",
+    unlimitedAccess: false,
+    videoAccessUntil: "",
+    lastPaymentDate: "",
+    paymentDueDate: "",
+    monthlyFee: "",
+    status: student.status || "Active",
+    paidMonths: [],
+  };
+}
+
+function getStudentSecurityLockCopy(student) {
+  return (
+    String(student?.highlight || "").trim() ||
+    "A security lock is active for this account. Paid videos stay blocked until the admin removes the lock."
+  );
+}
+
+function getStudentPreviewLessonAccessState(student, entry, lesson) {
+  if (!entry?.portalVisible) {
+    return {
+      canWatch: false,
+      status: "course-hidden",
+      reason: "This course is inactive or hidden, so it will not appear in the student's portal right now.",
+    };
+  }
+
+  if (isPublicOrientationLesson(lesson)) {
+    return {
+      canWatch: true,
+      status: "public-open",
+      reason: "Orientation content stays open for quick guidance.",
+    };
+  }
+
+  if (entry?.securityLocked) {
+    return {
+      canWatch: false,
+      status: "security-lock",
+      reason: getStudentSecurityLockCopy(student),
+    };
+  }
+
+  if (entry?.previewOnly) {
+    return {
+      canWatch: false,
+      status: "preview-only",
+      reason: "Preview mode lets the student review the full class list, but video playback stays locked.",
+    };
+  }
+
+  if (isEnrollmentBlocked(entry)) {
+    return {
+      canWatch: false,
+      status: "blocked",
+      reason: "Access is blocked by admin for this course.",
+    };
+  }
+
+  const releaseTimestamp = parseTimestamp(lesson?.releaseDate);
+  if (releaseTimestamp === null || hasUnlimitedCourseAccess(entry)) {
+    return {
+      canWatch: true,
+      status: "open",
+      reason: "",
+    };
+  }
+
+  const accessStartTimestamp = parseTimestamp(entry?.accessStartDate);
+  if (accessStartTimestamp !== null && releaseTimestamp < accessStartTimestamp) {
+    return {
+      canWatch: false,
+      status: "outside-window",
+      reason: `This lesson is before the approved access start date of ${formatDateValue(entry.accessStartDate, "the selected date")}.`,
+    };
+  }
+
+  const accessEndTimestamp = parseTimestamp(entry?.accessEndDate);
+  if (accessEndTimestamp !== null && releaseTimestamp > accessEndTimestamp) {
+    return {
+      canWatch: false,
+      status: "outside-window",
+      reason: `This lesson is after the approved access end date of ${formatDateValue(entry.accessEndDate, "the selected date")}.`,
+    };
+  }
+
+  if (releaseTimestamp > Date.now()) {
+    return {
+      canWatch: false,
+      status: "scheduled",
+      reason: `This lesson will unlock on ${formatDateValue(lesson.releaseDate, "the scheduled date")}.`,
+    };
+  }
+
+  return {
+    canWatch: true,
+    status: "open",
+    reason: "",
+  };
+}
+
+function getStudentPreviewLessonStateMeta(accessState) {
+  const status = String(accessState?.status || "").trim();
+  if (status === "public-open") {
+    return {
+      badge: renderStudentPreviewStateBadge("Public Open", "blue"),
+      className: "is-public",
+    };
+  }
+
+  if (status === "open") {
+    return {
+      badge: renderStudentPreviewStateBadge("Unlocked", "emerald"),
+      className: "is-open",
+    };
+  }
+
+  if (status === "scheduled") {
+    return {
+      badge: renderStudentPreviewStateBadge("Scheduled", "amber"),
+      className: "is-scheduled",
+    };
+  }
+
+  if (status === "preview-only") {
+    return {
+      badge: renderStudentPreviewStateBadge("Preview Lock", "indigo"),
+      className: "is-locked",
+    };
+  }
+
+  if (status === "course-hidden") {
+    return {
+      badge: renderStudentPreviewStateBadge("Hidden", "slate"),
+      className: "is-locked",
+    };
+  }
+
+  if (status === "security-lock") {
+    return {
+      badge: renderStudentPreviewStateBadge("Security Lock", "rose"),
+      className: "is-locked",
+    };
+  }
+
+  if (status === "blocked") {
+    return {
+      badge: renderStudentPreviewStateBadge("Blocked", "rose"),
+      className: "is-locked",
+    };
+  }
+
+  if (status === "outside-window") {
+    return {
+      badge: renderStudentPreviewStateBadge("Date Lock", "amber"),
+      className: "is-locked",
+    };
+  }
+
+  return {
+    badge: renderStudentPreviewStateBadge("Locked", "slate"),
+    className: "is-locked",
+  };
+}
+
+function getStudentPreviewCourseEntries(student) {
+  if (!student) {
+    return [];
+  }
+
+  const previewOnly = isStudentPreviewOnly(student);
+  const securityLocked = isStudentSecurityLocked(student);
+  const enrollmentMap = new Map(getEnrollmentRecordsForStudent(student.id).map((entry) => [entry.courseId, entry]));
+
+  return getStudentCourseIds(student)
+    .map((courseId, index) => {
+      const course = state.data.courseMap.get(courseId) || null;
+      if (!course) {
+        return null;
+      }
+
+      const enrollment = enrollmentMap.get(courseId) || buildStudentFallbackEnrollment(student, courseId, index);
+      const latestPayment = getLatestPaymentForCourse(student.id, courseId);
+      return {
+        ...enrollment,
+        course,
+        latestPayment,
+        pendingPayment: isPendingPaymentStatus(latestPayment?.status || ""),
+        paymentRejected: isRejectedPaymentStatus(latestPayment?.status || ""),
+        previewOnly,
+        securityLocked,
+        portalVisible: isCourseActive(course),
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => {
+      if (left.portalVisible !== right.portalVisible) {
+        return left.portalVisible ? -1 : 1;
+      }
+
+      const leftStart = parseTimestamp(left.accessStartDate) ?? Number.MAX_SAFE_INTEGER;
+      const rightStart = parseTimestamp(right.accessStartDate) ?? Number.MAX_SAFE_INTEGER;
+      if (leftStart !== rightStart) {
+        return leftStart - rightStart;
+      }
+
+      return (left.course?.title || "").localeCompare(right.course?.title || "");
+    });
+}
+
+function getStudentPreviewLessonStats(student, courseEntries) {
+  const lessonStates = courseEntries.flatMap((entry) =>
+    getCourseLessons(entry.course.id).map((lesson) => ({
+      lesson,
+      entry,
+      accessState: getStudentPreviewLessonAccessState(student, entry, lesson),
+    }))
+  );
+
+  const totalLessons = lessonStates.length;
+  const unlockedLessons = lessonStates.filter((item) => item.accessState.canWatch).length;
+  const lockedLessons = Math.max(totalLessons - unlockedLessons, 0);
+  const completedLessons = lessonStates.filter(
+    (item) => item.accessState.canWatch && student.completedLessonIds.includes(String(item.lesson?.id || "").trim())
+  ).length;
+
+  return {
+    totalLessons,
+    unlockedLessons,
+    lockedLessons,
+    completedLessons,
+    visibleCourseCount: courseEntries.filter((entry) => entry.portalVisible).length,
+    hiddenCourseCount: courseEntries.filter((entry) => !entry.portalVisible).length,
+  };
 }
 
 function formatSelectedStudentNames(students) {
@@ -1005,6 +1289,7 @@ function normalizeDashboard(payload = {}) {
       portalAccessMode: String(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.portalAccessMode, "")).trim(),
       highlight: String(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.highlight, "")).trim(),
       enrolledCourseIds: parseList(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.enrolledCourseIds, "")),
+      completedLessonIds: parseList(getFirstAvailableValue(student, STUDENT_FIELD_KEYS.completedLessonIds, "")),
       maxDeviceCount: normalizeStudentDeviceLimitValue(
         getFirstAvailableValue(student, STUDENT_FIELD_KEYS.maxDeviceCount, ""),
         2
@@ -1113,6 +1398,7 @@ function normalizeDashboard(payload = {}) {
       studentId: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.studentId, "")).trim(),
       deviceId: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.deviceId, "")).trim(),
       deviceName: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.deviceName, "Unknown Device")).trim() || "Unknown Device",
+      deviceFingerprint: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.deviceFingerprint, "")).trim(),
       publicIp: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.publicIp, "")).trim(),
       userAgent: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.userAgent, "")).trim(),
       platform: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.platform, "")).trim(),
@@ -1313,29 +1599,7 @@ function getStudentVisibleCourseIds(student) {
 }
 
 function getStudentHiddenCourseCount(student) {
-  return Math.max(0, getStudentCourseIds(student).length - getStudentVisibleCourseIds(student).length);
-}
-
-function buildStudentPreviewCourseEntries(student) {
-  const enrollmentMap = new Map(
-    getEnrollmentRecordsForStudent(student?.id || "").map((entry) => [entry.courseId, entry])
-  );
-
-  return getStudentVisibleCourseIds(student)
-    .map((courseId) => {
-      const course = state.data.courseMap.get(courseId) || null;
-      if (!course) {
-        return null;
-      }
-
-      return {
-        course,
-        enrollment: enrollmentMap.get(courseId) || null,
-        lessons: getCourseLessons(courseId),
-      };
-    })
-    .filter(Boolean)
-    .sort((left, right) => (left.course.title || "").localeCompare(right.course.title || ""));
+  return getStudentPreviewCourseEntries(student).filter((entry) => !entry.portalVisible).length;
 }
 
 function normalizeCourseFilterValue(value) {
@@ -2990,6 +3254,53 @@ function renderStudentPreviewModePill(label, tone = "default") {
   )}</span>`;
 }
 
+function renderStudentPreviewStateBadge(label, tone = "slate") {
+  const palette = {
+    blue: "bg-blue-50 text-blue-700 ring-1 ring-blue-100",
+    emerald: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100",
+    amber: "bg-amber-50 text-amber-700 ring-1 ring-amber-100",
+    indigo: "bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100",
+    rose: "bg-rose-50 text-rose-700 ring-1 ring-rose-100",
+    slate: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+  };
+
+  return `<span class="inline-flex rounded-full px-3 py-1 text-xs font-bold ${palette[tone] || palette.slate}">${escapeHtml(
+    label
+  )}</span>`;
+}
+
+function buildStudentPreviewCourseAlert(entry) {
+  if (!entry?.portalVisible) {
+    return "This course is still assigned to the student, but it is inactive or hidden. The student will not see it in the live portal until the course becomes active again.";
+  }
+
+  if (entry?.securityLocked) {
+    return "Security lock is active. Orientation can stay open, but every paid lesson remains blocked until the lock is removed.";
+  }
+
+  if (entry?.previewOnly) {
+    return "Preview mode is active for this student. They can review the class list, but every video stays locked.";
+  }
+
+  if (entry?.pendingPayment) {
+    return "A payment for this course is in review. The student still sees the course, but full access stays locked until confirmation.";
+  }
+
+  if (entry?.paymentRejected) {
+    return "The latest submitted payment for this course was rejected. Access remains locked until a valid payment is approved.";
+  }
+
+  if (isEnrollmentBlocked(entry)) {
+    return "This enrollment is blocked by admin. The student cannot watch lessons from this course right now.";
+  }
+
+  if (hasUnlimitedCourseAccess(entry)) {
+    return "Unlimited access is enabled for this course. Date-based access locks are currently disabled.";
+  }
+
+  return entry?.course?.description || "This course is currently attached to the student's account.";
+}
+
 function getStudentPreviewAccessSummary(student) {
   if (isStudentSecurityLocked(student)) {
     return {
@@ -3109,110 +3420,164 @@ function renderStudentPreviewModal() {
     return;
   }
 
-  const courseEntries = buildStudentPreviewCourseEntries(student);
+  const courseEntries = getStudentPreviewCourseEntries(student);
   const messages = getStudentPreviewMessages(student.id);
   const payments = getStudentPreviewPayments(student.id);
   const devices = getDevicesForStudent(student.id);
   const notices = getStudentPreviewNotices();
   const accessSummary = getStudentPreviewAccessSummary(student);
-  const hiddenCourseCount = getStudentHiddenCourseCount(student);
-  const totalLessons = courseEntries.reduce((total, entry) => total + entry.lessons.length, 0);
+  const lessonStats = getStudentPreviewLessonStats(student, courseEntries);
+  const hiddenCourseCount = lessonStats.hiddenCourseCount;
+  const totalLessons = lessonStats.totalLessons;
   const activeDeviceCount = getActiveDevicesForStudent(student.id).length;
 
   const courseMarkup = courseEntries.length
     ? courseEntries
         .map((entry) => {
           const course = entry.course || {};
-          const enrollment = entry.enrollment || {};
-          const lessonMarkup = entry.lessons.length
-            ? entry.lessons
-                .slice(0, 4)
+          const lessons = getCourseLessons(course.id);
+          const lessonMarkup = lessons.length
+            ? lessons
                 .map((lesson, index) => {
+                  const accessState = getStudentPreviewLessonAccessState(student, entry, lesson);
+                  const stateMeta = getStudentPreviewLessonStateMeta(accessState);
+                  const isCompleted =
+                    accessState.canWatch && student.completedLessonIds.includes(String(lesson.id || "").trim());
+
                   return `
-                    <li class="rounded-2xl border border-white bg-white px-4 py-3">
-                      <div class="flex items-start gap-3">
-                        <span class="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-[11px] font-bold text-blue-700">${
-                          index + 1
-                        }</span>
+                    <article class="student-preview-lesson-item ${stateMeta.className}">
+                      <div class="flex flex-wrap items-start justify-between gap-3">
                         <div class="min-w-0">
-                          <p class="text-sm font-bold text-slate-900">${escapeHtml(lesson.title || "Untitled lesson")}</p>
-                          <p class="mt-1 text-xs text-slate-500">${escapeHtml(
-                            [lesson.module || "", formatDateValue(lesson.releaseDate, "Release pending"), lesson.duration || ""]
+                          <div class="flex flex-wrap items-center gap-2">
+                            <span class="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-950 text-[11px] font-bold text-white">${
+                              index + 1
+                            }</span>
+                            <p class="text-sm font-bold text-slate-950">${escapeHtml(lesson.title || "Untitled lesson")}</p>
+                            ${isCompleted ? renderStudentPreviewStateBadge("Completed", "emerald") : ""}
+                          </div>
+                          <p class="mt-2 text-xs text-slate-500">${escapeHtml(
+                            [
+                              lesson.module || "Module",
+                              formatDateValue(lesson.releaseDate, "Release pending"),
+                              lesson.duration || "",
+                            ]
                               .filter(Boolean)
                               .join(" | ")
                           )}</p>
                         </div>
+                        ${stateMeta.badge}
                       </div>
-                    </li>
+                      ${
+                        lesson.note
+                          ? `<p class="mt-3 text-xs leading-5 text-slate-500">${escapeHtml(lesson.note)}</p>`
+                          : ""
+                      }
+                      ${
+                        accessState.reason
+                          ? `<p class="mt-3 text-xs leading-5 text-slate-600">${escapeHtml(accessState.reason)}</p>`
+                          : ""
+                      }
+                    </article>
                   `;
                 })
                 .join("")
-            : '<li class="rounded-2xl border border-dashed border-slate-200 bg-white px-4 py-4 text-sm text-slate-500">No lesson is attached to this course yet.</li>';
+            : '<div class="student-preview-alert text-sm">No lesson is attached to this course yet.</div>';
+          const unlockedLessons = lessons.filter((lesson) =>
+            getStudentPreviewLessonAccessState(student, entry, lesson).canWatch
+          ).length;
+          const courseBadges = [
+            renderPill(entry.status || "Active"),
+            renderStudentPreviewStateBadge(
+              entry.portalVisible ? "Portal Visible" : "Hidden From Portal",
+              entry.portalVisible ? "blue" : "slate"
+            ),
+            entry.previewOnly && entry.portalVisible ? renderStudentPreviewStateBadge("Videos Locked", "indigo") : "",
+            entry.securityLocked && entry.portalVisible ? renderStudentPreviewStateBadge("Security Lock", "rose") : "",
+            entry.pendingPayment ? renderStudentPreviewStateBadge("Payment Review", "amber") : "",
+            entry.paymentRejected ? renderStudentPreviewStateBadge("Payment Rejected", "rose") : "",
+            hasUnlimitedCourseAccess(entry) ? renderStudentPreviewStateBadge("Unlimited", "emerald") : "",
+            String(entry.id || "").startsWith("preview-fallback-")
+              ? renderStudentPreviewStateBadge("Fallback Access", "slate")
+              : "",
+          ]
+            .filter(Boolean)
+            .join("");
 
           return `
-            <article class="rounded-[1.75rem] border border-slate-100 bg-slate-50 p-5">
+            <article class="student-preview-course-card ${entry.portalVisible ? "" : "is-portal-hidden"}">
               <div class="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
                 <div class="min-w-0">
-                  <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">${escapeHtml(
+                  <p class="student-preview-field-label student-preview-field-label-dark">${escapeHtml(
                     course.category || "Course"
                   )}</p>
                   <h4 class="mt-2 text-xl font-extrabold text-slate-950">${escapeHtml(course.title || course.id || "Untitled course")}</h4>
-                  <p class="mt-2 text-sm text-slate-500">${escapeHtml(
-                    [course.faculty || "", course.schedule || ""].filter(Boolean).join(" | ") || "Schedule pending"
+                  <p class="mt-2 text-sm student-preview-meta-dark">${escapeHtml(
+                    [course.shortTitle || "", course.faculty || "", course.schedule || ""].filter(Boolean).join(" | ") ||
+                      "Schedule pending"
                   )}</p>
-                  <div class="mt-4 flex flex-wrap gap-2">
-                    ${renderPill(enrollment.status || "Active")}
-                    <span class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700">${
-                      entry.lessons.length
-                    } lesson${entry.lessons.length === 1 ? "" : "s"}</span>
-                    <span class="inline-flex rounded-full bg-slate-200 px-3 py-1 text-xs font-bold text-slate-700">${escapeHtml(
-                      formatCoursePrice(course.price, "Fee not set")
-                    )}</span>
-                  </div>
+                  <div class="mt-4 flex flex-wrap gap-2">${courseBadges}</div>
+                  <p class="mt-4 text-sm leading-6 text-slate-600">${escapeHtml(buildStudentPreviewCourseAlert(entry))}</p>
                 </div>
-                <div class="grid gap-3 sm:grid-cols-2 xl:w-[320px]">
-                  <div class="rounded-2xl border border-white bg-white p-4">
-                    <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Access Start</p>
-                    <p class="mt-2 text-sm font-semibold text-slate-800">${escapeHtml(
-                      formatDateValue(enrollment.accessStartDate, "Not set")
+                <div class="student-preview-mini-grid xl:w-[360px]">
+                  <div class="student-preview-alert">
+                    <p class="student-preview-field-label student-preview-field-label-dark">Lesson Audit</p>
+                    <p class="mt-2 text-sm font-semibold text-slate-900">${lessons.length} total | ${unlockedLessons} open | ${Math.max(
+                      lessons.length - unlockedLessons,
+                      0
+                    )} locked</p>
+                  </div>
+                  <div class="student-preview-alert">
+                    <p class="student-preview-field-label student-preview-field-label-dark">Access Window</p>
+                    <p class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(
+                      hasUnlimitedCourseAccess(entry)
+                        ? "Unlimited"
+                        : [formatDateValue(entry.accessStartDate, "Not set"), formatDateValue(entry.accessEndDate, "Open ended")].join(" -> ")
                     )}</p>
                   </div>
-                  <div class="rounded-2xl border border-white bg-white p-4">
-                    <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Access End</p>
-                    <p class="mt-2 text-sm font-semibold text-slate-800">${escapeHtml(
-                      enrollment.unlimitedAccess ? "Unlimited" : formatDateValue(enrollment.accessEndDate, "Not set")
-                    )}</p>
-                  </div>
-                  <div class="rounded-2xl border border-white bg-white p-4">
-                    <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Next Live</p>
-                    <p class="mt-2 text-sm font-semibold text-slate-800">${escapeHtml(
+                  <div class="student-preview-alert">
+                    <p class="student-preview-field-label student-preview-field-label-dark">Next Live</p>
+                    <p class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(
                       formatDateTimeOrValue(course.nextLive, "Schedule pending")
                     )}</p>
                   </div>
-                  <div class="rounded-2xl border border-white bg-white p-4">
-                    <p class="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Payment Due</p>
-                    <p class="mt-2 text-sm font-semibold text-slate-800">${escapeHtml(
-                      enrollment.unlimitedAccess ? "Not required" : formatDateValue(enrollment.paymentDueDate, "Not set")
+                  <div class="student-preview-alert">
+                    <p class="student-preview-field-label student-preview-field-label-dark">Payment / Fee</p>
+                    <p class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(
+                      hasUnlimitedCourseAccess(entry)
+                        ? "Not required"
+                        : [formatCoursePrice(course.price, "Fee not set"), formatDateValue(entry.paymentDueDate, "No due date")].join(" | ")
+                    )}</p>
+                  </div>
+                  <div class="student-preview-alert">
+                    <p class="student-preview-field-label student-preview-field-label-dark">Enrollment Status</p>
+                    <p class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(entry.status || "Active")}</p>
+                  </div>
+                  <div class="student-preview-alert">
+                    <p class="student-preview-field-label student-preview-field-label-dark">Last Payment</p>
+                    <p class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(
+                      formatDateValue(entry.lastPaymentDate, entry.pendingPayment ? "Payment in review" : "Not recorded")
                     )}</p>
                   </div>
                 </div>
               </div>
               <div class="mt-5">
-                <p class="text-[11px] font-bold uppercase tracking-[0.24em] text-slate-400">Visible Lessons</p>
-                <ul class="mt-3 grid gap-3">${lessonMarkup}</ul>
+                <div class="flex flex-wrap items-center justify-between gap-3">
+                  <p class="student-preview-field-label student-preview-field-label-dark">Complete Lesson List</p>
+                  <p class="text-xs font-semibold text-slate-500">Every lesson below shows the exact access state the student would face.</p>
+                </div>
+                <div class="student-preview-lesson-list mt-3">${lessonMarkup}</div>
               </div>
             </article>
           `;
         })
         .join("")
-    : '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-white px-5 py-8 text-sm text-slate-500">No active course is visible for this student right now.</div>';
+    : '<div class="student-preview-alert text-sm">No assigned course or lesson is linked to this student right now.</div>';
 
   const noticeMarkup = notices.length
     ? notices
-        .slice(0, 5)
         .map((notice) => {
           return `
-            <article class="rounded-[1.5rem] border border-slate-100 bg-white p-4">
+            <article class="student-preview-alert">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <p class="text-sm font-bold text-slate-900">${escapeHtml(notice.title || "Notice")}</p>
                 ${renderPill(notice.status || "Published")}
@@ -3225,16 +3590,15 @@ function renderStudentPreviewModal() {
           `;
         })
         .join("")
-    : '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-white px-5 py-6 text-sm text-slate-500">No notice is available right now.</div>';
+    : '<div class="student-preview-alert text-sm">No notice is available right now.</div>';
 
   const messageMarkup = messages.length
     ? messages
-        .slice(0, 6)
         .map((message) => {
           const recipientStatus = String(message.recipientEntry?.status || "Pending").trim() || "Pending";
           const replyText = String(message.recipientEntry?.reply || "").trim();
           return `
-            <article class="rounded-[1.5rem] border border-slate-100 bg-white p-4">
+            <article class="student-preview-alert">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <p class="text-sm font-bold text-slate-900">${escapeHtml(message.title || "Admin Message")}</p>
                 ${renderPill(recipientStatus)}
@@ -3254,14 +3618,13 @@ function renderStudentPreviewModal() {
           `;
         })
         .join("")
-    : '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-white px-5 py-6 text-sm text-slate-500">No popup message is waiting for this student.</div>';
+    : '<div class="student-preview-alert text-sm">No popup message is waiting for this student.</div>';
 
   const paymentMarkup = payments.length
     ? payments
-        .slice(0, 6)
         .map((payment) => {
           return `
-            <article class="rounded-[1.5rem] border border-slate-100 bg-white p-4">
+            <article class="student-preview-alert">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <p class="text-sm font-bold text-slate-900">${escapeHtml(payment.courseTitle || payment.courseId || "Course payment")}</p>
                 ${renderPill(payment.status || "Pending")}
@@ -3279,18 +3642,17 @@ function renderStudentPreviewModal() {
           `;
         })
         .join("")
-    : '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-white px-5 py-6 text-sm text-slate-500">No payment history is visible for this student.</div>';
+    : '<div class="student-preview-alert text-sm">No payment history is visible for this student.</div>';
 
   const deviceMarkup = devices.length
     ? devices
-        .slice(0, 6)
         .map((device) => {
           const deviceMeta = [buildDeviceNetworkLabel(device), buildDeviceShellMeta(device), device.screenSize || ""]
             .filter(Boolean)
             .join(" | ");
           const deviceReferrerLabel = buildDeviceReferrerLabel(device);
           return `
-            <article class="rounded-[1.5rem] border border-slate-100 bg-white p-4">
+            <article class="student-preview-alert">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <p class="text-sm font-bold text-slate-900">${escapeHtml(device.deviceName || "Unknown device")}</p>
                 ${renderPill(device.status || "Active")}
@@ -3313,29 +3675,53 @@ function renderStudentPreviewModal() {
           `;
         })
         .join("")
-    : '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-white px-5 py-6 text-sm text-slate-500">No approved device record is saved for this student.</div>';
+    : '<div class="student-preview-alert text-sm">No approved device record is saved for this student.</div>';
+
+  const accountMarkup = [
+    ["Student ID", student.id || "-"],
+    ["Phone", student.phone || "Not set"],
+    ["Email", student.email || "Not set"],
+    ["Batch", student.batch || "Not set"],
+    ["Session", student.session || "Not set"],
+    ["Joined On", formatDateValue(student.joinedOn, "Not recorded")],
+    ["Login Approval", student.loginApproval || "Pending"],
+    ["Portal Mode", student.portalAccessMode || "Full Access"],
+    ["Student Status", student.status || "Active"],
+    ["Device Usage", buildStudentDeviceUsageLabel(student)],
+    ["Completed Lessons", String(student.completedLessonIds.length || 0)],
+    ["Assigned Courses", String(courseEntries.length)],
+  ]
+    .map(
+      ([label, value]) => `
+        <div class="student-preview-alert">
+          <p class="student-preview-field-label student-preview-field-label-dark">${escapeHtml(label)}</p>
+          <p class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(value)}</p>
+        </div>
+      `
+    )
+    .join("");
 
   if (dom.studentPreviewTitle) {
-    dom.studentPreviewTitle.textContent = `${student.name || student.id} Live Preview`;
+    dom.studentPreviewTitle.textContent = `${student.name || student.id} Full Access Audit`;
   }
   if (dom.studentPreviewMeta) {
     dom.studentPreviewMeta.textContent = `Synced ${formatDateTime(
       state.data.generatedAt,
       "just now"
-    )} from ${state.data.spreadsheetName || "the live sheet"}.`;
+    )} from ${state.data.spreadsheetName || "the live sheet"}. Full admin inspection of assigned courses, lessons, payments, and devices.`;
   }
   if (dom.studentPreviewOpenEditorBtn) {
     dom.studentPreviewOpenEditorBtn.dataset.studentId = student.id;
   }
 
   dom.studentPreviewBody.innerHTML = `
-    <div class="grid gap-6">
-      <section class="overflow-hidden rounded-[2rem] bg-gradient-to-br from-blue-950 via-blue-900 to-slate-900 p-6 text-white">
+    <div class="student-preview-stack">
+      <section class="student-preview-hero">
         <div class="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
           <div class="min-w-0">
-            <p class="text-xs font-bold uppercase tracking-[0.28em] text-blue-200">Student Dashboard Mirror</p>
+            <p class="student-preview-field-label student-preview-field-label-light">Student Access Audit</p>
             <h4 class="mt-3 text-3xl font-extrabold">${escapeHtml(student.name || "Unnamed Student")}</h4>
-            <p class="mt-2 text-sm text-blue-100">${escapeHtml(
+            <p class="mt-2 text-sm student-preview-meta-light">${escapeHtml(
               [student.id || "-", student.batch || "-", student.session || "-"].filter(Boolean).join(" | ")
             )}</p>
             <div class="mt-4 flex flex-wrap gap-2">
@@ -3344,72 +3730,93 @@ function renderStudentPreviewModal() {
               ${renderPill(student.status || "Active")}
               ${renderStudentPreviewModePill(accessSummary.label, accessSummary.tone)}
             </div>
-            <p class="mt-4 max-w-3xl text-sm leading-6 text-blue-100">${escapeHtml(accessSummary.note)}</p>
+            <p class="mt-4 max-w-3xl text-sm leading-6 student-preview-meta-light">${escapeHtml(accessSummary.note)}</p>
+            ${
+              student.highlight
+                ? `<div class="mt-4 rounded-2xl border border-white/15 bg-white/10 px-4 py-3 text-sm leading-6 text-white">${escapeHtml(
+                    student.highlight
+                  )}</div>`
+                : ""
+            }
             ${
               hiddenCourseCount
-                ? `<p class="mt-3 text-xs font-semibold text-blue-200">${hiddenCourseCount} assigned course${
+                ? `<p class="mt-3 text-xs font-semibold student-preview-meta-light">${hiddenCourseCount} assigned course${
                     hiddenCourseCount === 1 ? "" : "s"
-                  } are inactive, so they would stay hidden in the student portal.</p>`
+                  } are hidden or inactive, so the student will not see them in the portal until reactivated.</p>`
                 : ""
             }
           </div>
-          <div class="grid gap-3 sm:grid-cols-2 xl:w-[420px]">
-            <div class="rounded-[1.5rem] bg-white/10 p-4">
-              <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-blue-200">Visible Courses</p>
+          <div class="student-preview-kpi-grid xl:w-[480px]">
+            <div class="student-preview-kpi">
+              <p class="student-preview-field-label student-preview-field-label-light">Assigned Courses</p>
               <p class="mt-2 text-3xl font-extrabold">${courseEntries.length}</p>
             </div>
-            <div class="rounded-[1.5rem] bg-white/10 p-4">
-              <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-blue-200">Lessons</p>
+            <div class="student-preview-kpi">
+              <p class="student-preview-field-label student-preview-field-label-light">Portal Visible</p>
+              <p class="mt-2 text-3xl font-extrabold">${lessonStats.visibleCourseCount}</p>
+            </div>
+            <div class="student-preview-kpi">
+              <p class="student-preview-field-label student-preview-field-label-light">All Lessons</p>
               <p class="mt-2 text-3xl font-extrabold">${totalLessons}</p>
             </div>
-            <div class="rounded-[1.5rem] bg-white/10 p-4">
-              <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-blue-200">Popup Messages</p>
-              <p class="mt-2 text-3xl font-extrabold">${messages.length}</p>
+            <div class="student-preview-kpi">
+              <p class="student-preview-field-label student-preview-field-label-light">Locked / Restricted</p>
+              <p class="mt-2 text-3xl font-extrabold">${lessonStats.lockedLessons}</p>
             </div>
-            <div class="rounded-[1.5rem] bg-white/10 p-4">
-              <p class="text-[11px] font-bold uppercase tracking-[0.22em] text-blue-200">Active Devices</p>
+            <div class="student-preview-kpi">
+              <p class="student-preview-field-label student-preview-field-label-light">Completed Open</p>
+              <p class="mt-2 text-3xl font-extrabold">${lessonStats.completedLessons}</p>
+            </div>
+            <div class="student-preview-kpi">
+              <p class="student-preview-field-label student-preview-field-label-light">Active Devices</p>
               <p class="mt-2 text-3xl font-extrabold">${activeDeviceCount}</p>
-              <p class="mt-1 text-xs text-blue-200">${escapeHtml(buildStudentDeviceUsageLabel(student))}</p>
+              <p class="mt-1 text-xs student-preview-meta-light">${escapeHtml(buildStudentDeviceUsageLabel(student))}</p>
             </div>
           </div>
         </div>
       </section>
 
-      <div class="grid gap-6 xl:grid-cols-[minmax(0,1.15fr),minmax(320px,0.85fr)]">
+      <div class="grid gap-6 xl:grid-cols-[minmax(0,1.2fr),minmax(360px,0.8fr)]">
         <div class="space-y-6">
-          <section class="rounded-[1.75rem] border border-slate-100 bg-white p-5">
+          <section class="student-preview-surface">
             <div class="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Course Map</p>
-                <h5 class="mt-2 text-2xl font-extrabold text-slate-950">Visible Courses And Lessons</h5>
+                <p class="student-preview-field-label student-preview-field-label-dark">Course Audit</p>
+                <h5 class="mt-2 text-2xl font-extrabold text-slate-950">Complete Course And Lesson Access</h5>
               </div>
-              <p class="text-sm text-slate-500">This mirrors the course area the student can currently open.</p>
+              <p class="text-sm text-slate-500">Every assigned course and every lesson is shown below, including hidden and locked states.</p>
             </div>
             <div class="mt-5 grid gap-4">${courseMarkup}</div>
           </section>
 
-          <section class="rounded-[1.75rem] border border-slate-100 bg-white p-5">
-            <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Live Notices</p>
+          <section class="student-preview-surface">
+            <p class="student-preview-field-label student-preview-field-label-dark">Live Notices</p>
             <h5 class="mt-2 text-2xl font-extrabold text-slate-950">Shared Portal Notices</h5>
             <div class="mt-5 grid gap-4">${noticeMarkup}</div>
           </section>
         </div>
 
         <div class="space-y-6">
-          <section class="rounded-[1.75rem] border border-slate-100 bg-white p-5">
-            <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Inbox</p>
+          <section class="student-preview-surface">
+            <p class="student-preview-field-label student-preview-field-label-dark">Account Snapshot</p>
+            <h5 class="mt-2 text-2xl font-extrabold text-slate-950">Student Profile Diagnostics</h5>
+            <div class="student-preview-account-grid mt-5">${accountMarkup}</div>
+          </section>
+
+          <section class="student-preview-surface">
+            <p class="student-preview-field-label student-preview-field-label-dark">Inbox</p>
             <h5 class="mt-2 text-2xl font-extrabold text-slate-950">Student Popup Messages</h5>
             <div class="mt-5 grid gap-4">${messageMarkup}</div>
           </section>
 
-          <section class="rounded-[1.75rem] border border-slate-100 bg-white p-5">
-            <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Payments</p>
+          <section class="student-preview-surface">
+            <p class="student-preview-field-label student-preview-field-label-dark">Payments</p>
             <h5 class="mt-2 text-2xl font-extrabold text-slate-950">Payment Timeline</h5>
             <div class="mt-5 grid gap-4">${paymentMarkup}</div>
           </section>
 
-          <section class="rounded-[1.75rem] border border-slate-100 bg-white p-5">
-            <p class="text-xs font-bold uppercase tracking-[0.28em] text-slate-400">Devices</p>
+          <section class="student-preview-surface">
+            <p class="student-preview-field-label student-preview-field-label-dark">Devices</p>
             <h5 class="mt-2 text-2xl font-extrabold text-slate-950">Approved Devices</h5>
             <div class="mt-5 grid gap-4">${deviceMarkup}</div>
           </section>
