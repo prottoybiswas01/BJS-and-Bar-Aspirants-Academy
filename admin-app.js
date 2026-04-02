@@ -255,6 +255,7 @@ const state = {
   editingStudentId: "",
   previewStudentId: "",
   editingCourseId: "",
+  lastBackgroundRefreshAt: 0,
   selectedStudentIds: new Set(),
   visibleStudentIds: [],
   bulkCourseRuleDrafts: {},
@@ -447,6 +448,31 @@ function restoreAdminScrollPosition() {
   const restore = () => window.scrollTo({ top: targetScrollY, left: 0, behavior: "auto" });
   window.requestAnimationFrame(restore);
   window.setTimeout(restore, 60);
+}
+
+function isActiveElementInside(container) {
+  const activeElement = typeof document !== "undefined" ? document.activeElement : null;
+  return !!container && !!activeElement && container.contains(activeElement);
+}
+
+function shouldPauseAdminBackgroundRefresh() {
+  if (state.previewStudentId || state.editingStudentId || state.editingCourseId || state.selectedStudentIds.size) {
+    return true;
+  }
+
+  if (String(dom.messageTitleInput?.value || "").trim() || String(dom.messageBodyInput?.value || "").trim()) {
+    return true;
+  }
+
+  return [
+    dom.studentEditorForm,
+    dom.bulkCourseSelector,
+    dom.bulkCourseRuleCards,
+    dom.courseForm,
+    dom.paymentQueue,
+    dom.deviceRegistryPanel,
+    dom.messageLogPanel,
+  ].some((container) => isActiveElementInside(container));
 }
 
 function normalizeLocalizedDigits(value) {
@@ -1154,10 +1180,93 @@ function isTrustedAdminDeviceRecord(device) {
   return String(device?.note || "").trim().startsWith(TRUSTED_ADMIN_DEVICE_NOTE_PREFIX);
 }
 
+function extractDeviceHardwareModel(userAgent = "", platform = "") {
+  const source = `${userAgent} ${platform}`;
+  const androidMatch =
+    String(userAgent || "").match(/Android\s[\d.]+;\s*([^;()]+?)\s+Build\//i) ||
+    String(userAgent || "").match(/Android\s[\d.]+;\s*([^;()]+?)\)/i);
+  if (androidMatch?.[1]) {
+    return normalizeStatus(androidMatch[1]);
+  }
+  if (/iPad/i.test(source)) {
+    return "ipad";
+  }
+  if (/iPhone/i.test(source)) {
+    return "iphone";
+  }
+  if (/Windows/i.test(source)) {
+    return "windows";
+  }
+  if (/Mac/i.test(source)) {
+    return "mac";
+  }
+  if (/Linux/i.test(source)) {
+    return "linux";
+  }
+  return normalizeStatus(platform || "");
+}
+
+function buildComparableDeviceSlotKey(device) {
+  const rawScreenSize = String(device?.screenSize || "").trim();
+  const screenMatch = rawScreenSize.match(/^(\d+)\s*x\s*(\d+)$/i);
+  const normalizedScreenSize = screenMatch
+    ? `${Math.min(Number(screenMatch[1]), Number(screenMatch[2]))}x${Math.max(Number(screenMatch[1]), Number(screenMatch[2]))}`
+    : rawScreenSize;
+
+  return [
+    extractDeviceHardwareModel(device?.userAgent || "", device?.platform || ""),
+    normalizeStatus(device?.platform || ""),
+    normalizeStatus(normalizedScreenSize),
+    normalizeStatus(device?.timezone || ""),
+    normalizeStatus(device?.browserLanguage || ""),
+  ]
+    .filter(Boolean)
+    .join("|");
+}
+
+function getDeviceSlotIdentityCandidates(device) {
+  const normalizedFingerprint = normalizeStatus(device?.deviceFingerprint || "");
+  const comparableSlot = buildComparableDeviceSlotKey(device);
+  const normalizedDeviceId = normalizeStatus(device?.deviceId || "");
+  const candidates = [];
+
+  if (normalizedFingerprint.startsWith("slot:")) {
+    candidates.push(normalizedFingerprint);
+  }
+  if (comparableSlot) {
+    candidates.push(`cmp:${comparableSlot}`);
+  }
+  if (normalizedFingerprint && !normalizedFingerprint.startsWith("slot:")) {
+    candidates.push(`fp:${normalizedFingerprint}`);
+  }
+  if (normalizedDeviceId) {
+    candidates.push(`id:${normalizedDeviceId}`);
+  }
+
+  return candidates.filter((candidate, index, list) => candidate && list.indexOf(candidate) === index);
+}
+
+function doDevicesShareSameSlot(device, otherDevice) {
+  const leftCandidates = getDeviceSlotIdentityCandidates(device);
+  const rightCandidates = getDeviceSlotIdentityCandidates(otherDevice);
+  if (!leftCandidates.length || !rightCandidates.length) {
+    return false;
+  }
+
+  return leftCandidates.some((candidate) => rightCandidates.includes(candidate));
+}
+
 function getActiveDevicesForStudent(studentId) {
-  return getDevicesForStudent(studentId).filter((device) => {
-    return normalizeStatus(device.status) === "active" && !isTrustedAdminDeviceRecord(device);
-  });
+  return getDevicesForStudent(studentId).reduce((result, device) => {
+    if (normalizeStatus(device.status) !== "active" || isTrustedAdminDeviceRecord(device)) {
+      return result;
+    }
+
+    if (!result.some((existingDevice) => doDevicesShareSameSlot(existingDevice, device))) {
+      result.push(device);
+    }
+    return result;
+  }, []);
 }
 
 function getStudentDeviceLimit(student) {
@@ -1716,6 +1825,7 @@ function clearAdminSession() {
   state.editingStudentId = "";
   state.previewStudentId = "";
   state.editingCourseId = "";
+  state.lastBackgroundRefreshAt = 0;
   state.selectedStudentIds = new Set();
   state.visibleStudentIds = [];
   resetBulkCourseRuleDrafts();
@@ -1853,15 +1963,22 @@ async function loadDashboard(feedbackMessage = "", options = {}) {
 }
 
 async function refreshDashboardInBackground() {
-  if (!state.token || typeof document === "undefined" || document.hidden) {
+  if (!state.token || typeof document === "undefined" || document.hidden || shouldPauseAdminBackgroundRefresh()) {
     return;
   }
+
+  const now = Date.now();
+  if (state.lastBackgroundRefreshAt && now - state.lastBackgroundRefreshAt < 45000) {
+    return;
+  }
+  state.lastBackgroundRefreshAt = now;
 
   try {
     await loadDashboard("", {
       preserveSessionOnUnauthorized: true,
     });
   } catch (error) {
+    state.lastBackgroundRefreshAt = 0;
     console.warn("Unable to refresh the admin dashboard in the background.", error);
   }
 }

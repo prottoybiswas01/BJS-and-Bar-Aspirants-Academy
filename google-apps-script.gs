@@ -1286,9 +1286,9 @@ function handleStudentLogoutDevice_(request) {
   const spreadsheet = getSpreadsheet_();
   const studentId = String(request.studentId || "").trim();
   const sessionToken = String(request.sessionToken || request.token || "").trim();
-  const deviceId = String(request.deviceId || "").trim();
+  const deviceInfo = buildStudentDevicePayloadFromRequest_(request);
 
-  if (!studentId || !sessionToken || !deviceId) {
+  if (!studentId || !sessionToken || !hasComparableDeviceIdentity_(deviceInfo)) {
     return jsonOutput_({
       ok: true,
       message: "Student device session cleared locally.",
@@ -1296,13 +1296,7 @@ function handleStudentLogoutDevice_(request) {
   }
 
   const devicesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.devices);
-  const deviceIndex = devicesData.records.findIndex(function (device) {
-    return (
-      getDeviceStudentId_(device) === studentId &&
-      getDeviceIdValue_(device) === deviceId &&
-      getDeviceSessionToken_(device) === sessionToken
-    );
-  });
+  const deviceIndex = findStudentDeviceSessionIndex_(devicesData.records, studentId, sessionToken, deviceInfo);
 
   if (deviceIndex === -1) {
     return jsonOutput_({
@@ -1823,6 +1817,136 @@ function getDeviceIdValue_(device) {
   return String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.deviceId, "")).trim();
 }
 
+function getDeviceFingerprintValue_(device) {
+  return String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.deviceFingerprint, "")).trim();
+}
+
+function getDeviceUserAgentValue_(device) {
+  return String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.userAgent, "")).trim();
+}
+
+function getDevicePlatformValue_(device) {
+  return String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.platform, "")).trim();
+}
+
+function getDeviceBrowserLanguageValue_(device) {
+  return String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.browserLanguage, "")).trim();
+}
+
+function getDeviceTimezoneValue_(device) {
+  return String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.timezone, "")).trim();
+}
+
+function getDeviceScreenSizeValue_(device) {
+  const rawValue = String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.screenSize, "")).trim();
+  const match = rawValue.match(/^(\d+)\s*x\s*(\d+)$/i);
+  if (!match) {
+    return rawValue;
+  }
+
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  if (!Number.isFinite(width) || !Number.isFinite(height)) {
+    return rawValue;
+  }
+
+  return Math.min(width, height) + "x" + Math.max(width, height);
+}
+
+function extractDeviceHardwareModelToken_(userAgent, platform) {
+  const uaText = String(userAgent || "").trim();
+  const platformText = String(platform || "").trim();
+  const combinedText = uaText + " " + platformText;
+  const androidMatch =
+    uaText.match(/Android\s[\d.]+;\s*([^;()]+?)\s+Build\//i) ||
+    uaText.match(/Android\s[\d.]+;\s*([^;()]+?)\)/i);
+  if (androidMatch && androidMatch[1]) {
+    return normalizeValue_(androidMatch[1]);
+  }
+  if (/iPad/i.test(combinedText)) {
+    return "ipad";
+  }
+  if (/iPhone/i.test(combinedText)) {
+    return "iphone";
+  }
+  if (/Windows/i.test(combinedText)) {
+    return "windows";
+  }
+  if (/Mac/i.test(combinedText)) {
+    return "mac";
+  }
+  if (/Linux/i.test(combinedText)) {
+    return "linux";
+  }
+
+  return normalizeValue_(platformText);
+}
+
+function buildComparableDeviceSlotKey_(device) {
+  const parts = [
+    extractDeviceHardwareModelToken_(getDeviceUserAgentValue_(device), getDevicePlatformValue_(device)),
+    normalizeValue_(getDevicePlatformValue_(device)),
+    normalizeValue_(getDeviceScreenSizeValue_(device)),
+    normalizeValue_(getDeviceTimezoneValue_(device)),
+    normalizeValue_(getDeviceBrowserLanguageValue_(device)),
+  ].filter(Boolean);
+
+  return parts.join("|");
+}
+
+function getDeviceSlotIdentityCandidates_(device) {
+  const candidates = [];
+  const normalizedDeviceId = normalizeValue_(getDeviceIdValue_(device));
+  const normalizedFingerprint = normalizeValue_(getDeviceFingerprintValue_(device));
+  const comparableSlotKey = buildComparableDeviceSlotKey_(device);
+
+  if (normalizedFingerprint.indexOf("slot:") === 0) {
+    candidates.push(normalizedFingerprint);
+  }
+  if (comparableSlotKey) {
+    candidates.push("cmp:" + comparableSlotKey);
+  }
+  if (normalizedFingerprint && normalizedFingerprint.indexOf("slot:") !== 0) {
+    candidates.push("fp:" + normalizedFingerprint);
+  }
+  if (normalizedDeviceId) {
+    candidates.push("id:" + normalizedDeviceId);
+  }
+
+  return candidates.filter(function (candidate, index, list) {
+    return candidate && list.indexOf(candidate) === index;
+  });
+}
+
+function hasComparableDeviceIdentity_(device) {
+  return getDeviceSlotIdentityCandidates_(device).length > 0;
+}
+
+function doDevicesShareSameSlot_(left, right) {
+  const leftCandidates = getDeviceSlotIdentityCandidates_(left);
+  const rightCandidates = getDeviceSlotIdentityCandidates_(right);
+  if (!leftCandidates.length || !rightCandidates.length) {
+    return false;
+  }
+
+  return leftCandidates.some(function (candidate) {
+    return rightCandidates.indexOf(candidate) !== -1;
+  });
+}
+
+function dedupeDeviceRecordsBySlot_(devices) {
+  return (devices || []).reduce(function (result, device) {
+    if (
+      !result.some(function (existingDevice) {
+        return doDevicesShareSameSlot_(existingDevice, device);
+      })
+    ) {
+      result.push(device);
+    }
+    return result;
+  }, []);
+}
+
 function getDeviceStatus_(device) {
   return String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.status, "Active")).trim() || "Active";
 }
@@ -1902,7 +2026,8 @@ function getStudentDeviceRecords_(spreadsheet, studentId) {
 
 function getStudentActiveDeviceRecords_(devices, studentId, options) {
   const includeTrustedAdminDevices = !!(options && options.includeTrustedAdminDevices);
-  return (devices || [])
+  return dedupeDeviceRecordsBySlot_(
+    (devices || [])
     .filter(function (device) {
       return (
         getDeviceStudentId_(device) === studentId &&
@@ -1913,13 +2038,40 @@ function getStudentActiveDeviceRecords_(devices, studentId, options) {
     })
     .sort(function (left, right) {
       return new Date(right.lastSeenOn || right.lastLoginOn || 0) - new Date(left.lastSeenOn || left.lastLoginOn || 0);
-    });
+    })
+  );
 }
 
 function findLatestStudentDeviceIndex_(devices, studentId, deviceId) {
   for (let index = (devices || []).length - 1; index >= 0; index -= 1) {
     const device = devices[index] || {};
     if (getDeviceStudentId_(device) === studentId && getDeviceIdValue_(device) === deviceId) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function findLatestStudentDeviceSlotIndex_(devices, studentId, deviceInfo) {
+  for (let index = (devices || []).length - 1; index >= 0; index -= 1) {
+    const device = devices[index] || {};
+    if (getDeviceStudentId_(device) === studentId && doDevicesShareSameSlot_(device, deviceInfo)) {
+      return index;
+    }
+  }
+
+  return -1;
+}
+
+function findStudentDeviceSessionIndex_(devices, studentId, sessionToken, deviceInfo) {
+  for (let index = (devices || []).length - 1; index >= 0; index -= 1) {
+    const device = devices[index] || {};
+    if (
+      getDeviceStudentId_(device) === studentId &&
+      getDeviceSessionToken_(device) === sessionToken &&
+      doDevicesShareSameSlot_(device, deviceInfo)
+    ) {
       return index;
     }
   }
@@ -2035,7 +2187,7 @@ function registerStudentLoginDevice_(spreadsheet, student, request) {
     };
   }
 
-  if (!deviceInfo.deviceId) {
+  if (!hasComparableDeviceIdentity_(deviceInfo)) {
     return {
       ok: false,
       message: "Device verification is required for login. Please refresh the page and try again.",
@@ -2049,7 +2201,7 @@ function registerStudentLoginDevice_(spreadsheet, student, request) {
     return getDeviceStudentId_(device) === studentId;
   });
   const activeDevices = getStudentActiveDeviceRecords_(studentDevices, studentId);
-  const existingDeviceIndex = findLatestStudentDeviceIndex_(devicesData.records, studentId, deviceInfo.deviceId);
+  const existingDeviceIndex = findLatestStudentDeviceSlotIndex_(devicesData.records, studentId, deviceInfo);
   const existingDeviceRecord = existingDeviceIndex === -1 ? null : devicesData.records[existingDeviceIndex] || null;
   const existingDeviceAlreadyActive =
     !!existingDeviceRecord &&
@@ -2096,7 +2248,10 @@ function registerStudentLoginDevice_(spreadsheet, student, request) {
     }
   }
 
-  const sessionToken = Utilities.getUuid();
+  const sessionToken =
+    existingDeviceAlreadyActive && getDeviceSessionToken_(existingDeviceRecord)
+      ? getDeviceSessionToken_(existingDeviceRecord)
+      : Utilities.getUuid();
   let nextRecord = null;
   if (existingDeviceIndex !== -1) {
     nextRecord = buildStudentDeviceRecord_(
@@ -2148,18 +2303,12 @@ function validateStudentDeviceSession_(spreadsheet, request) {
   const sessionToken = String(request.sessionToken || request.token || "").trim();
   const deviceInfo = buildStudentDevicePayloadFromRequest_(request);
 
-  if (!studentId || !sessionToken || !deviceInfo.deviceId) {
+  if (!studentId || !sessionToken || !hasComparableDeviceIdentity_(deviceInfo)) {
     return buildStudentSessionErrorResult_("Device session data is missing. Please log in again.");
   }
 
   const devicesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.devices);
-  const deviceIndex = devicesData.records.findIndex(function (device) {
-    return (
-      getDeviceStudentId_(device) === studentId &&
-      getDeviceIdValue_(device) === deviceInfo.deviceId &&
-      getDeviceSessionToken_(device) === sessionToken
-    );
-  });
+  const deviceIndex = findStudentDeviceSessionIndex_(devicesData.records, studentId, sessionToken, deviceInfo);
 
   if (deviceIndex === -1) {
     return buildStudentSessionErrorResult_("This device is no longer approved for this account.");

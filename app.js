@@ -561,7 +561,9 @@ function buildPortalScreenSizeLabel() {
     return "";
   }
 
-  return `${screenWidth}x${screenHeight}`;
+  const normalizedWidth = Math.min(screenWidth, screenHeight);
+  const normalizedHeight = Math.max(screenWidth, screenHeight);
+  return `${normalizedWidth}x${normalizedHeight}`;
 }
 
 function buildPortalDeviceName() {
@@ -572,18 +574,55 @@ function buildPortalDeviceName() {
   return `${browserName}${shellSuffix} on ${platformName}`;
 }
 
-function buildPortalDeviceFingerprint() {
+function extractPortalHardwareModel() {
+  const userAgent = navigator.userAgent || "";
+  const platformName = buildPortalPlatformName();
+  const androidMatch =
+    userAgent.match(/Android\s[\d.]+;\s*([^;()]+?)\s+Build\//i) ||
+    userAgent.match(/Android\s[\d.]+;\s*([^;()]+?)\)/i);
+  if (androidMatch && androidMatch[1]) {
+    return String(androidMatch[1]).trim();
+  }
+
+  if (/iPad/i.test(userAgent)) {
+    return "ipad";
+  }
+  if (/iPhone/i.test(userAgent)) {
+    return "iphone";
+  }
+  if (/Windows/i.test(platformName)) {
+    return "windows";
+  }
+  if (/macOS/i.test(platformName)) {
+    return "mac";
+  }
+  if (/Linux/i.test(platformName)) {
+    return "linux";
+  }
+
+  return platformName.toLowerCase();
+}
+
+function buildPortalStableDeviceFingerprintParts() {
   return [
-    navigator.userAgent || "",
-    navigator.language || "",
-    Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+    extractPortalHardwareModel(),
+    buildPortalPlatformName(),
     buildPortalScreenSizeLabel(),
-    detectPortalClientShell(),
-    detectPortalDisplayMode(),
+    Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+    navigator.language || navigator.languages?.[0] || "",
+    String(window.screen?.colorDepth || ""),
+    String(window.devicePixelRatio || ""),
+    String(navigator.maxTouchPoints || ""),
+    String(navigator.hardwareConcurrency || ""),
+    String(navigator.deviceMemory || ""),
   ]
-    .map((value) => String(value || "").trim())
-    .filter(Boolean)
-    .join(" | ");
+    .map((value) => String(value || "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function buildPortalDeviceFingerprint() {
+  const parts = buildPortalStableDeviceFingerprintParts();
+  return parts.length ? `slot:${parts.join("|")}` : "";
 }
 
 function normalizePortalPublicIp(value) {
@@ -2026,9 +2065,7 @@ async function fetchStudentInbox(studentId) {
       },
       body: new URLSearchParams({
         action: "studentgetinbox",
-        studentId,
-        sessionToken: state.studentSessionToken,
-        deviceId: getPersistentPortalDeviceId(),
+        ...buildStudentSessionPayload(studentId),
       }),
       signal: controller ? controller.signal : undefined,
     });
@@ -2409,11 +2446,17 @@ function isStudentSessionErrorMessage(message) {
   );
 }
 
-function buildStudentSessionPayload(studentId = state.activeStudentId) {
+function buildStudentSessionPayload(studentId = state.activeStudentId, sessionToken = state.studentSessionToken) {
   return {
     studentId: String(studentId || "").trim(),
-    sessionToken: String(state.studentSessionToken || "").trim(),
+    sessionToken: String(sessionToken || "").trim(),
     deviceId: getPersistentPortalDeviceId(),
+    deviceFingerprint: buildPortalDeviceFingerprint(),
+    userAgent: navigator.userAgent || "",
+    platform: buildPortalPlatformName(),
+    browserLanguage: navigator.language || navigator.languages?.[0] || "",
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
+    screenSize: buildPortalScreenSizeLabel(),
   };
 }
 
@@ -2439,9 +2482,7 @@ async function logoutActiveDeviceSessionSilently(studentId = state.activeStudent
 
   const payload = new URLSearchParams({
     action: "studentlogoutdevice",
-    studentId: String(studentId || "").trim(),
-    sessionToken: String(sessionToken || "").trim(),
-    deviceId: getPersistentPortalDeviceId(),
+    ...buildStudentSessionPayload(studentId, sessionToken),
   });
 
   try {
@@ -4266,9 +4307,7 @@ async function refreshStudentPaymentsInBackground(studentId = state.activeStuden
 
   const requestBody = new URLSearchParams({
     action: "studentgetpayments",
-    studentId,
-    sessionToken: state.studentSessionToken,
-    deviceId: getPersistentPortalDeviceId(),
+    ...buildStudentSessionPayload(studentId),
   });
 
   try {
@@ -4379,8 +4418,7 @@ async function requestStudentMessageResponse(responseType) {
         messageId: pendingMessage.id,
         responseType,
         reply: replyText,
-        sessionToken: state.studentSessionToken,
-        deviceId: getPersistentPortalDeviceId(),
+        ...buildStudentSessionPayload(student.id),
       }),
       signal: controller ? controller.signal : undefined,
     });
@@ -4533,8 +4571,7 @@ async function requestCourseAccess(courseId) {
     courseId,
     transactionId,
     note,
-    sessionToken: state.studentSessionToken,
-    deviceId: getPersistentPortalDeviceId(),
+    ...buildStudentSessionPayload(student.id),
   });
   const totalAttempts = Math.max(1, Number(APP_CONFIG.remotePaymentRetryCount) + 1 || 1);
   let lastError = null;
