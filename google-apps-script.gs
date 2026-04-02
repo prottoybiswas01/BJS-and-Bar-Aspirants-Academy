@@ -250,6 +250,7 @@ const ADMIN_FIELD_KEYS_ = {
   status: ["status", "accountStatus"],
   role: ["role", "adminRole"],
 };
+const MODERATOR_ADMIN_ROLE_VALUES_ = ["moderator", "mod", "readonly", "viewonly", "viewer"];
 
 const SAMPLE_DATA = {
   students: [
@@ -737,13 +738,16 @@ function handleAdminLogin_(request) {
     return jsonOutput_({ ok: false, message: "Incorrect admin password." });
   }
 
-  const token = putAdminSession_(sanitizeAdmin_(admin));
+  const sanitizedAdmin = sanitizeAdmin_(admin);
+  const token = putAdminSession_(sanitizedAdmin);
 
   return jsonOutput_({
     ok: true,
-    message: "Admin login approved.",
+    message: sanitizedAdmin.readOnly
+      ? "Moderator login approved. View-only access granted."
+      : "Admin login approved.",
     token: token,
-    admin: sanitizeAdmin_(admin),
+    admin: sanitizedAdmin,
   });
 }
 
@@ -3185,6 +3189,10 @@ function handleAdminUpdateStudent_(request) {
   if (!auth) {
     return unauthorizedOutput_();
   }
+  const readOnlyResponse = requireAdminWriteAccess_(auth);
+  if (readOnlyResponse) {
+    return readOnlyResponse;
+  }
 
   const spreadsheet = getSpreadsheet_();
   const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
@@ -3299,6 +3307,10 @@ function handleAdminBulkStudentAction_(request) {
   if (!auth) {
     return unauthorizedOutput_();
   }
+  const readOnlyResponse = requireAdminWriteAccess_(auth);
+  if (readOnlyResponse) {
+    return readOnlyResponse;
+  }
 
   const studentIds = parseStringList_(request.studentIds || request.ids || "");
   const action = normalizeValue_(request.bulkAction || request.mode || "");
@@ -3374,6 +3386,10 @@ function handleAdminAssignCourses_(request) {
   if (!auth) {
     return unauthorizedOutput_();
   }
+  const readOnlyResponse = requireAdminWriteAccess_(auth);
+  if (readOnlyResponse) {
+    return readOnlyResponse;
+  }
 
   const studentIds = parseStringList_(request.studentIds || request.ids || "");
   if (!studentIds.length) {
@@ -3406,6 +3422,10 @@ function handleAdminCreateCourse_(request) {
   const auth = getAuthorizedAdminSession_(request);
   if (!auth) {
     return unauthorizedOutput_();
+  }
+  const readOnlyResponse = requireAdminWriteAccess_(auth);
+  if (readOnlyResponse) {
+    return readOnlyResponse;
   }
 
   const spreadsheet = getSpreadsheet_();
@@ -3472,6 +3492,10 @@ function handleAdminDeleteCourse_(request) {
   if (!auth) {
     return unauthorizedOutput_();
   }
+  const readOnlyResponse = requireAdminWriteAccess_(auth);
+  if (readOnlyResponse) {
+    return readOnlyResponse;
+  }
 
   const courseId = String(request.courseId || request.id || "").trim();
   if (!courseId) {
@@ -3530,6 +3554,10 @@ function handleAdminLogoutDevice_(request) {
   if (!auth) {
     return unauthorizedOutput_();
   }
+  const readOnlyResponse = requireAdminWriteAccess_(auth);
+  if (readOnlyResponse) {
+    return readOnlyResponse;
+  }
 
   const deviceRecordId = String(request.deviceRecordId || request.deviceIdRecord || request.id || "").trim();
   const deviceId = String(request.deviceId || "").trim();
@@ -3572,6 +3600,10 @@ function handleAdminDeleteDevice_(request) {
   if (!auth) {
     return unauthorizedOutput_();
   }
+  const readOnlyResponse = requireAdminWriteAccess_(auth);
+  if (readOnlyResponse) {
+    return readOnlyResponse;
+  }
 
   const deviceRecordId = String(request.deviceRecordId || request.deviceIdRecord || request.id || "").trim();
   const deviceId = String(request.deviceId || "").trim();
@@ -3605,6 +3637,10 @@ function handleAdminApproveRegistration_(request) {
   const auth = getAuthorizedAdminSession_(request);
   if (!auth) {
     return unauthorizedOutput_();
+  }
+  const readOnlyResponse = requireAdminWriteAccess_(auth);
+  if (readOnlyResponse) {
+    return readOnlyResponse;
   }
 
   const registrationId = String(request.registrationId || request.id || "").trim();
@@ -3715,6 +3751,10 @@ function handleAdminRejectRegistration_(request) {
   if (!auth) {
     return unauthorizedOutput_();
   }
+  const readOnlyResponse = requireAdminWriteAccess_(auth);
+  if (readOnlyResponse) {
+    return readOnlyResponse;
+  }
 
   const registrationId = String(request.registrationId || request.id || "").trim();
   if (!registrationId) {
@@ -3777,6 +3817,10 @@ function handleAdminReviewPayment_(request) {
   const auth = getAuthorizedAdminSession_(request);
   if (!auth) {
     return unauthorizedOutput_();
+  }
+  const readOnlyResponse = requireAdminWriteAccess_(auth);
+  if (readOnlyResponse) {
+    return readOnlyResponse;
   }
 
   const paymentId = String(request.paymentId || request.id || "").trim();
@@ -3859,6 +3903,10 @@ function handleAdminSendMessage_(request) {
   if (!auth) {
     return unauthorizedOutput_();
   }
+  const readOnlyResponse = requireAdminWriteAccess_(auth);
+  if (readOnlyResponse) {
+    return readOnlyResponse;
+  }
 
   const studentIds = parseStringList_(request.studentIds || request.ids || "");
   const title = String(request.title || "").trim();
@@ -3897,6 +3945,10 @@ function handleAdminDeleteMessage_(request) {
   const auth = getAuthorizedAdminSession_(request);
   if (!auth) {
     return unauthorizedOutput_();
+  }
+  const readOnlyResponse = requireAdminWriteAccess_(auth);
+  if (readOnlyResponse) {
+    return readOnlyResponse;
   }
 
   const messageId = String(request.messageId || request.id || "").trim();
@@ -4209,7 +4261,40 @@ function sanitizeAdmin_(admin) {
   ADMIN_FIELD_KEYS_.password.forEach(function (key) {
     delete copy[key];
   });
+  copy.readOnly = isModeratorAdmin_(copy);
   return copy;
+}
+
+function getAdminRoleValue_(admin) {
+  return normalizeValue_(getFirstAvailableValue_(admin || {}, ADMIN_FIELD_KEYS_.role, admin && admin.role));
+}
+
+function isModeratorAdmin_(admin) {
+  const normalizedRole = getAdminRoleValue_(admin).replace(/\s+/g, "");
+  return MODERATOR_ADMIN_ROLE_VALUES_.some(function (role) {
+    return normalizedRole === role || normalizedRole.indexOf(role) !== -1;
+  });
+}
+
+function requireAdminWriteAccess_(auth) {
+  if (!isModeratorAdmin_(auth)) {
+    return null;
+  }
+
+  return jsonOutput_({
+    ok: false,
+    readOnly: true,
+    message: "Moderator accounts have view-only access. This action is available to full admins only.",
+  });
+}
+
+function sanitizeStudentForModerator_(student) {
+  const studentId = getStudentId_(student);
+  const studentName = String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.name, "")).trim();
+  return {
+    id: studentId,
+    name: studentName || studentId || "Student",
+  };
 }
 
 function findStudentByQuery_(students, query) {
@@ -5365,22 +5450,26 @@ function deleteAdminSessionPayload_(token) {
 }
 
 function buildAdminPayload_(spreadsheet, adminSession) {
+  const moderatorView = isModeratorAdmin_(adminSession);
+  const adminPayload = adminSession ? sanitizeAdmin_(adminSession) : null;
   return {
     ok: true,
     generatedAt: new Date().toISOString(),
     spreadsheetId: spreadsheet.getId(),
     spreadsheetName: spreadsheet.getName(),
-    admin: adminSession || null,
-    students: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students)),
+    admin: adminPayload,
+    students: moderatorView
+      ? readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students)).map(sanitizeStudentForModerator_)
+      : readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students)),
     courses: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses)),
     lessons: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.lessons)),
     notices: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.notices)),
-    enrollments: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.enrollments)),
+    enrollments: moderatorView ? [] : readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.enrollments)),
     admins: sanitizeAdmins_(readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.admins))),
-    registrations: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.registrations)),
-    messages: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.messages)),
-    devices: sanitizeDevicesForAdmin_(readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.devices))),
-    payments: readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.payments)),
+    registrations: moderatorView ? [] : readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.registrations)),
+    messages: moderatorView ? [] : readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.messages)),
+    devices: moderatorView ? [] : sanitizeDevicesForAdmin_(readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.devices))),
+    payments: moderatorView ? [] : readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.payments)),
   };
 }
 

@@ -246,6 +246,8 @@ const MONTH_LABELS = Object.freeze(
     new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date(2026, index, 1))
   )
 );
+const MODERATOR_VIEW_MESSAGE =
+  "Moderator view is active. Student records show only name and ID, and all admin actions are disabled.";
 
 const state = {
   token: "",
@@ -275,6 +277,7 @@ const dom = {
   adminLoginFeedback: document.getElementById("adminLoginFeedback"),
   adminWelcome: document.getElementById("adminWelcome"),
   adminTopFeedback: document.getElementById("adminTopFeedback"),
+  adminModeBanner: document.getElementById("adminModeBanner"),
   refreshDashboardBtn: document.getElementById("refreshDashboardBtn"),
   summaryStudents: document.getElementById("summaryStudents"),
   summaryPending: document.getElementById("summaryPending"),
@@ -1450,6 +1453,79 @@ function normalizeAdminSession(admin = null) {
   };
 }
 
+function getAdminRoleValue(admin = state.admin) {
+  return normalizeLookupText(admin?.role || admin?.adminRole || "").replace(/[^a-z]/g, "");
+}
+
+function isReadOnlySession(admin = state.admin) {
+  const normalizedRole = getAdminRoleValue(admin);
+  return !!(
+    admin &&
+    (admin.readOnly ||
+      normalizedRole === "mod" ||
+      normalizedRole.includes("moderator") ||
+      normalizedRole.includes("readonly") ||
+      normalizedRole.includes("viewonly") ||
+      normalizedRole.includes("viewer"))
+  );
+}
+
+function getReadOnlyMessage() {
+  return MODERATOR_VIEW_MESSAGE;
+}
+
+function guardReadOnlyAction(feedbackElement = dom.adminTopFeedback) {
+  if (!isReadOnlySession()) {
+    return false;
+  }
+
+  setFeedback(feedbackElement, getReadOnlyMessage(), "info");
+  return true;
+}
+
+function renderReadOnlyPanel(message) {
+  return `<div class="rounded-[1.5rem] border border-dashed border-amber-200 bg-amber-50 px-5 py-6 text-sm text-amber-900">${escapeHtml(
+    message
+  )}</div>`;
+}
+
+function setContainerControlsDisabled(container, disabled) {
+  if (!container) {
+    return;
+  }
+
+  container.querySelectorAll("input, select, textarea, button").forEach((field) => {
+    field.disabled = !!disabled;
+  });
+}
+
+function renderAdminModeBanner() {
+  if (!dom.adminModeBanner) {
+    return;
+  }
+
+  const readOnly = isReadOnlySession();
+  dom.adminModeBanner.classList.toggle("hidden", !readOnly);
+  dom.adminModeBanner.textContent = readOnly ? getReadOnlyMessage() : "";
+}
+
+function syncReadOnlyDashboardState() {
+  const readOnly = isReadOnlySession();
+  renderAdminModeBanner();
+  setButtonDisabled(dom.newStudentBtn, readOnly);
+  setButtonDisabled(dom.clearCourseFormBtn, readOnly);
+  setButtonDisabled(dom.studentPreviewOpenEditorBtn, readOnly);
+  if (dom.studentPreviewOpenEditorBtn) {
+    dom.studentPreviewOpenEditorBtn.classList.toggle("hidden", readOnly);
+  }
+  setContainerControlsDisabled(dom.studentEditorForm, readOnly);
+  setContainerControlsDisabled(dom.courseForm, readOnly);
+  setContainerControlsDisabled(dom.selectedStudentWorkspace, readOnly);
+  if (!readOnly) {
+    renderSelectionState();
+  }
+}
+
 function getStudentById(studentId) {
   return state.data.students.find((student) => student.id === studentId) || null;
 }
@@ -1688,6 +1764,26 @@ function getSelectedStudents() {
 }
 
 function renderSelectionState() {
+  if (isReadOnlySession()) {
+    state.selectedStudentIds = new Set();
+    dom.studentSelectionBar.classList.add("hidden");
+    dom.selectedStudentsSummary.textContent = "View only";
+    dom.selectedStudentsMeta.textContent = "Moderator accounts cannot select students or use bulk tools.";
+    dom.selectedStudentsCountBadge.textContent = "View only";
+    dom.selectedStudentsWorkspaceMeta.textContent =
+      "Moderator accounts can inspect the panel, but course assignment, access updates, and messaging stay disabled.";
+    dom.selectAllStudents.checked = false;
+    dom.selectAllStudents.disabled = true;
+    dom.bulkActionSelect.disabled = true;
+    setButtonDisabled(dom.applyBulkActionBtn, true);
+    setButtonDisabled(dom.assignCoursesBtn, true);
+    setButtonDisabled(dom.sendMessageBtn, true);
+    [...dom.studentQuickActionBar.querySelectorAll("button")].forEach((button) => {
+      setButtonDisabled(button, true);
+    });
+    return;
+  }
+
   const selectedStudents = getSelectedStudents();
   const selectedCount = selectedStudents.length;
   const hasSelection = selectedCount > 0;
@@ -2179,11 +2275,17 @@ function applyDashboardPayload(payload, feedbackMessage = "", tone = "success") 
   if (payload?.ok) {
     writeStoredJson(STORAGE_KEYS.adminDashboardCache, payload);
   }
+  const readOnly = isReadOnlySession();
 
   const validStudentIds = new Set(state.data.students.map((student) => student.id));
-  state.selectedStudentIds = new Set(getSelectedStudentIds().filter((studentId) => validStudentIds.has(studentId)));
+  state.selectedStudentIds = readOnly
+    ? new Set()
+    : new Set(getSelectedStudentIds().filter((studentId) => validStudentIds.has(studentId)));
 
-  if (state.editingStudentId && !validStudentIds.has(state.editingStudentId)) {
+  if (readOnly) {
+    state.editingStudentId = "";
+    state.editingCourseId = "";
+  } else if (state.editingStudentId && !validStudentIds.has(state.editingStudentId)) {
     state.editingStudentId = "";
   }
   if (state.previewStudentId && !validStudentIds.has(state.previewStudentId)) {
@@ -2201,6 +2303,8 @@ function applyDashboardPayload(payload, feedbackMessage = "", tone = "success") 
 
   if (feedbackMessage) {
     setFeedback(dom.adminTopFeedback, feedbackMessage, tone);
+  } else if (readOnly) {
+    setFeedback(dom.adminTopFeedback, getReadOnlyMessage(), "info");
   } else if (pendingPaymentCount) {
     setFeedback(
       dom.adminTopFeedback,
@@ -2257,7 +2361,7 @@ function renderSummaryCards() {
   dom.summaryMessages.textContent = String(state.data.messages.length);
 
   const adminName = state.admin?.name || state.admin?.username || "Admin";
-  dom.adminWelcome.textContent = `${adminName} Dashboard`;
+  dom.adminWelcome.textContent = isReadOnlySession() ? `${adminName} Moderator Dashboard` : `${adminName} Dashboard`;
 }
 
 function buildAdmissionsAnalytics() {
@@ -2586,24 +2690,41 @@ function renderStudentEditor() {
   const student = state.editingStudentId ? getStudentById(state.editingStudentId) : null;
   const courseIds = getStudentCourseIds(student);
 
-  dom.studentEditorLabel.textContent = student ? student.id : "New Student";
+  dom.studentEditorLabel.textContent = student ? student.id : isReadOnlySession() ? "View Only" : "New Student";
   dom.editorStudentId.value = student?.id || "";
   dom.editorStudentName.value = student?.name || "";
-  dom.editorStudentPhone.value = student?.phone || "";
-  dom.editorStudentEmail.value = student?.email || "";
-  dom.editorStudentBatch.value = student?.batch || "";
-  dom.editorStudentSession.value = student?.session || "";
-  dom.editorStudentPassword.value = student?.password || "";
-  dom.editorStudentMaxDevices.value = student?.maxDeviceCount ? String(student.maxDeviceCount) : "";
+  dom.editorStudentPhone.value = isReadOnlySession() ? "" : student?.phone || "";
+  dom.editorStudentEmail.value = isReadOnlySession() ? "" : student?.email || "";
+  dom.editorStudentBatch.value = isReadOnlySession() ? "" : student?.batch || "";
+  dom.editorStudentSession.value = isReadOnlySession() ? "" : student?.session || "";
+  dom.editorStudentPassword.value = isReadOnlySession() ? "" : student?.password || "";
+  dom.editorStudentMaxDevices.value =
+    isReadOnlySession() ? "" : student?.maxDeviceCount ? String(student.maxDeviceCount) : "";
   dom.editorStudentStatus.value = student?.status || "Active";
   dom.editorStudentApproval.value = isStudentPreviewOnly(student) ? "Approved" : student?.loginApproval || "Approved";
   dom.editorStudentAccessMode.value = isStudentPreviewOnly(student) ? "Preview" : student?.portalAccessMode || "";
-  dom.editorStudentHighlight.value = student?.highlight || "";
+  dom.editorStudentHighlight.value = isReadOnlySession() ? "" : student?.highlight || "";
+
+  if (isReadOnlySession()) {
+    dom.studentCourseSelector.innerHTML = renderReadOnlyPanel(
+      student
+        ? "Moderator view shows only the selected student's name and ID."
+        : "Select a student from the list to inspect the name and ID."
+    );
+    setFeedback(dom.studentEditorFeedback, "Student editing is disabled for moderator accounts.", "info");
+    return;
+  }
 
   renderCourseCheckboxes(dom.studentCourseSelector, courseIds, "editor");
 }
 
 function renderBulkCourseSelector() {
+  if (isReadOnlySession()) {
+    dom.bulkCourseSelector.innerHTML = renderReadOnlyPanel("Course assignment is disabled in moderator view.");
+    dom.bulkCourseRuleCards.innerHTML = "";
+    return;
+  }
+
   const selectedStudents = getSelectedStudents();
   if (!selectedStudents.length) {
     dom.bulkCourseSelector.innerHTML =
@@ -2628,6 +2749,35 @@ function renderStudentMobileList(students) {
   if (!students.length) {
     dom.studentMobileList.innerHTML =
       '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm text-slate-500">No students matched this filter.</div>';
+    return;
+  }
+
+  if (isReadOnlySession()) {
+    dom.studentMobileList.innerHTML = students
+      .map((student) => {
+        return `
+          <article class="rounded-[1.5rem] border border-slate-200 bg-white p-4 shadow-sm">
+            <div class="flex items-start justify-between gap-3">
+              <div class="min-w-0">
+                <h5 class="text-lg font-extrabold text-slate-950">${escapeHtml(student.name || "Unnamed Student")}</h5>
+                <p class="mt-1 text-sm text-slate-500">${escapeHtml(student.id || "-")}</p>
+              </div>
+              ${renderPill("View Only", "status")}
+            </div>
+            <p class="mt-3 text-sm text-slate-500">Only the student name and ID are visible in moderator view.</p>
+            <div class="mt-4 flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                data-view-student="${escapeHtml(student.id)}"
+                class="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
+              >
+                View
+              </button>
+            </div>
+          </article>
+        `;
+      })
+      .join("");
     return;
   }
 
@@ -2727,6 +2877,45 @@ function renderStudentTable() {
   }
 
   renderStudentMobileList(students);
+
+  if (isReadOnlySession()) {
+    dom.studentTableBody.innerHTML = students
+      .map((student) => {
+        return `
+          <tr class="bg-white">
+            <td class="px-3 py-4 align-top text-slate-300">-</td>
+            <td class="px-3 py-4 align-top">
+              <div class="min-w-[220px]">
+                <p class="font-bold text-slate-900">${escapeHtml(student.name || "Unnamed Student")}</p>
+                <p class="mt-1 text-xs text-slate-500">${escapeHtml(student.id || "-")}</p>
+              </div>
+            </td>
+            <td class="px-3 py-4 align-top text-xs text-slate-400">Hidden</td>
+            <td class="px-3 py-4 align-top text-xs text-slate-400">Hidden</td>
+            <td class="px-3 py-4 align-top text-xs text-slate-400">Hidden</td>
+            <td class="px-3 py-4 align-top text-xs text-slate-400">Hidden</td>
+            <td class="px-3 py-4 align-top text-xs text-slate-400">Hidden</td>
+            <td class="px-3 py-4 align-top">
+              <div class="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  data-view-student="${escapeHtml(student.id)}"
+                  class="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-2 text-xs font-bold text-blue-700 transition hover:border-blue-300 hover:bg-blue-100"
+                >
+                  View
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      })
+      .join("");
+
+    dom.selectAllStudents.checked = false;
+    renderSelectionState();
+    renderDeviceRegistry();
+    return;
+  }
 
   dom.studentTableBody.innerHTML = students
     .map((student) => {
@@ -2837,6 +3026,31 @@ function renderCourseList() {
       const toggleButtonClass = inactiveCourse
         ? "rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-xs font-bold text-emerald-700 transition hover:bg-emerald-100"
         : "rounded-2xl border border-amber-200 bg-amber-50 px-4 py-2 text-xs font-bold text-amber-700 transition hover:bg-amber-100";
+      const actionMarkup = isReadOnlySession()
+        ? '<span class="rounded-2xl border border-slate-200 bg-slate-100 px-4 py-2 text-xs font-bold text-slate-500">View Only</span>'
+        : `
+            <button
+              type="button"
+              data-course-toggle="${escapeHtml(course.id)}"
+              class="${toggleButtonClass}"
+            >
+              ${inactiveCourse ? "Activate" : "Deactivate"}
+            </button>
+            <button
+              type="button"
+              data-course-edit="${escapeHtml(course.id)}"
+              class="rounded-2xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              data-course-delete="${escapeHtml(course.id)}"
+              class="rounded-2xl bg-rose-50 px-4 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100"
+            >
+              Delete
+            </button>
+          `;
 
       return `
         <div class="rounded-[1.5rem] ${cardClass} p-5">
@@ -2864,39 +3078,26 @@ function renderCourseList() {
                   ? `<p class="mt-2 text-sm font-semibold text-amber-700">Course Fee: ${escapeHtml(priceLabel)}</p>`
                   : ""
               }
-              <p class="mt-2 text-xs text-slate-400">ID: ${escapeHtml(course.id)} | Students: ${assignedCount}</p>
-            </div>
-            <div class="flex shrink-0 flex-wrap gap-2">
-              <button
-                type="button"
-                data-course-toggle="${escapeHtml(course.id)}"
-                class="${toggleButtonClass}"
-              >
-                ${inactiveCourse ? "Activate" : "Deactivate"}
-              </button>
-              <button
-                type="button"
-                data-course-edit="${escapeHtml(course.id)}"
-                class="rounded-2xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
-              >
-                Edit
-              </button>
-              <button
-                type="button"
-                data-course-delete="${escapeHtml(course.id)}"
-                class="rounded-2xl bg-rose-50 px-4 py-2 text-xs font-bold text-rose-700 transition hover:bg-rose-100"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </div>
+               <p class="mt-2 text-xs text-slate-400">ID: ${escapeHtml(course.id)} | Students: ${assignedCount}</p>
+             </div>
+             <div class="flex shrink-0 flex-wrap gap-2">
+               ${actionMarkup}
+             </div>
+           </div>
+         </div>
       `;
     })
     .join("");
 }
 
 function renderPaymentQueue() {
+  if (isReadOnlySession()) {
+    dom.paymentQueue.innerHTML = renderReadOnlyPanel(
+      "Payment details and approval controls are hidden in moderator view."
+    );
+    return;
+  }
+
   const pendingPayments = state.data.payments.filter((payment) => isPendingPaymentStatus(payment.status));
 
   if (!pendingPayments.length) {
@@ -3125,6 +3326,13 @@ function getOrderedDeviceRegistryEntries() {
 
 function renderDeviceRegistry() {
   if (!dom.deviceRegistryPanel) {
+    return;
+  }
+
+  if (isReadOnlySession()) {
+    dom.deviceRegistryPanel.innerHTML = renderReadOnlyPanel(
+      "Device records are hidden in moderator view."
+    );
     return;
   }
 
@@ -3417,6 +3625,57 @@ function renderStudentPreviewModal() {
   const student = getStudentById(state.previewStudentId);
   if (!student) {
     closeStudentPreview();
+    return;
+  }
+
+  if (isReadOnlySession()) {
+    if (dom.studentPreviewTitle) {
+      dom.studentPreviewTitle.textContent = `${student.name || student.id} Snapshot`;
+    }
+    if (dom.studentPreviewMeta) {
+      dom.studentPreviewMeta.textContent =
+        "Moderator view only. Only the selected student's name and ID are visible here.";
+    }
+    if (dom.studentPreviewOpenEditorBtn) {
+      dom.studentPreviewOpenEditorBtn.dataset.studentId = student.id;
+    }
+
+    dom.studentPreviewBody.innerHTML = `
+      <div class="student-preview-stack">
+        <section class="student-preview-hero">
+          <div class="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
+            <div class="min-w-0">
+              <p class="student-preview-field-label student-preview-field-label-light">Moderator View</p>
+              <h4 class="mt-3 text-3xl font-extrabold">${escapeHtml(student.name || "Unnamed Student")}</h4>
+              <p class="mt-2 text-sm student-preview-meta-light">${escapeHtml(student.id || "-")}</p>
+              <div class="mt-4 flex flex-wrap gap-2">${renderPill("View Only")}</div>
+              <p class="mt-4 max-w-3xl text-sm leading-6 student-preview-meta-light">${escapeHtml(
+                "Editing, course assignment, payment review, messaging, and device access stay hidden in moderator mode."
+              )}</p>
+            </div>
+          </div>
+        </section>
+
+        <section class="student-preview-surface">
+          <p class="student-preview-field-label student-preview-field-label-dark">Student Identity</p>
+          <h5 class="mt-2 text-2xl font-extrabold text-slate-950">Restricted Student Snapshot</h5>
+          <div class="student-preview-account-grid mt-5">
+            <div class="student-preview-alert">
+              <p class="student-preview-field-label student-preview-field-label-dark">Student Name</p>
+              <p class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(
+                student.name || "Unnamed Student"
+              )}</p>
+            </div>
+            <div class="student-preview-alert">
+              <p class="student-preview-field-label student-preview-field-label-dark">Student ID</p>
+              <p class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(student.id || "-")}</p>
+            </div>
+          </div>
+        </section>
+      </div>
+    `;
+
+    setStudentPreviewModalOpen(true);
     return;
   }
 
@@ -3829,6 +4088,13 @@ function renderStudentPreviewModal() {
 }
 
 function renderMessageLog() {
+  if (isReadOnlySession()) {
+    dom.messageLogPanel.innerHTML = renderReadOnlyPanel(
+      "Message logs and student replies are hidden in moderator view."
+    );
+    return;
+  }
+
   if (!state.data.messages.length) {
     dom.messageLogPanel.innerHTML =
       '<div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-500">No internal message has been saved yet.</div>';
@@ -3952,6 +4218,8 @@ function renderDashboard() {
       populateCourseForm(course);
     }
   }
+
+  syncReadOnlyDashboardState();
 }
 
 function populateCourseForm(course) {
@@ -4065,8 +4333,12 @@ async function handleAdminLoginSubmit(event) {
     state.admin = payload.admin || null;
     writeStoredValue(STORAGE_KEYS.adminToken, state.token);
 
-    await loadDashboard("Admin panel connected to the live sheet.");
-    setFeedback(dom.adminLoginFeedback, "Admin login approved.", "success");
+    const successMessage =
+      payload.admin?.readOnly || isReadOnlySession(payload.admin)
+        ? "Moderator login approved. View-only access granted."
+        : "Admin login approved.";
+    await loadDashboard(successMessage);
+    setFeedback(dom.adminLoginFeedback, successMessage, "success");
     dom.adminPassword.value = "";
   } catch (error) {
     clearAdminSession();
@@ -4085,6 +4357,10 @@ async function handleRefreshDashboard() {
 
 async function handleStudentSave(event) {
   event.preventDefault();
+
+  if (guardReadOnlyAction(dom.studentEditorFeedback)) {
+    return;
+  }
 
   const courseIds = readCheckedCourseIds(dom.studentCourseSelector, "editor");
   const payload = {
@@ -4138,6 +4414,10 @@ async function handleStudentSave(event) {
 }
 
 async function applyBulkActionToSelected(bulkAction) {
+  if (guardReadOnlyAction(dom.adminTopFeedback)) {
+    return;
+  }
+
   const selectedStudentIds = getSelectedStudentIds();
 
   if (!selectedStudentIds.length || !bulkAction) {
@@ -4168,6 +4448,10 @@ async function handleBulkActionApply() {
 }
 
 async function handleAssignCourses() {
+  if (guardReadOnlyAction(dom.messageFeedback)) {
+    return;
+  }
+
   const selectedStudentIds = getSelectedStudentIds();
   const courseIds = readCheckedCourseIds(dom.bulkCourseSelector, "bulk");
 
@@ -4199,6 +4483,10 @@ async function handleAssignCourses() {
 }
 
 async function handleSendMessage() {
+  if (guardReadOnlyAction(dom.messageFeedback)) {
+    return;
+  }
+
   const selectedStudentIds = getSelectedStudentIds();
   const title = dom.messageTitleInput.value.trim();
   const message = dom.messageBodyInput.value.trim();
@@ -4231,6 +4519,9 @@ async function handleSendMessage() {
 
 async function handleCourseSave(event) {
   event.preventDefault();
+  if (guardReadOnlyAction(dom.courseFeedback)) {
+    return;
+  }
   const wasEditingExistingCourse = !!state.editingCourseId;
 
   const payload = {
@@ -4277,6 +4568,10 @@ async function handleCourseSave(event) {
 }
 
 async function handleCourseStatusToggle(courseId) {
+  if (guardReadOnlyAction(dom.courseFeedback)) {
+    return;
+  }
+
   const course = state.data.courseMap.get(courseId) || null;
   if (!course) {
     setFeedback(dom.courseFeedback, "Course could not be loaded.", "error");
@@ -4324,6 +4619,10 @@ async function handleCourseStatusToggle(courseId) {
 }
 
 async function handleCourseDelete(courseId) {
+  if (guardReadOnlyAction(dom.courseFeedback)) {
+    return;
+  }
+
   const course = state.data.courseMap.get(courseId);
   const confirmed = window.confirm(
     `Delete "${course?.title || courseId}"? This will also remove related lesson and enrollment entries.`
@@ -4352,6 +4651,10 @@ async function handleCourseDelete(courseId) {
 }
 
 async function handleDeviceLogout(deviceRecordId) {
+  if (guardReadOnlyAction(dom.adminTopFeedback)) {
+    return;
+  }
+
   const device = state.data.devices.find((entry) => entry.id === deviceRecordId) || null;
   if (!device) {
     setFeedback(dom.adminTopFeedback, "Device record could not be found.", "error");
@@ -4384,6 +4687,10 @@ async function handleDeviceLogout(deviceRecordId) {
 }
 
 async function handleDeviceDelete(deviceRecordId) {
+  if (guardReadOnlyAction(dom.adminTopFeedback)) {
+    return;
+  }
+
   const device = state.data.devices.find((entry) => entry.id === deviceRecordId) || null;
   if (!device) {
     setFeedback(dom.adminTopFeedback, "Device record could not be found.", "error");
@@ -4416,6 +4723,10 @@ async function handleDeviceDelete(deviceRecordId) {
 }
 
 async function handleMessageDelete(messageId) {
+  if (guardReadOnlyAction(dom.messageFeedback)) {
+    return;
+  }
+
   const message = state.data.messages.find((entry) => entry.id === messageId) || null;
   const confirmed = window.confirm(
     `Delete "${message?.title || "this message"}"? This will remove it from the admin log and from the spreadsheet.`
@@ -4443,6 +4754,10 @@ async function handleMessageDelete(messageId) {
 }
 
 async function handlePaymentReview(paymentId, action) {
+  if (guardReadOnlyAction(dom.adminTopFeedback)) {
+    return;
+  }
+
   const confirmedField = dom.paymentQueue.querySelector(`[data-payment-confirmed="${paymentId}"]`);
   const paymentDateField = dom.paymentQueue.querySelector(`[data-payment-date="${paymentId}"]`);
   const accessMonthsField = dom.paymentQueue.querySelector(`[data-payment-months="${paymentId}"]`);
@@ -4512,10 +4827,19 @@ function handleStudentTableClick(event) {
     return;
   }
 
+  if (guardReadOnlyAction(dom.adminTopFeedback)) {
+    return;
+  }
+
   setEditingStudent(editButton.dataset.editStudent);
 }
 
 function handleStudentTableChange(event) {
+  if (isReadOnlySession()) {
+    event.preventDefault();
+    return;
+  }
+
   const checkbox = event.target.closest("[data-student-select]");
   if (!checkbox) {
     return;
@@ -4538,6 +4862,11 @@ function handleStudentTableChange(event) {
 }
 
 function handleSelectAllToggle() {
+  if (isReadOnlySession()) {
+    dom.selectAllStudents.checked = false;
+    return;
+  }
+
   if (!state.visibleStudentIds.length) {
     return;
   }
@@ -4554,6 +4883,10 @@ function handleSelectAllToggle() {
 }
 
 async function handleStudentQuickActionClick(event) {
+  if (guardReadOnlyAction(dom.adminTopFeedback)) {
+    return;
+  }
+
   const quickActionButton = event.target.closest("[data-quick-action]");
   if (quickActionButton) {
     const quickAction = String(quickActionButton.dataset.quickAction || "").trim();
@@ -4647,6 +4980,10 @@ function handleStudentPreviewModalClick(event) {
 }
 
 function openStudentPreviewInEditor() {
+  if (guardReadOnlyAction(dom.adminTopFeedback)) {
+    return;
+  }
+
   const studentId = String(dom.studentPreviewOpenEditorBtn?.dataset.studentId || "").trim();
   if (!studentId) {
     return;
@@ -4744,6 +5081,10 @@ dom.studentSearchInput.addEventListener("input", () => {
   renderStudentTable();
 });
 dom.newStudentBtn.addEventListener("click", () => {
+  if (isReadOnlySession()) {
+    setFeedback(dom.adminTopFeedback, getReadOnlyMessage(), "info");
+    return;
+  }
   resetStudentEditor();
   state.selectedStudentIds = new Set();
   resetBulkCourseRuleDrafts();
