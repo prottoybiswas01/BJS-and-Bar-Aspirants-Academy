@@ -102,6 +102,9 @@ const SHEET_HEADERS = {
     "browserLanguage",
     "timezone",
     "screenSize",
+    "clientShell",
+    "displayMode",
+    "referrer",
     "locationPermission",
     "latitude",
     "longitude",
@@ -214,6 +217,9 @@ const DEVICE_FIELD_KEYS_ = {
   browserLanguage: ["browserLanguage", "language", "locale"],
   timezone: ["timezone", "timeZone"],
   screenSize: ["screenSize", "screen", "viewport"],
+  clientShell: ["clientShell", "appShell", "runtimeShell"],
+  displayMode: ["displayMode", "launchMode", "presentationMode"],
+  referrer: ["referrer", "documentReferrer", "launchReferrer"],
   locationPermission: ["locationPermission", "geoPermission"],
   latitude: ["latitude", "lat"],
   longitude: ["longitude", "lng", "lon"],
@@ -1626,20 +1632,116 @@ function filterRowsByCourseLookup_(records, courseLookup, extractor) {
 }
 
 function buildStudentDevicePayloadFromRequest_(request) {
+  const userAgent = String(request.userAgent || "").trim();
+  const displayMode = normalizeDeviceDisplayModeLabel_(
+    request.displayMode || request.launchMode || request.presentationMode || ""
+  );
+  const referrer = String(request.referrer || request.documentReferrer || request.launchReferrer || "").trim();
+  const platform = normalizeDevicePlatformLabel_(request.platform || "", userAgent);
+  const clientShell = normalizeDeviceClientShellLabel_(request.clientShell || request.appShell || request.shell || "", {
+    userAgent: userAgent,
+    referrer: referrer,
+    displayMode: displayMode,
+  });
+  const deviceName = String(request.deviceName || request.deviceLabel || "").trim();
+
   return {
     deviceId: String(request.deviceId || request.clientDeviceId || "").trim(),
-    deviceName: String(request.deviceName || request.deviceLabel || "Unknown Device").trim() || "Unknown Device",
+    deviceName: deviceName || (clientShell !== "Browser" ? clientShell + " on " + platform : "Unknown Device"),
     deviceFingerprint: String(request.deviceFingerprint || request.fingerprint || "").trim(),
     publicIp: String(request.publicIp || request.ip || "").trim(),
-    userAgent: String(request.userAgent || "").trim(),
-    platform: String(request.platform || "").trim(),
+    userAgent: userAgent,
+    platform: platform,
     browserLanguage: String(request.browserLanguage || request.language || "").trim(),
     timezone: String(request.timezone || request.timeZone || "").trim(),
     screenSize: String(request.screenSize || request.screen || request.viewport || "").trim(),
+    clientShell: clientShell,
+    displayMode: displayMode,
+    referrer: referrer,
     locationPermission: normalizeDeviceLocationPermissionStatus_(request.locationPermission || ""),
     latitude: String(request.latitude || request.lat || "").trim(),
     longitude: String(request.longitude || request.lng || request.lon || "").trim(),
   };
+}
+
+function normalizeDevicePlatformLabel_(value, userAgent) {
+  const explicitValue = String(value || "").trim();
+  const source = (explicitValue + " " + String(userAgent || "").trim()).trim();
+  if (/Windows/i.test(source)) {
+    return "Windows";
+  }
+  if (/Android/i.test(source)) {
+    return "Android";
+  }
+  if (/iPhone|iPad|iPod/i.test(source)) {
+    return "iPhone";
+  }
+  if (/Mac/i.test(source)) {
+    return "macOS";
+  }
+  if (/Linux/i.test(source)) {
+    return "Linux";
+  }
+  return explicitValue || "Device";
+}
+
+function normalizeDeviceDisplayModeLabel_(value) {
+  const normalized = normalizeValue_(value);
+  if (!normalized || normalized === "browser") {
+    return "browser";
+  }
+  if (normalized === "minimalui" || normalized === "minimal-ui") {
+    return "minimal-ui";
+  }
+  if (normalized === "windowcontrolsoverlay" || normalized === "window-controls-overlay") {
+    return "window-controls-overlay";
+  }
+  if (normalized === "fullscreen" || normalized === "standalone") {
+    return normalized;
+  }
+  return String(value || "").trim() || "browser";
+}
+
+function normalizeDeviceClientShellLabel_(value, context) {
+  const normalized = normalizeValue_(value);
+  if (normalized === "androidwebview" || normalized === "webview") {
+    return "Android WebView";
+  }
+  if (normalized === "trustedwebactivity" || normalized === "twa") {
+    return "Trusted Web Activity";
+  }
+  if (normalized === "standaloneapp" || normalized === "standalone" || normalized === "pwa") {
+    return "Standalone App";
+  }
+  if (normalized === "embeddedapp" || normalized === "inappbrowser" || normalized === "inapp") {
+    return "Embedded App";
+  }
+  if (normalized === "browser") {
+    return "Browser";
+  }
+
+  const userAgent = normalizeValue_((context && context.userAgent) || "");
+  const referrer = String((context && context.referrer) || "").trim();
+  const displayMode = normalizeValue_((context && context.displayMode) || "");
+  if (/^android-app:\/\//i.test(referrer)) {
+    return "Trusted Web Activity";
+  }
+  if (userAgent && userAgent.indexOf("android") !== -1 && userAgent.indexOf("wv") !== -1) {
+    return "Android WebView";
+  }
+  if (displayMode && displayMode !== "browser") {
+    return "Standalone App";
+  }
+  if (
+    userAgent &&
+    ["fban", "fbav", "instagram", "line/", "tiktok", "gsa/", "linkedinapp", "snapchat"].some(function (token) {
+      return userAgent.indexOf(token) !== -1;
+    })
+  ) {
+    return "Embedded App";
+  }
+
+  return String(value || "").trim() || "Browser";
 }
 
 function normalizeDeviceLocationPermissionStatus_(value) {
@@ -1784,7 +1886,8 @@ function sanitizeStudentDevices_(devices) {
 function buildDeviceRegistryDisplayName_(device) {
   const deviceName = String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.deviceName, "")).trim();
   const publicIp = String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.publicIp, "")).trim();
-  return deviceName || (publicIp ? "IP " + publicIp : "Unknown Device");
+  const clientShell = String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.clientShell, "")).trim();
+  return deviceName || (publicIp ? "IP " + publicIp : clientShell || "Unknown Device");
 }
 
 function getStudentDeviceRecords_(spreadsheet, studentId) {
@@ -1857,6 +1960,9 @@ function buildStudentDeviceRecord_(studentId, deviceInfo, sessionToken, override
       browserLanguage: deviceInfo.browserLanguage,
       timezone: deviceInfo.timezone,
       screenSize: deviceInfo.screenSize,
+      clientShell: deviceInfo.clientShell,
+      displayMode: deviceInfo.displayMode,
+      referrer: deviceInfo.referrer,
       locationPermission: deviceInfo.locationPermission,
       latitude: deviceInfo.latitude,
       longitude: deviceInfo.longitude,
@@ -1883,6 +1989,9 @@ function buildStudentDeviceRecord_(studentId, deviceInfo, sessionToken, override
   nextRecord.browserLanguage = deviceInfo.browserLanguage || nextRecord.browserLanguage || "";
   nextRecord.timezone = deviceInfo.timezone || nextRecord.timezone || "";
   nextRecord.screenSize = deviceInfo.screenSize || nextRecord.screenSize || "";
+  nextRecord.clientShell = deviceInfo.clientShell || nextRecord.clientShell || "Browser";
+  nextRecord.displayMode = deviceInfo.displayMode || nextRecord.displayMode || "browser";
+  nextRecord.referrer = deviceInfo.referrer || nextRecord.referrer || "";
   nextRecord.locationPermission = deviceInfo.locationPermission || nextRecord.locationPermission || "Not Requested";
   nextRecord.latitude = deviceInfo.latitude || nextRecord.latitude || "";
   nextRecord.longitude = deviceInfo.longitude || nextRecord.longitude || "";

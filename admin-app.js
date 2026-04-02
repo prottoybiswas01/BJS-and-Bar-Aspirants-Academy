@@ -141,6 +141,9 @@ const DEVICE_FIELD_KEYS = Object.freeze({
   browserLanguage: ["browserLanguage", "language", "locale"],
   timezone: ["timezone", "timeZone"],
   screenSize: ["screenSize", "screen", "viewport"],
+  clientShell: ["clientShell", "appShell", "runtimeShell"],
+  displayMode: ["displayMode", "launchMode", "presentationMode"],
+  referrer: ["referrer", "documentReferrer", "launchReferrer"],
   locationPermission: ["locationPermission", "geoPermission"],
   latitude: ["latitude", "lat"],
   longitude: ["longitude", "lng", "lon"],
@@ -256,6 +259,8 @@ const state = {
   visibleStudentIds: [],
   bulkCourseRuleDrafts: {},
 };
+
+let studentPreviewScrollLockY = 0;
 
 const dom = {
   adminLogoutBtn: document.getElementById("adminLogoutBtn"),
@@ -1088,6 +1093,9 @@ function normalizeDashboard(payload = {}) {
       browserLanguage: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.browserLanguage, "")).trim(),
       timezone: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.timezone, "")).trim(),
       screenSize: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.screenSize, "")).trim(),
+      clientShell: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.clientShell, "")).trim() || "Browser",
+      displayMode: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.displayMode, "browser")).trim() || "browser",
+      referrer: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.referrer, "")).trim(),
       locationPermission: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.locationPermission, "")).trim() || "Not Requested",
       latitude: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.latitude, "")).trim(),
       longitude: String(getFirstAvailableValue(device, DEVICE_FIELD_KEYS.longitude, "")).trim(),
@@ -2647,6 +2655,71 @@ function buildDeviceLocationLabel(device) {
   return device.locationPermission || "Not Requested";
 }
 
+function formatDeviceDisplayModeLabel(value) {
+  const normalized = normalizeStatus(value || "browser");
+  if (!normalized || normalized === "browser") {
+    return "Browser";
+  }
+  if (normalized === "minimalui" || normalized === "minimal-ui") {
+    return "Minimal UI";
+  }
+  if (normalized === "windowcontrolsoverlay" || normalized === "window-controls-overlay") {
+    return "Window Controls Overlay";
+  }
+
+  return String(value || "")
+    .trim()
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function getDeviceShellLabel(device) {
+  return String(device?.clientShell || "").trim() || "Browser";
+}
+
+function buildDeviceNetworkLabel(device) {
+  const publicIp = String(device?.publicIp || "").trim();
+  if (publicIp) {
+    return publicIp;
+  }
+
+  const shellLabel = getDeviceShellLabel(device);
+  return shellLabel && shellLabel !== "Browser" ? `IP unavailable in ${shellLabel}` : "Public IP not captured";
+}
+
+function buildDeviceShellMeta(device) {
+  const meta = [];
+  const shellLabel = getDeviceShellLabel(device);
+  if (shellLabel && shellLabel !== "Browser") {
+    meta.push(shellLabel);
+  }
+
+  const displayMode = formatDeviceDisplayModeLabel(device?.displayMode || "browser");
+  if (displayMode && displayMode !== "Browser") {
+    meta.push(`Mode ${displayMode}`);
+  }
+
+  if (device?.timezone) {
+    meta.push(device.timezone);
+  }
+
+  return meta.join(" | ");
+}
+
+function buildDeviceReferrerLabel(device) {
+  const referrer = String(device?.referrer || "").trim();
+  if (!referrer) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(referrer);
+    return parsed.origin || referrer;
+  } catch (error) {
+    return referrer;
+  }
+}
+
 function getOrderedDeviceRegistryEntries() {
   const selectedStudentIds = getSelectedStudentIds().filter((studentId) => !!getStudentById(studentId));
   if (!selectedStudentIds.length) {
@@ -2709,6 +2782,8 @@ function renderDeviceRegistry() {
       const studentMeta = [device.studentId, student?.phone || ""].filter(Boolean).join(" | ");
       const canForceLogout = normalizeStatus(device.status) === "active";
       const deviceUsage = student ? buildStudentDeviceUsageLabel(student) : "Unknown device policy";
+      const deviceShellMeta = buildDeviceShellMeta(device);
+      const deviceReferrerLabel = buildDeviceReferrerLabel(device);
 
       return `
         <div class="rounded-[1.5rem] border ${
@@ -2721,18 +2796,20 @@ function renderDeviceRegistry() {
                 ${renderPill(device.status || "Active")}
               </div>
               <h4 class="mt-2 text-lg font-extrabold text-slate-950">${escapeHtml(device.deviceName || "Unknown Device")}</h4>
-              <p class="mt-1 text-sm text-slate-500">${escapeHtml(studentMeta || "Student details unavailable")}</p>
-              <p class="mt-2 text-xs font-semibold text-slate-500">Device policy: ${escapeHtml(deviceUsage)}</p>
-              <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <div>
-                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">IP / Timezone</p>
-                  <p class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(device.publicIp || "Not captured")}</p>
-                  <p class="mt-1 text-xs text-slate-500">${escapeHtml(device.timezone || "Timezone unavailable")}</p>
-                </div>
-                <div>
-                  <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Browser / Platform</p>
-                  <p class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(device.platform || "Platform unavailable")}</p>
-                  <p class="mt-1 text-xs text-slate-500">${escapeHtml(device.userAgent || device.browserLanguage || "Browser details unavailable")}</p>
+               <p class="mt-1 text-sm text-slate-500">${escapeHtml(studentMeta || "Student details unavailable")}</p>
+               <p class="mt-2 text-xs font-semibold text-slate-500">Device policy: ${escapeHtml(deviceUsage)}</p>
+               <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                 <div>
+                   <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Network / Shell</p>
+                   <p class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(buildDeviceNetworkLabel(device))}</p>
+                   <p class="mt-1 text-xs text-slate-500">${escapeHtml(
+                     deviceShellMeta || device.browserLanguage || "Shell details unavailable"
+                   )}</p>
+                 </div>
+                 <div>
+                   <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Browser / Platform</p>
+                   <p class="mt-2 text-sm font-semibold text-slate-900">${escapeHtml(device.platform || "Platform unavailable")}</p>
+                   <p class="mt-1 text-xs text-slate-500">${escapeHtml(device.userAgent || device.browserLanguage || "Browser details unavailable")}</p>
                 </div>
                 <div>
                   <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Location / Screen</p>
@@ -2740,16 +2817,21 @@ function renderDeviceRegistry() {
                   <p class="mt-1 text-xs text-slate-500">${escapeHtml(device.screenSize || "Screen size unavailable")}</p>
                 </div>
               </div>
-              <p class="mt-4 text-xs text-slate-400">
-                First seen: ${escapeHtml(formatDateTime(device.firstSeenOn, "Not recorded"))}
-                | Last login: ${escapeHtml(formatDateTime(device.lastLoginOn, "Not recorded"))}
-                | Last seen: ${escapeHtml(formatDateTime(device.lastSeenOn, "Not recorded"))}
-              </p>
-              ${
-                device.note
-                  ? `<p class="mt-2 text-xs text-slate-500">${escapeHtml(device.note)}</p>`
-                  : ""
-              }
+               <p class="mt-4 text-xs text-slate-400">
+                 First seen: ${escapeHtml(formatDateTime(device.firstSeenOn, "Not recorded"))}
+                 | Last login: ${escapeHtml(formatDateTime(device.lastLoginOn, "Not recorded"))}
+                 | Last seen: ${escapeHtml(formatDateTime(device.lastSeenOn, "Not recorded"))}
+               </p>
+               ${
+                 deviceReferrerLabel
+                   ? `<p class="mt-2 text-xs text-slate-500">Launch source: ${escapeHtml(deviceReferrerLabel)}</p>`
+                   : ""
+               }
+               ${
+                 device.note
+                   ? `<p class="mt-2 text-xs text-slate-500">${escapeHtml(device.note)}</p>`
+                   : ""
+               }
             </div>
             <div class="flex shrink-0 flex-wrap gap-2">
               <button
@@ -2842,9 +2924,35 @@ function setStudentPreviewModalOpen(isOpen) {
     return;
   }
 
+  const wasOpen = !dom.studentPreviewModal.classList.contains("hidden");
   dom.studentPreviewModal.classList.toggle("hidden", !isOpen);
   dom.studentPreviewModal.classList.toggle("flex", isOpen);
-  document.body.style.overflow = isOpen ? "hidden" : "";
+
+  if (isOpen && !wasOpen) {
+    studentPreviewScrollLockY = window.scrollY || window.pageYOffset || 0;
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${studentPreviewScrollLockY}px`;
+    document.body.style.left = "0";
+    document.body.style.right = "0";
+    document.body.style.width = "100%";
+    document.body.style.overflow = "hidden";
+    if (dom.studentPreviewBody) {
+      dom.studentPreviewBody.scrollTop = 0;
+    }
+    return;
+  }
+
+  if (!isOpen && wasOpen) {
+    const restoreScrollY = studentPreviewScrollLockY;
+    document.body.style.position = "";
+    document.body.style.top = "";
+    document.body.style.left = "";
+    document.body.style.right = "";
+    document.body.style.width = "";
+    document.body.style.overflow = "";
+    studentPreviewScrollLockY = 0;
+    window.scrollTo(0, restoreScrollY);
+  }
 }
 
 function closeStudentPreview() {
@@ -3060,16 +3168,22 @@ function renderStudentPreviewModal() {
     ? devices
         .slice(0, 6)
         .map((device) => {
+          const deviceMeta = [buildDeviceNetworkLabel(device), buildDeviceShellMeta(device), device.screenSize || ""]
+            .filter(Boolean)
+            .join(" | ");
+          const deviceReferrerLabel = buildDeviceReferrerLabel(device);
           return `
             <article class="rounded-[1.5rem] border border-slate-100 bg-white p-4">
               <div class="flex flex-wrap items-center justify-between gap-2">
                 <p class="text-sm font-bold text-slate-900">${escapeHtml(device.deviceName || "Unknown device")}</p>
                 ${renderPill(device.status || "Active")}
               </div>
-              <p class="mt-2 text-sm text-slate-600">${escapeHtml(
-                [device.publicIp || "", device.timezone || "", device.screenSize || ""].filter(Boolean).join(" | ") ||
-                  "Device details unavailable"
-              )}</p>
+              <p class="mt-2 text-sm text-slate-600">${escapeHtml(deviceMeta || "Device details unavailable")}</p>
+              ${
+                deviceReferrerLabel
+                  ? `<p class="mt-3 text-xs font-semibold text-slate-500">Launch source: ${escapeHtml(deviceReferrerLabel)}</p>`
+                  : ""
+              }
               ${
                 device.note
                   ? `<p class="mt-3 text-xs font-semibold text-slate-500">${escapeHtml(device.note)}</p>`

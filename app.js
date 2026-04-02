@@ -471,6 +471,46 @@ function writeStoredPortalJson(key, value) {
   }
 }
 
+function detectPortalDisplayMode() {
+  const displayModes = ["standalone", "fullscreen", "minimal-ui", "window-controls-overlay"];
+  for (const mode of displayModes) {
+    try {
+      if (typeof window.matchMedia === "function" && window.matchMedia(`(display-mode: ${mode})`).matches) {
+        return mode;
+      }
+    } catch (error) {
+      // Ignore unsupported display-mode queries.
+    }
+  }
+
+  if (navigator.standalone === true) {
+    return "standalone";
+  }
+
+  return "browser";
+}
+
+function detectPortalClientShell() {
+  const userAgent = navigator.userAgent || "";
+  const referrer = document.referrer || "";
+  const displayMode = detectPortalDisplayMode();
+
+  if (/^android-app:\/\//i.test(referrer)) {
+    return "Trusted Web Activity";
+  }
+  if (/Android/i.test(userAgent) && /(?:; wv\b|\bwv\b)/i.test(userAgent)) {
+    return "Android WebView";
+  }
+  if (displayMode !== "browser") {
+    return "Standalone App";
+  }
+  if (/FBAN|FBAV|Instagram|Line\/|TikTok|GSA\/|LinkedInApp|Snapchat/i.test(userAgent)) {
+    return "Embedded App";
+  }
+
+  return "Browser";
+}
+
 function buildPortalBrowserName() {
   const userAgent = navigator.userAgent || "";
   if (/Edg\//i.test(userAgent)) {
@@ -479,11 +519,11 @@ function buildPortalBrowserName() {
   if (/OPR\//i.test(userAgent) || /Opera/i.test(userAgent)) {
     return "Opera";
   }
-  if (/Chrome\//i.test(userAgent) && !/Edg\//i.test(userAgent)) {
-    return "Chrome";
-  }
   if (/Firefox\//i.test(userAgent)) {
     return "Firefox";
+  }
+  if (/Chrome\//i.test(userAgent) && !/Edg\//i.test(userAgent)) {
+    return "Chrome";
   }
   if (/Safari\//i.test(userAgent) && !/Chrome\//i.test(userAgent) && !/Chromium\//i.test(userAgent)) {
     return "Safari";
@@ -493,7 +533,7 @@ function buildPortalBrowserName() {
 
 function buildPortalPlatformName() {
   const userAgent = navigator.userAgent || "";
-  const platform = navigator.platform || "";
+  const platform = navigator.userAgentData?.platform || navigator.platform || "";
   const source = `${platform} ${userAgent}`;
 
   if (/Windows/i.test(source)) {
@@ -525,7 +565,11 @@ function buildPortalScreenSizeLabel() {
 }
 
 function buildPortalDeviceName() {
-  return `${buildPortalBrowserName()} on ${buildPortalPlatformName()}`;
+  const browserName = buildPortalBrowserName();
+  const platformName = buildPortalPlatformName();
+  const clientShell = detectPortalClientShell();
+  const shellSuffix = clientShell !== "Browser" && clientShell !== browserName ? ` (${clientShell})` : "";
+  return `${browserName}${shellSuffix} on ${platformName}`;
 }
 
 function buildPortalDeviceFingerprint() {
@@ -534,10 +578,62 @@ function buildPortalDeviceFingerprint() {
     navigator.language || "",
     Intl.DateTimeFormat().resolvedOptions().timeZone || "",
     buildPortalScreenSizeLabel(),
+    detectPortalClientShell(),
+    detectPortalDisplayMode(),
   ]
     .map((value) => String(value || "").trim())
     .filter(Boolean)
     .join(" | ");
+}
+
+function normalizePortalPublicIp(value) {
+  const candidate = String(value || "").trim().replace(/\s+/g, "");
+  if (!candidate) {
+    return "";
+  }
+  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(candidate)) {
+    return candidate;
+  }
+  if (/^[a-f0-9:]+$/i.test(candidate) && candidate.includes(":")) {
+    return candidate;
+  }
+  return "";
+}
+
+async function fetchPortalPublicIpFromSource(source) {
+  try {
+    const response = await fetchRemoteResponseWithTimeout(
+      source.url,
+      {
+        method: "GET",
+        headers: {
+          Accept: "application/json, text/plain;q=0.9, */*;q=0.8",
+        },
+      },
+      {
+        timeoutMs: 2500,
+        timeoutMessage: "IP lookup timed out.",
+      }
+    );
+
+    if (!response.ok) {
+      return "";
+    }
+
+    const rawText = await response.text();
+    if (!rawText) {
+      return "";
+    }
+
+    if (source.kind === "text") {
+      return normalizePortalPublicIp(rawText);
+    }
+
+    const payload = JSON.parse(rawText);
+    return normalizePortalPublicIp(payload?.[source.key] || "");
+  } catch (error) {
+    return "";
+  }
 }
 
 async function getPortalPublicIp(options = {}) {
@@ -547,37 +643,26 @@ async function getPortalPublicIp(options = {}) {
     return String(cachedPayload.ip || "").trim();
   }
 
-  try {
-    const response = await fetchRemoteResponseWithTimeout(
-      "https://api64.ipify.org?format=json",
-      {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-        },
-      },
-      {
-        timeoutMs: 5000,
-        timeoutMessage: "IP lookup timed out.",
-      }
-    );
+  const lookupSources = [
+    { url: "https://api64.ipify.org?format=json", kind: "json", key: "ip" },
+    { url: "https://api.ipify.org?format=json", kind: "json", key: "ip" },
+    { url: "https://api.myip.com", kind: "json", key: "ip" },
+    { url: "https://ipapi.co/json/", kind: "json", key: "ip" },
+  ];
 
-    if (!response.ok) {
-      throw new Error("IP lookup failed.");
-    }
+  const lookupResults = await Promise.allSettled(lookupSources.map((source) => fetchPortalPublicIpFromSource(source)));
+  const nextIp =
+    lookupResults.find((result) => result.status === "fulfilled" && normalizePortalPublicIp(result.value))?.value || "";
 
-    const payload = JSON.parse(await response.text());
-    const nextIp = String(payload.ip || "").trim();
-    if (nextIp) {
-      writeStoredPortalJson(SESSION_STORAGE_KEYS.deviceIpCache, {
-        ip: nextIp,
-        cachedAt: Date.now(),
-      });
-    }
+  if (nextIp) {
+    writeStoredPortalJson(SESSION_STORAGE_KEYS.deviceIpCache, {
+      ip: nextIp,
+      cachedAt: Date.now(),
+    });
     return nextIp;
-  } catch (error) {
-    return cachedPayload?.ip ? String(cachedPayload.ip).trim() : "";
   }
+
+  return cachedPayload?.ip ? String(cachedPayload.ip).trim() : "";
 }
 
 function requestPortalGeolocationSnapshot(options = {}) {
@@ -636,6 +721,8 @@ function requestPortalGeolocationSnapshot(options = {}) {
 async function collectPortalDeviceContext(options = {}) {
   const promptLocation = options.promptLocation === true;
   const refreshIp = options.refreshIp === true;
+  const clientShell = detectPortalClientShell();
+  const displayMode = detectPortalDisplayMode();
   const [publicIp, location] = await Promise.all([
     getPortalPublicIp({ forceRefresh: refreshIp }),
     requestPortalGeolocationSnapshot({ prompt: promptLocation }),
@@ -647,10 +734,13 @@ async function collectPortalDeviceContext(options = {}) {
     deviceFingerprint: buildPortalDeviceFingerprint(),
     publicIp,
     userAgent: navigator.userAgent || "",
-    platform: navigator.platform || buildPortalPlatformName(),
-    browserLanguage: navigator.language || "",
+    platform: buildPortalPlatformName(),
+    browserLanguage: navigator.language || navigator.languages?.[0] || "",
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
     screenSize: buildPortalScreenSizeLabel(),
+    clientShell,
+    displayMode,
+    referrer: document.referrer || "",
     locationPermission: String(location?.locationPermission || "Not Requested").trim() || "Not Requested",
     latitude: String(location?.latitude || "").trim(),
     longitude: String(location?.longitude || "").trim(),
