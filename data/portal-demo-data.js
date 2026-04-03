@@ -14,7 +14,7 @@
         password: "law014",
         loginApproval: "Approved",
         passwordResetUrl:
-          "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20LAW-2026-014",
+          "mailto:bjsacademy38@gmail.com?subject=Password%20Reset%20Request%20for%20LAW-2026-014",
         enrolledCourseIds: [
           "judiciary-foundation",
           "criminal-procedure-mastery",
@@ -36,7 +36,7 @@
         password: "bar008",
         loginApproval: "Approved",
         passwordResetUrl:
-          "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20BAR-2026-008",
+          "mailto:bjsacademy38@gmail.com?subject=Password%20Reset%20Request%20for%20BAR-2026-008",
         enrolledCourseIds: ["bar-viva-clinic", "criminal-procedure-mastery"],
         completedLessonIds: ["bar-01", "crim-01", "crim-02"],
         highlight: "Focused on viva confidence and criminal procedure.",
@@ -54,7 +54,7 @@
         password: "lit031",
         loginApproval: "Pending",
         passwordResetUrl:
-          "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20LIT-2026-031",
+          "mailto:bjsacademy38@gmail.com?subject=Password%20Reset%20Request%20for%20LIT-2026-031",
         enrolledCourseIds: ["legal-drafting-lab", "criminal-procedure-mastery"],
         completedLessonIds: ["draft-01"],
         highlight: "Wants practical drafting and procedure side by side.",

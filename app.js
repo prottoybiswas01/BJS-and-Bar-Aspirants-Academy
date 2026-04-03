@@ -1,5 +1,5 @@
 const APPS_SCRIPT_DEPLOYMENT_ID =
-  "AKfycbwTggMJSfIRDC1TGURJwAca38O0ZWErf2sqAW_236WpxaFuge36t30FZXIrmd9d3JnP";
+  "AKfycbycWa-JIbkkc7H0dp7wSqwkH-gHUw7exyCgswOtGEwJdBylsfNzo-1sZ2As_VF_n_sa";
 
 const APP_CONFIG = Object.freeze({
   dataMode: "remote",

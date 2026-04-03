@@ -11,6 +11,8 @@ const SHEET_NAMES = {
   payments: "Payments",
 };
 
+// Keep this ID when you want one fixed spreadsheet.
+// If you copy this project into a new spreadsheet-bound Apps Script, you can clear it to use the active sheet.
 const SPREADSHEET_ID = "1QvEuk1IL-yRZAtu8j54sNDIAHLoDUboBbxTZ6Bh4H20";
 
 const SHEET_HEADERS = {
@@ -5731,17 +5733,34 @@ function syncLatestRegistrationReviewsForStudents_(spreadsheet, students, auth) 
 }
 
 function getSpreadsheet_() {
+  const activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+
   if (SPREADSHEET_ID) {
-    return SpreadsheetApp.openById(SPREADSHEET_ID);
+    try {
+      return SpreadsheetApp.openById(SPREADSHEET_ID);
+    } catch (error) {
+      if (activeSpreadsheet) {
+        return activeSpreadsheet;
+      }
+
+      throw new Error(
+        "The configured spreadsheet could not be opened. Share spreadsheet ID " +
+          SPREADSHEET_ID +
+          " with " +
+          OFFICIAL_SUPPORT_EMAIL_ +
+          " as Editor, or clear SPREADSHEET_ID if this Apps Script is already bound to the correct sheet."
+      );
+    }
   }
 
-  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-  if (spreadsheet) {
-    return spreadsheet;
+  if (activeSpreadsheet) {
+    return activeSpreadsheet;
   }
 
   throw new Error(
-    "No spreadsheet is connected. Bind this Apps Script to a Google Sheet or set SPREADSHEET_ID."
+    "No spreadsheet is connected. Open the target Google Sheet with " +
+      OFFICIAL_SUPPORT_EMAIL_ +
+      " and use Extensions > Apps Script, or set a working SPREADSHEET_ID."
   );
 }
 
