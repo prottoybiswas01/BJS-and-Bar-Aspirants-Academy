@@ -174,6 +174,14 @@ const PUBLIC_CACHE_TTL_SECONDS_ = 0;
 const PUBLIC_CACHE_KEYS_ = Object.freeze({
   courses: "ain-pathshala.public-courses",
 });
+const NOTIFICATION_SETTINGS_PROPERTY_KEY_ = "ain-pathshala.notificationSettings.v1";
+const NOTIFICATION_EVENT_TYPES_ = Object.freeze({
+  login: "login",
+  profile: "profile",
+  course: "course",
+  device: "device",
+  payment: "payment",
+});
 const LOCALIZED_DIGIT_RANGES_ = [
   Object.freeze({ start: 0x09e6, end: 0x09ef }),
   Object.freeze({ start: 0x0660, end: 0x0669 }),
@@ -483,6 +491,7 @@ function doPost(e) {
     if (action === "admingetdashboard") return handleAdminGetDashboard_(request);
     if (action === "adminlogoutdevice") return handleAdminLogoutDevice_(request);
     if (action === "adminupdatestudent") return handleAdminUpdateStudent_(request);
+    if (action === "adminupdatenotificationsettings") return handleAdminUpdateNotificationSettings_(request);
     if (action === "adminbulkstudentaction") return handleAdminBulkStudentAction_(request);
     if (action === "adminassigncourses") return handleAdminAssignCourses_(request);
     if (action === "admincreatecourse") return handleAdminCreateCourse_(request);
@@ -581,6 +590,515 @@ function seedLawPortalDemoData() {
     spreadsheetId: spreadsheet.getId(),
     spreadsheetName: spreadsheet.getName(),
     seeded: result,
+  });
+}
+
+function sanitizeEmailAddress_(value) {
+  const email = String(value || "").trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "";
+}
+
+function escapeHtmlForEmail_(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function isTruthySettingValue_(value, fallback) {
+  if (value === undefined || value === null || value === "") {
+    return !!fallback;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  const normalized = normalizeValue_(value);
+  return ["true", "1", "yes", "on", "enabled", "enable"].indexOf(normalized) !== -1;
+}
+
+function getScriptPropertiesStore_() {
+  try {
+    return PropertiesService.getScriptProperties();
+  } catch (error) {
+    return null;
+  }
+}
+
+function readNotificationSettingsFromStore_() {
+  const store = getScriptPropertiesStore_();
+  if (!store) {
+    return {};
+  }
+
+  try {
+    return parseJsonField_(store.getProperty(NOTIFICATION_SETTINGS_PROPERTY_KEY_)) || {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function writeNotificationSettingsToStore_(settings) {
+  const store = getScriptPropertiesStore_();
+  if (!store) {
+    return;
+  }
+
+  try {
+    store.setProperty(NOTIFICATION_SETTINGS_PROPERTY_KEY_, JSON.stringify(settings || {}));
+  } catch (error) {
+    Logger.log("Unable to save notification settings: " + error);
+  }
+}
+
+function buildDefaultNotificationSettings_(spreadsheet) {
+  const adminsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.admins);
+  const admins = ensureDefaultAdminIfMissing_(adminsData);
+  const primaryAdmin =
+    admins.find(function (admin) {
+      return normalizeValue_(admin.status || "active") === "active";
+    }) ||
+    admins[0] ||
+    {};
+  const primaryAdminEmail = sanitizeEmailAddress_(primaryAdmin.email || "");
+  const siteName = String((spreadsheet && spreadsheet.getName && spreadsheet.getName()) || "").trim();
+
+  return {
+    enabled: true,
+    fromName: siteName || "BJS and Bar Aspirants Academy",
+    replyToEmail: primaryAdminEmail,
+    adminCopyEnabled: !!primaryAdminEmail,
+    adminCopyEmail: primaryAdminEmail,
+    fallbackRecipientEmail: primaryAdminEmail,
+    loginAlerts: true,
+    profileAlerts: true,
+    courseAlerts: true,
+    deviceAlerts: true,
+    paymentAlerts: true,
+  };
+}
+
+function normalizeNotificationSettings_(input, defaults) {
+  const fallbackDefaults = defaults || {};
+  const payload = input || {};
+
+  return {
+    enabled: isTruthySettingValue_(payload.enabled, fallbackDefaults.enabled),
+    fromName: String(payload.fromName || fallbackDefaults.fromName || "BJS and Bar Aspirants Academy").trim(),
+    replyToEmail: sanitizeEmailAddress_(payload.replyToEmail || fallbackDefaults.replyToEmail || ""),
+    adminCopyEnabled: isTruthySettingValue_(payload.adminCopyEnabled, fallbackDefaults.adminCopyEnabled),
+    adminCopyEmail: sanitizeEmailAddress_(payload.adminCopyEmail || fallbackDefaults.adminCopyEmail || ""),
+    fallbackRecipientEmail: sanitizeEmailAddress_(
+      payload.fallbackRecipientEmail || fallbackDefaults.fallbackRecipientEmail || ""
+    ),
+    loginAlerts: isTruthySettingValue_(payload.loginAlerts, fallbackDefaults.loginAlerts),
+    profileAlerts: isTruthySettingValue_(payload.profileAlerts, fallbackDefaults.profileAlerts),
+    courseAlerts: isTruthySettingValue_(payload.courseAlerts, fallbackDefaults.courseAlerts),
+    deviceAlerts: isTruthySettingValue_(payload.deviceAlerts, fallbackDefaults.deviceAlerts),
+    paymentAlerts: isTruthySettingValue_(payload.paymentAlerts, fallbackDefaults.paymentAlerts),
+  };
+}
+
+function sanitizeNotificationSettingsForAdmin_(settings) {
+  return Object.assign({}, settings || {});
+}
+
+function getNotificationSettings_(spreadsheet) {
+  const defaults = buildDefaultNotificationSettings_(spreadsheet);
+  return normalizeNotificationSettings_(readNotificationSettingsFromStore_(), defaults);
+}
+
+function isNotificationTypeEnabled_(settings, type) {
+  if (!settings || !settings.enabled) {
+    return false;
+  }
+
+  if (type === NOTIFICATION_EVENT_TYPES_.login) {
+    return !!settings.loginAlerts;
+  }
+  if (type === NOTIFICATION_EVENT_TYPES_.profile) {
+    return !!settings.profileAlerts;
+  }
+  if (type === NOTIFICATION_EVENT_TYPES_.course) {
+    return !!settings.courseAlerts;
+  }
+  if (type === NOTIFICATION_EVENT_TYPES_.device) {
+    return !!settings.deviceAlerts;
+  }
+  if (type === NOTIFICATION_EVENT_TYPES_.payment) {
+    return !!settings.paymentAlerts;
+  }
+
+  return false;
+}
+
+function shouldSendNotificationForTypes_(settings, types) {
+  return (types || []).some(function (type) {
+    return isNotificationTypeEnabled_(settings, type);
+  });
+}
+
+function formatNotificationDateTime_(value) {
+  const date = new Date(String(value || getNowIso_()).trim());
+  if (Number.isNaN(date.getTime())) {
+    return String(value || "").trim();
+  }
+
+  return Utilities.formatDate(date, Session.getScriptTimeZone() || "Asia/Dhaka", "dd MMM yyyy, hh:mm a");
+}
+
+function formatNotificationDate_(value) {
+  const date = new Date(String(value || "").trim());
+  if (Number.isNaN(date.getTime())) {
+    return String(value || "").trim();
+  }
+
+  return Utilities.formatDate(date, Session.getScriptTimeZone() || "Asia/Dhaka", "dd MMM yyyy");
+}
+
+function buildStudentNotificationActorLabel_(actor) {
+  if (!actor) {
+    return "Admin";
+  }
+
+  if (typeof actor === "string") {
+    return String(actor).trim() || "Admin";
+  }
+
+  return String(actor.username || actor.name || actor.id || "Admin").trim() || "Admin";
+}
+
+function buildStudentNotificationCourseLabels_(courseIds, courses) {
+  const courseLookup = (courses || []).reduce(function (result, course) {
+    const courseId = String(course.id || course.courseId || "").trim();
+    if (courseId && !result[courseId]) {
+      result[courseId] = String(course.title || course.shortTitle || courseId).trim();
+    }
+    return result;
+  }, {});
+
+  return (courseIds || [])
+    .map(function (courseId) {
+      return courseLookup[String(courseId || "").trim()] || String(courseId || "").trim();
+    })
+    .filter(Boolean)
+    .filter(function (label, index, list) {
+      return list.indexOf(label) === index;
+    });
+}
+
+function buildStudentNotificationChangeList_(previousStudent, nextStudent) {
+  if (!previousStudent) {
+    return ["Student profile created"];
+  }
+
+  const fieldLabels = [
+    { key: "name", label: "Name" },
+    { key: "phone", label: "Phone number" },
+    { key: "email", label: "Email address" },
+    { key: "batch", label: "Batch" },
+    { key: "session", label: "Session" },
+    { key: "password", label: "Password" },
+    { key: "status", label: "Account status" },
+    { key: "loginApproval", label: "Login approval" },
+    { key: "portalAccessMode", label: "Access mode" },
+    { key: "highlight", label: "Student note" },
+    { key: "maxDeviceCount", label: "Device limit" },
+  ];
+
+  return fieldLabels
+    .filter(function (field) {
+      return serializeRowValue_(previousStudent[field.key]) !== serializeRowValue_(nextStudent[field.key]);
+    })
+    .map(function (field) {
+      return field.label;
+    });
+}
+
+function buildStudentNotificationDeviceSummary_(device) {
+  const summaryParts = [
+    String(device.deviceName || "").trim(),
+    String(device.platform || "").trim(),
+    String(device.screenSize || "").trim(),
+    String(device.browserLanguage || "").trim(),
+    String(device.timezone || "").trim(),
+  ].filter(Boolean);
+
+  return summaryParts.length ? summaryParts.join(" | ") : "Unknown device";
+}
+
+function normalizeStudentNotificationDetails_(details) {
+  return (details || [])
+    .map(function (entry) {
+      const label = String((entry && entry.label) || "").trim();
+      const value = entry && entry.value !== undefined && entry.value !== null ? String(entry.value).trim() : "";
+      return label && value ? { label: label, value: value } : null;
+    })
+    .filter(Boolean);
+}
+
+function buildStudentNotificationSubject_(spreadsheet, options) {
+  const siteName = String(
+    (options && options.siteName) ||
+      (spreadsheet && spreadsheet.getName && spreadsheet.getName()) ||
+      "BJS and Bar Aspirants Academy"
+  ).trim();
+  const subject = String((options && options.subject) || "Portal update").trim() || "Portal update";
+  return subject + " | " + siteName;
+}
+
+function buildStudentNotificationTextBody_(student, options) {
+  const detailLines = normalizeStudentNotificationDetails_(options && options.details).map(function (detail) {
+    return detail.label + ": " + detail.value;
+  });
+
+  return [
+    "Hello " + String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.name, "Student")).trim() + ",",
+    "",
+    String((options && options.intro) || "Your student portal account has a new update.").trim(),
+    "",
+  ]
+    .concat(detailLines)
+    .concat([
+      "",
+      String((options && options.footnote) || "Log in to the portal to review the latest information.").trim(),
+    ])
+    .join("\n");
+}
+
+function buildStudentNotificationHtmlBody_(student, options) {
+  const detailMarkup = normalizeStudentNotificationDetails_(options && options.details)
+    .map(function (detail) {
+      return (
+        '<tr><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;font-weight:700;color:#0f172a;">' +
+        escapeHtmlForEmail_(detail.label) +
+        '</td><td style="padding:8px 12px;border-bottom:1px solid #e2e8f0;color:#334155;">' +
+        escapeHtmlForEmail_(detail.value) +
+        "</td></tr>"
+      );
+    })
+    .join("");
+
+  return (
+    '<div style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;color:#0f172a;">' +
+    '<div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;padding:24px;">' +
+    '<p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:#2563eb;">Student Portal</p>' +
+    '<h2 style="margin:0 0 16px;font-size:24px;line-height:1.3;">' +
+    escapeHtmlForEmail_(String((options && options.title) || "Portal update").trim()) +
+    "</h2>" +
+    '<p style="margin:0 0 20px;font-size:15px;line-height:1.7;color:#334155;">Hello ' +
+    escapeHtmlForEmail_(String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.name, "Student")).trim()) +
+    ", " +
+    escapeHtmlForEmail_(String((options && options.intro) || "Your student portal account has a new update.").trim()) +
+    "</p>" +
+    (detailMarkup
+      ? '<table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">' +
+        detailMarkup +
+        "</table>"
+      : "") +
+    '<p style="margin:20px 0 0;font-size:14px;line-height:1.7;color:#475569;">' +
+    escapeHtmlForEmail_(
+      String((options && options.footnote) || "Log in to the portal to review the latest information.").trim()
+    ) +
+    "</p>" +
+    "</div></div>"
+  );
+}
+
+function sendStudentNotification_(spreadsheet, student, options) {
+  try {
+    const settings = getNotificationSettings_(spreadsheet);
+    const notificationTypes = Array.isArray(options && options.types) ? options.types.filter(Boolean) : [];
+    if (!notificationTypes.length || !shouldSendNotificationForTypes_(settings, notificationTypes)) {
+      return { ok: true, skipped: true };
+    }
+
+    const studentEmail = sanitizeEmailAddress_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.email, ""));
+    const fallbackEmail = sanitizeEmailAddress_(settings.fallbackRecipientEmail || "");
+    const primaryRecipient = studentEmail || fallbackEmail;
+    if (!primaryRecipient) {
+      return { ok: false, skipped: true, message: "No valid recipient email is available." };
+    }
+
+    const messageOptions = {
+      name: String(settings.fromName || "Student Portal").trim() || "Student Portal",
+      htmlBody: buildStudentNotificationHtmlBody_(student, options),
+    };
+    if (settings.replyToEmail) {
+      messageOptions.replyTo = settings.replyToEmail;
+    }
+
+    const adminCopyEmail = sanitizeEmailAddress_(settings.adminCopyEmail || "");
+    if (settings.adminCopyEnabled && adminCopyEmail && adminCopyEmail !== primaryRecipient) {
+      messageOptions.bcc = adminCopyEmail;
+    }
+
+    MailApp.sendEmail(
+      primaryRecipient,
+      buildStudentNotificationSubject_(spreadsheet, options),
+      buildStudentNotificationTextBody_(student, options),
+      messageOptions
+    );
+
+    return { ok: true };
+  } catch (error) {
+    Logger.log("Student notification send failed: " + error);
+    return { ok: false, message: error && error.message ? error.message : "Notification send failed." };
+  }
+}
+
+function notifyStudentLogin_(spreadsheet, student, request, deviceLoginResult) {
+  const deviceInfo = buildStudentDevicePayloadFromRequest_(request);
+  sendStudentNotification_(spreadsheet, student, {
+    types: [NOTIFICATION_EVENT_TYPES_.login],
+    subject: "Login successful",
+    title: "Login successful",
+    intro: "your account logged in successfully.",
+    details: [
+      { label: "Student ID", value: getStudentId_(student) },
+      { label: "Time", value: formatNotificationDateTime_(getNowIso_()) },
+      { label: "Device", value: buildStudentNotificationDeviceSummary_(deviceInfo) },
+      { label: "IP Address", value: String(deviceInfo.publicIp || "").trim() },
+      {
+        label: "Approved devices",
+        value: String(((deviceLoginResult && deviceLoginResult.activeDevices) || []).length || 1),
+      },
+    ],
+    footnote:
+      "If this login was not completed by you, contact the academy immediately and ask the admin to remove unknown devices.",
+  });
+}
+
+function notifyStudentProfileUpdate_(spreadsheet, previousStudent, nextStudent, courseIds, courses, actor) {
+  const changedFields = buildStudentNotificationChangeList_(previousStudent, nextStudent);
+  const previousCourseIds = previousStudent
+    ? parseStringList_(getFirstAvailableValue_(previousStudent, STUDENT_FIELD_KEYS_.enrolledCourseIds, ""))
+    : [];
+  const normalizedCourseIds = (courseIds || []).filter(Boolean);
+  const courseChanged = buildPipeList_(previousCourseIds) !== buildPipeList_(normalizedCourseIds);
+  if (!changedFields.length && !courseChanged) {
+    return;
+  }
+
+  const notificationTypes = [];
+  if (changedFields.length) {
+    notificationTypes.push(NOTIFICATION_EVENT_TYPES_.profile);
+  }
+  if (courseChanged) {
+    notificationTypes.push(NOTIFICATION_EVENT_TYPES_.course);
+  }
+
+  sendStudentNotification_(spreadsheet, nextStudent, {
+    types: notificationTypes,
+    subject: previousStudent ? "Account information updated" : "Student account created",
+    title: previousStudent ? "Account information updated" : "Student account created",
+    intro: "your student portal information was updated by the admin team.",
+    details: [
+      { label: "Student ID", value: getStudentId_(nextStudent) },
+      { label: "Updated by", value: buildStudentNotificationActorLabel_(actor) },
+      { label: "Changed sections", value: changedFields.join(", ") },
+      {
+        label: "Login access",
+        value:
+          String(nextStudent.loginApproval || "Pending").trim() +
+          (nextStudent.portalAccessMode ? " / " + String(nextStudent.portalAccessMode).trim() : ""),
+      },
+      {
+        label: "Allowed courses",
+        value: buildStudentNotificationCourseLabels_(normalizedCourseIds, courses).join(", ") || "No active course assigned",
+      },
+    ],
+    footnote: "Log in to your profile to review the latest course and access information.",
+  });
+}
+
+function notifyStudentCourseAccessUpdate_(spreadsheet, student, courseIds, courses, actor, note) {
+  sendStudentNotification_(spreadsheet, student, {
+    types: [NOTIFICATION_EVENT_TYPES_.course],
+    subject: "Course access updated",
+    title: "Course access updated",
+    intro: "your enrolled course access was updated by the admin team.",
+    details: [
+      { label: "Student ID", value: getStudentId_(student) },
+      { label: "Updated by", value: buildStudentNotificationActorLabel_(actor) },
+      {
+        label: "Current courses",
+        value: buildStudentNotificationCourseLabels_(courseIds, courses).join(", ") || "No active course assigned",
+      },
+      { label: "Note", value: String(note || "").trim() },
+    ],
+    footnote: "Open your profile to review access dates, payment windows, and lesson availability.",
+  });
+}
+
+function notifyStudentRegistrationReview_(spreadsheet, student, registration, requestedCourseIds, courses, actor, approved, note) {
+  sendStudentNotification_(spreadsheet, student, {
+    types: approved
+      ? [NOTIFICATION_EVENT_TYPES_.profile, NOTIFICATION_EVENT_TYPES_.course]
+      : [NOTIFICATION_EVENT_TYPES_.profile],
+    subject: approved ? "Registration approved" : "Registration review update",
+    title: approved ? "Registration approved" : "Registration review update",
+    intro: approved
+      ? "your registration was approved and your portal account is now ready."
+      : "your registration request was reviewed by the admin team.",
+    details: [
+      { label: "Student ID", value: getStudentId_(student) || String(registration.studentId || "").trim() },
+      { label: "Reviewed by", value: buildStudentNotificationActorLabel_(actor) },
+      { label: "Status", value: approved ? "Approved" : "Rejected" },
+      {
+        label: "Requested courses",
+        value: buildStudentNotificationCourseLabels_(requestedCourseIds, courses).join(", ") || "No course requested",
+      },
+      { label: "Review note", value: String(note || "").trim() },
+    ],
+    footnote: approved
+      ? "You can now log in to the portal and review your assigned courses."
+      : "If you need clarification, contact the academy support team.",
+  });
+}
+
+function notifyStudentPaymentReview_(spreadsheet, student, payment, course, approved, actor, note) {
+  sendStudentNotification_(spreadsheet, student, {
+    types: [NOTIFICATION_EVENT_TYPES_.payment],
+    subject: approved ? "Payment approved" : "Payment review update",
+    title: approved ? "Payment approved" : "Payment review update",
+    intro: approved
+      ? "your course payment was approved and your access has been updated."
+      : "your submitted payment request was reviewed by the admin team.",
+    details: [
+      { label: "Student ID", value: getStudentId_(student) },
+      { label: "Course", value: String((course && (course.title || course.shortTitle || course.id)) || payment.courseId || "").trim() },
+      { label: "Amount", value: String(payment.amount || "").trim() },
+      { label: "Reviewed by", value: buildStudentNotificationActorLabel_(actor) },
+      { label: "Payment status", value: approved ? "Approved" : "Rejected" },
+      { label: "Payment date", value: formatNotificationDate_(payment.paymentDate || payment.submittedOn || "") },
+      { label: "Access until", value: formatNotificationDate_(payment.paymentDueDate || payment.accessEndDate || "") },
+      { label: "Review note", value: String(note || "").trim() },
+    ],
+    footnote: approved
+      ? "Log in to the portal to confirm your updated access window."
+      : "If you believe this review is incorrect, contact the academy support team.",
+  });
+}
+
+function notifyStudentDeviceUpdate_(spreadsheet, student, device, actor, title, intro, note) {
+  sendStudentNotification_(spreadsheet, student, {
+    types: [NOTIFICATION_EVENT_TYPES_.device],
+    subject: title,
+    title: title,
+    intro: intro,
+    details: [
+      { label: "Student ID", value: getStudentId_(student) },
+      { label: "Updated by", value: buildStudentNotificationActorLabel_(actor) },
+      { label: "Time", value: formatNotificationDateTime_(getNowIso_()) },
+      { label: "Device", value: buildStudentNotificationDeviceSummary_(device || {}) },
+      { label: "IP Address", value: String((device && device.publicIp) || "").trim() },
+      { label: "Note", value: String(note || "").trim() },
+    ],
+    footnote: "Log in again if you still need to use this device after the update.",
   });
 }
 
@@ -686,6 +1204,8 @@ function handleLogin_(request) {
     .filter(function (courseId, index, list) {
       return list.indexOf(courseId) === index;
     });
+
+  notifyStudentLogin_(spreadsheet, student, request, deviceLoginResult);
 
   return jsonOutput_({
     ok: true,
@@ -2875,6 +3395,7 @@ function approvePaymentRecordById_(spreadsheet, paymentId, options) {
   }
 
   const payment = paymentsData.records[paymentIndex] || {};
+  const wasPaymentApproved = normalizeValue_(payment.status || "") === "approved";
   const studentLookup = buildStudentLookupMaps_(studentsData.records);
   const student = resolveLinkedStudentRecord_(
     studentLookup,
@@ -3091,6 +3612,10 @@ function approvePaymentRecordById_(spreadsheet, paymentId, options) {
     name: reviewedBy,
     id: reviewedBy,
   });
+  const finalPayment = nextPayments[paymentIndex] || payment;
+  if (!wasPaymentApproved && (hasStudentChanges || hasEnrollmentChanges || hasPaymentChanges)) {
+    notifyStudentPaymentReview_(spreadsheet, finalStudent, finalPayment, course, true, reviewedBy, reviewNote);
+  }
 
   return {
     ok: true,
@@ -3184,6 +3709,25 @@ function handleAdminGetDashboard_(request) {
   return jsonOutput_(buildAdminPayload_(getSpreadsheet_(), auth));
 }
 
+function handleAdminUpdateNotificationSettings_(request) {
+  const auth = getAuthorizedAdminSession_(request);
+  if (!auth) {
+    return unauthorizedOutput_();
+  }
+  const readOnlyResponse = requireAdminWriteAccess_(auth);
+  if (readOnlyResponse) {
+    return readOnlyResponse;
+  }
+
+  const spreadsheet = getSpreadsheet_();
+  const defaults = buildDefaultNotificationSettings_(spreadsheet);
+  const payload = parseJsonField_(request.settings) || request;
+  const normalizedSettings = normalizeNotificationSettings_(payload, defaults);
+  writeNotificationSettingsToStore_(normalizedSettings);
+
+  return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
+}
+
 function handleAdminUpdateStudent_(request) {
   const auth = getAuthorizedAdminSession_(request);
   if (!auth) {
@@ -3203,6 +3747,7 @@ function handleAdminUpdateStudent_(request) {
   const existingStudent = studentsData.records.find(function (student) {
     return explicitStudentId && getStudentId_(student) === explicitStudentId;
   });
+  const previousStudentSnapshot = existingStudent ? Object.assign({}, existingStudent) : null;
   const studentId = explicitStudentId || (existingStudent ? getStudentId_(existingStudent) : generateStudentId_(studentsData.records));
   const courseIds = buildCourseIdList_(
     payload.enrolledCourseIds || payload.courseIds || request.enrolledCourseIds || request.courseIds || "",
@@ -3298,6 +3843,7 @@ function handleAdminUpdateStudent_(request) {
   }
 
   syncLatestRegistrationReviewsForStudents_(spreadsheet, [nextStudent], auth);
+  notifyStudentProfileUpdate_(spreadsheet, previousStudentSnapshot, nextStudent, courseIds, courses, auth);
 
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
 }
@@ -3371,13 +3917,24 @@ function handleAdminBulkStudentAction_(request) {
   });
 
   writeSheetEntries_(studentsData.sheet, studentsData.headers, nextStudents);
-  syncLatestRegistrationReviewsForStudents_(
-    spreadsheet,
-    nextStudents.filter(function (student) {
-      return selected[getStudentId_(student)];
-    }),
-    auth
-  );
+  const affectedStudents = nextStudents.filter(function (student) {
+    return selected[getStudentId_(student)];
+  });
+  const liveCourses = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses));
+  syncLatestRegistrationReviewsForStudents_(spreadsheet, affectedStudents, auth);
+  affectedStudents.forEach(function (student) {
+    const previousStudent = studentsData.records.find(function (entry) {
+      return getStudentId_(entry) === getStudentId_(student);
+    });
+    notifyStudentProfileUpdate_(
+      spreadsheet,
+      previousStudent || null,
+      student,
+      parseStringList_(student.enrolledCourseIds || ""),
+      liveCourses,
+      auth
+    );
+  });
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
 }
 
@@ -3413,6 +3970,25 @@ function handleAdminAssignCourses_(request) {
     unlimitedAccess: request.unlimitedAccess || "",
     replaceExisting: request.replaceExisting === "true",
     courseRulesMap: courseRulesMap,
+  });
+
+  const updatedStudents = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students));
+  studentIds.forEach(function (studentId) {
+    const student = updatedStudents.find(function (entry) {
+      return getStudentId_(entry) === studentId;
+    });
+    if (!student) {
+      return;
+    }
+
+    notifyStudentCourseAccessUpdate_(
+      spreadsheet,
+      student,
+      getStudentAssignedCourseIds_(spreadsheet, student),
+      courses,
+      auth,
+      "Course access rules were updated from the admin panel."
+    );
   });
 
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
@@ -3587,6 +4163,20 @@ function handleAdminLogoutDevice_(request) {
     "Logged Out"
   );
   writeSheetEntries_(devicesData.sheet, devicesData.headers, nextDevices);
+  const linkedStudent = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students)).find(function (student) {
+    return getStudentId_(student) === getDeviceStudentId_(nextDevices[deviceIndex]);
+  });
+  if (linkedStudent) {
+    notifyStudentDeviceUpdate_(
+      spreadsheet,
+      linkedStudent,
+      nextDevices[deviceIndex],
+      auth,
+      "Device access removed",
+      "an approved device was logged out from your account by the admin team.",
+      "Forced logout from the admin panel."
+    );
+  }
 
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
 }
@@ -3614,6 +4204,13 @@ function handleAdminDeleteDevice_(request) {
 
   const spreadsheet = getSpreadsheet_();
   const devicesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.devices);
+  const removedDevice = devicesData.records.find(function (device) {
+    if (deviceRecordId) {
+      return getDeviceRecordId_(device) === deviceRecordId;
+    }
+
+    return getDeviceStudentId_(device) === studentId && getDeviceIdValue_(device) === deviceId;
+  }) || null;
   const nextDevices = devicesData.records.filter(function (device) {
     if (deviceRecordId) {
       return getDeviceRecordId_(device) !== deviceRecordId;
@@ -3630,6 +4227,22 @@ function handleAdminDeleteDevice_(request) {
   }
 
   writeSheetEntries_(devicesData.sheet, devicesData.headers, nextDevices);
+  if (removedDevice) {
+    const linkedStudent = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students)).find(function (student) {
+      return getStudentId_(student) === getDeviceStudentId_(removedDevice);
+    });
+    if (linkedStudent) {
+      notifyStudentDeviceUpdate_(
+        spreadsheet,
+        linkedStudent,
+        removedDevice,
+        auth,
+        "Approved device deleted",
+        "an approved device entry was deleted from your account by the admin team.",
+        "Device approval was removed from the admin panel."
+      );
+    }
+  }
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
 }
 
@@ -3743,6 +4356,17 @@ function handleAdminApproveRegistration_(request) {
     })
   );
 
+  notifyStudentRegistrationReview_(
+    spreadsheet,
+    nextStudent,
+    registration,
+    mergedCourseIds,
+    courses,
+    auth,
+    true,
+    String(request.reviewNote || "Approved from admin panel.").trim()
+  );
+
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
 }
 
@@ -3764,6 +4388,7 @@ function handleAdminRejectRegistration_(request) {
   const spreadsheet = getSpreadsheet_();
   const registrationsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.registrations);
   const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
+  const courses = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.courses));
 
   const registration = registrationsData.records.find(function (entry) {
     return String(entry.id || "") === registrationId;
@@ -3808,6 +4433,29 @@ function handleAdminRejectRegistration_(request) {
         return nextStudent;
       })
     );
+  }
+
+  if (studentId) {
+    const rejectedStudent = studentsData.records.find(function (student) {
+      return getStudentId_(student) === studentId;
+    });
+    if (rejectedStudent) {
+      const nextRejectedStudent = Object.assign({}, rejectedStudent, {
+        status: "Inactive",
+        loginApproval: "Rejected",
+        portalAccessMode: "",
+      });
+      notifyStudentRegistrationReview_(
+        spreadsheet,
+        nextRejectedStudent,
+        registration,
+        buildCourseIdList_(registration.requestedCourseIds || "", courses),
+        courses,
+        auth,
+        false,
+        String(request.reviewNote || "Rejected from admin panel.").trim()
+      );
+    }
   }
 
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
@@ -3855,6 +4503,7 @@ function handleAdminReviewPayment_(request) {
   }
 
   if (reviewAction === "reject") {
+    const reviewNote = String(request.reviewNote || "Payment rejected from admin panel.").trim();
     writeSheetEntries_(
       paymentsData.sheet,
       paymentsData.headers,
@@ -3867,10 +4516,26 @@ function handleAdminReviewPayment_(request) {
         nextEntry.status = "Rejected";
         nextEntry.reviewedOn = getNowIso_();
         nextEntry.reviewedBy = auth.username || auth.name || auth.id || "";
-        nextEntry.reviewNote = String(request.reviewNote || "Payment rejected from admin panel.");
+        nextEntry.reviewNote = reviewNote;
         return nextEntry;
       })
     );
+    if (normalizeValue_(payment.status || "") !== "rejected") {
+      notifyStudentPaymentReview_(
+        spreadsheet,
+        student,
+        Object.assign({}, payment, {
+          status: "Rejected",
+          reviewNote: reviewNote,
+        }),
+        courses.find(function (entry) {
+          return String(entry.id || entry.courseId || "").trim() === courseId;
+        }) || null,
+        false,
+        auth,
+        reviewNote
+      );
+    }
 
     return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
   }
@@ -5360,11 +6025,7 @@ function getAdminSessionStorageKey_(token) {
 }
 
 function getAdminSessionStore_() {
-  try {
-    return PropertiesService.getScriptProperties();
-  } catch (error) {
-    return null;
-  }
+  return getScriptPropertiesStore_();
 }
 
 function refreshAdminSessionPayloadExpiry_(payload) {
@@ -5470,6 +6131,7 @@ function buildAdminPayload_(spreadsheet, adminSession) {
     messages: moderatorView ? [] : readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.messages)),
     devices: moderatorView ? [] : sanitizeDevicesForAdmin_(readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.devices))),
     payments: moderatorView ? [] : readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.payments)),
+    notificationSettings: sanitizeNotificationSettingsForAdmin_(getNotificationSettings_(spreadsheet)),
   };
 }
 

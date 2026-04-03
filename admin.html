@@ -375,6 +375,99 @@
           </div>
         </div>
 
+        <article class="panel-card rounded-[2rem] border border-white/70 bg-white p-5 sm:p-6">
+          <div class="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div class="max-w-3xl">
+              <p class="text-xs font-bold uppercase tracking-[0.3em] text-slate-400">Email Notifications</p>
+              <h3 class="mt-2 text-2xl font-extrabold text-slate-950">Portal Mail Settings</h3>
+              <p class="mt-3 text-sm leading-6 text-slate-600">
+                Students can receive automatic mail when they log in, get course access, or have their account, device, or payment
+                status updated. Mail is still sent from the Google account that owns the deployed Apps Script, while the email below
+                works as reply-to, fallback, and admin copy.
+              </p>
+            </div>
+            <span
+              id="notificationSettingsBadge"
+              class="inline-flex rounded-full bg-emerald-50 px-4 py-2 text-xs font-bold uppercase tracking-[0.24em] text-emerald-700"
+            >
+              Loading
+            </span>
+          </div>
+
+          <form id="notificationSettingsForm" class="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1.1fr),minmax(0,0.9fr)]">
+            <div class="grid gap-3">
+              <input
+                id="notificationFromName"
+                type="text"
+                placeholder="Mail display name"
+                class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:bg-white"
+              />
+              <input
+                id="notificationReplyToEmail"
+                type="email"
+                placeholder="Reply-to email"
+                class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:bg-white"
+              />
+              <input
+                id="notificationAdminCopyEmail"
+                type="email"
+                placeholder="Admin copy email"
+                class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:bg-white"
+              />
+              <input
+                id="notificationFallbackEmail"
+                type="email"
+                placeholder="Fallback recipient email"
+                class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:bg-white"
+              />
+            </div>
+
+            <div class="grid gap-3 sm:grid-cols-2">
+              <label class="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+                <input id="notificationEnabled" type="checkbox" class="mr-2 h-4 w-4 rounded border-slate-300" />
+                Enable all mails
+              </label>
+              <label class="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+                <input id="notificationAdminCopyEnabled" type="checkbox" class="mr-2 h-4 w-4 rounded border-slate-300" />
+                Send admin copy
+              </label>
+              <label class="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+                <input id="notificationLoginAlerts" type="checkbox" class="mr-2 h-4 w-4 rounded border-slate-300" />
+                Login mails
+              </label>
+              <label class="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+                <input id="notificationProfileAlerts" type="checkbox" class="mr-2 h-4 w-4 rounded border-slate-300" />
+                Profile update mails
+              </label>
+              <label class="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+                <input id="notificationCourseAlerts" type="checkbox" class="mr-2 h-4 w-4 rounded border-slate-300" />
+                Course access mails
+              </label>
+              <label class="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700">
+                <input id="notificationDeviceAlerts" type="checkbox" class="mr-2 h-4 w-4 rounded border-slate-300" />
+                Device update mails
+              </label>
+              <label class="rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 sm:col-span-2">
+                <input id="notificationPaymentAlerts" type="checkbox" class="mr-2 h-4 w-4 rounded border-slate-300" />
+                Payment review mails
+              </label>
+            </div>
+
+            <div class="flex flex-col gap-3 xl:col-span-2 sm:flex-row sm:items-center sm:justify-between">
+              <button
+                id="saveNotificationSettingsBtn"
+                type="submit"
+                class="rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+              >
+                Save Mail Settings
+              </button>
+              <p id="notificationSettingsFeedback" class="text-sm text-slate-500">
+                Student email address is used first. If a student has no email, the fallback recipient receives the update.
+              </p>
+            </div>
+          </form>
+        </article>
+
         <div class="space-y-8">
           <section class="space-y-8">
             <article class="panel-card rounded-[2rem] border border-white/70 bg-white p-5 sm:p-6">
@@ -753,6 +846,6 @@
     </div>
 
     <script src="./portal-copy.js?v=20260315-1" defer></script>
-    <script src="./admin-app.js?v=20260402-4" defer></script>
+    <script src="./admin-app.js?v=20260403-1" defer></script>
   </body>
 </html>

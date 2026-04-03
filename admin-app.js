@@ -278,6 +278,21 @@ const dom = {
   adminWelcome: document.getElementById("adminWelcome"),
   adminTopFeedback: document.getElementById("adminTopFeedback"),
   adminModeBanner: document.getElementById("adminModeBanner"),
+  notificationSettingsBadge: document.getElementById("notificationSettingsBadge"),
+  notificationSettingsForm: document.getElementById("notificationSettingsForm"),
+  notificationFromName: document.getElementById("notificationFromName"),
+  notificationReplyToEmail: document.getElementById("notificationReplyToEmail"),
+  notificationAdminCopyEmail: document.getElementById("notificationAdminCopyEmail"),
+  notificationFallbackEmail: document.getElementById("notificationFallbackEmail"),
+  notificationEnabled: document.getElementById("notificationEnabled"),
+  notificationAdminCopyEnabled: document.getElementById("notificationAdminCopyEnabled"),
+  notificationLoginAlerts: document.getElementById("notificationLoginAlerts"),
+  notificationProfileAlerts: document.getElementById("notificationProfileAlerts"),
+  notificationCourseAlerts: document.getElementById("notificationCourseAlerts"),
+  notificationDeviceAlerts: document.getElementById("notificationDeviceAlerts"),
+  notificationPaymentAlerts: document.getElementById("notificationPaymentAlerts"),
+  saveNotificationSettingsBtn: document.getElementById("saveNotificationSettingsBtn"),
+  notificationSettingsFeedback: document.getElementById("notificationSettingsFeedback"),
   refreshDashboardBtn: document.getElementById("refreshDashboardBtn"),
   summaryStudents: document.getElementById("summaryStudents"),
   summaryPending: document.getElementById("summaryPending"),
@@ -368,6 +383,7 @@ function createEmptyDashboard() {
     messages: [],
     devices: [],
     payments: [],
+    notificationSettings: createDefaultNotificationSettings(),
     studentMap: new Map(),
     courseMap: new Map(),
   };
@@ -527,6 +543,51 @@ function parseList(value) {
     .split(/[\n,|]/)
     .map((item) => String(item || "").trim())
     .filter(Boolean);
+}
+
+function normalizeNotificationFlag(value, fallback = false) {
+  if (value === undefined || value === null || value === "") {
+    return !!fallback;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  return ["true", "1", "yes", "on", "enabled"].includes(normalizeLookupText(value));
+}
+
+function createDefaultNotificationSettings() {
+  return {
+    enabled: true,
+    fromName: "BJS and Bar Aspirants Academy",
+    replyToEmail: "",
+    adminCopyEnabled: true,
+    adminCopyEmail: "",
+    fallbackRecipientEmail: "",
+    loginAlerts: true,
+    profileAlerts: true,
+    courseAlerts: true,
+    deviceAlerts: true,
+    paymentAlerts: true,
+  };
+}
+
+function normalizeNotificationSettings(settings = {}) {
+  const defaults = createDefaultNotificationSettings();
+  return {
+    enabled: normalizeNotificationFlag(settings.enabled, defaults.enabled),
+    fromName: String(settings.fromName || defaults.fromName).trim(),
+    replyToEmail: String(settings.replyToEmail || defaults.replyToEmail).trim(),
+    adminCopyEnabled: normalizeNotificationFlag(settings.adminCopyEnabled, defaults.adminCopyEnabled),
+    adminCopyEmail: String(settings.adminCopyEmail || defaults.adminCopyEmail).trim(),
+    fallbackRecipientEmail: String(settings.fallbackRecipientEmail || defaults.fallbackRecipientEmail).trim(),
+    loginAlerts: normalizeNotificationFlag(settings.loginAlerts, defaults.loginAlerts),
+    profileAlerts: normalizeNotificationFlag(settings.profileAlerts, defaults.profileAlerts),
+    courseAlerts: normalizeNotificationFlag(settings.courseAlerts, defaults.courseAlerts),
+    deviceAlerts: normalizeNotificationFlag(settings.deviceAlerts, defaults.deviceAlerts),
+    paymentAlerts: normalizeNotificationFlag(settings.paymentAlerts, defaults.paymentAlerts),
+  };
 }
 
 function buildPipeList(values) {
@@ -1436,6 +1497,7 @@ function normalizeDashboard(payload = {}) {
     messages,
     devices,
     payments,
+    notificationSettings: normalizeNotificationSettings(payload.notificationSettings || {}),
     studentMap,
     courseMap,
   };
@@ -1518,6 +1580,7 @@ function syncReadOnlyDashboardState() {
   if (dom.studentPreviewOpenEditorBtn) {
     dom.studentPreviewOpenEditorBtn.classList.toggle("hidden", readOnly);
   }
+  setContainerControlsDisabled(dom.notificationSettingsForm, readOnly);
   setContainerControlsDisabled(dom.studentEditorForm, readOnly);
   setContainerControlsDisabled(dom.courseForm, readOnly);
   setContainerControlsDisabled(dom.selectedStudentWorkspace, readOnly);
@@ -2362,6 +2425,32 @@ function renderSummaryCards() {
 
   const adminName = state.admin?.name || state.admin?.username || "Admin";
   dom.adminWelcome.textContent = isReadOnlySession() ? `${adminName} Moderator Dashboard` : `${adminName} Dashboard`;
+}
+
+function renderNotificationSettings() {
+  if (!dom.notificationSettingsForm) {
+    return;
+  }
+
+  const settings = normalizeNotificationSettings(state.data.notificationSettings || {});
+  dom.notificationFromName.value = settings.fromName || "";
+  dom.notificationReplyToEmail.value = settings.replyToEmail || "";
+  dom.notificationAdminCopyEmail.value = settings.adminCopyEmail || "";
+  dom.notificationFallbackEmail.value = settings.fallbackRecipientEmail || "";
+  dom.notificationEnabled.checked = !!settings.enabled;
+  dom.notificationAdminCopyEnabled.checked = !!settings.adminCopyEnabled;
+  dom.notificationLoginAlerts.checked = !!settings.loginAlerts;
+  dom.notificationProfileAlerts.checked = !!settings.profileAlerts;
+  dom.notificationCourseAlerts.checked = !!settings.courseAlerts;
+  dom.notificationDeviceAlerts.checked = !!settings.deviceAlerts;
+  dom.notificationPaymentAlerts.checked = !!settings.paymentAlerts;
+
+  if (dom.notificationSettingsBadge) {
+    dom.notificationSettingsBadge.textContent = settings.enabled ? "Enabled" : "Disabled";
+    dom.notificationSettingsBadge.className = settings.enabled
+      ? "inline-flex rounded-full bg-emerald-50 px-4 py-2 text-xs font-bold uppercase tracking-[0.24em] text-emerald-700"
+      : "inline-flex rounded-full bg-rose-50 px-4 py-2 text-xs font-bold uppercase tracking-[0.24em] text-rose-700";
+  }
 }
 
 function buildAdmissionsAnalytics() {
@@ -4202,6 +4291,7 @@ function applySharedCourseFilter(nextValue) {
 
 function renderDashboard() {
   renderSummaryCards();
+  renderNotificationSettings();
   renderCourseFilterControls();
   renderAdmissionsAnalytics();
   renderStudentTable();
@@ -4352,6 +4442,44 @@ async function handleRefreshDashboard() {
     await loadDashboard("Dashboard refreshed.");
   } catch (error) {
     setFeedback(dom.adminTopFeedback, error.message || "Unable to refresh data.", "error");
+  }
+}
+
+async function handleNotificationSettingsSave(event) {
+  event.preventDefault();
+
+  if (guardReadOnlyAction(dom.notificationSettingsFeedback)) {
+    return;
+  }
+
+  const payload = {
+    enabled: dom.notificationEnabled.checked,
+    fromName: dom.notificationFromName.value.trim(),
+    replyToEmail: dom.notificationReplyToEmail.value.trim(),
+    adminCopyEnabled: dom.notificationAdminCopyEnabled.checked,
+    adminCopyEmail: dom.notificationAdminCopyEmail.value.trim(),
+    fallbackRecipientEmail: dom.notificationFallbackEmail.value.trim(),
+    loginAlerts: dom.notificationLoginAlerts.checked,
+    profileAlerts: dom.notificationProfileAlerts.checked,
+    courseAlerts: dom.notificationCourseAlerts.checked,
+    deviceAlerts: dom.notificationDeviceAlerts.checked,
+    paymentAlerts: dom.notificationPaymentAlerts.checked,
+  };
+
+  try {
+    setFeedback(dom.notificationSettingsFeedback, "Saving mail settings...", "info");
+    const response = await requestAction("adminupdatenotificationsettings", {
+      settings: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      throw new Error(response.message || "Unable to save mail settings.");
+    }
+
+    applyDashboardPayload(response, "Mail settings saved.");
+    setFeedback(dom.notificationSettingsFeedback, "Mail settings saved.", "success");
+  } catch (error) {
+    setFeedback(dom.notificationSettingsFeedback, error.message || "Unable to save mail settings.", "error");
   }
 }
 
@@ -5056,6 +5184,7 @@ async function bootstrap() {
 
 dom.adminLoginForm.addEventListener("submit", handleAdminLoginSubmit);
 dom.refreshDashboardBtn.addEventListener("click", handleRefreshDashboard);
+dom.notificationSettingsForm?.addEventListener("submit", handleNotificationSettingsSave);
 dom.adminLogoutBtn.addEventListener("click", () => {
   clearAdminSession();
   setFeedback(dom.adminLoginFeedback, "Admin session closed.", "info");
