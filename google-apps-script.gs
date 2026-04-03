@@ -166,6 +166,10 @@ const TRUSTED_ADMIN_DEVICE_RULES_ = Object.freeze([
     label: "Main Admin Laptop",
     deviceId: "0fa5a59f-2ea5-4ebd-97ef-4bd6f0e8f85b",
   }),
+  Object.freeze({
+    label: "Main Admin Phone",
+    deviceId: "085d8b9c-1bd1-4dce-9eb7-91d6602c335f",
+  }),
 ]);
 const SECURITY_LOCK_HIGHLIGHT_PREFIX_ = "Security lock:";
 const SECURITY_LOCK_LOGIN_MESSAGE_ =
@@ -2398,7 +2402,13 @@ function buildTrustedAdminDeviceNote_(rule) {
 
 function isTrustedAdminDeviceRecord_(device) {
   const note = String(getFirstAvailableValue_(device || {}, DEVICE_FIELD_KEYS_.note, "")).trim();
-  return note.indexOf(TRUSTED_ADMIN_DEVICE_NOTE_PREFIX_) === 0;
+  if (note.indexOf(TRUSTED_ADMIN_DEVICE_NOTE_PREFIX_) === 0) {
+    return true;
+  }
+
+  return TRUSTED_ADMIN_DEVICE_RULES_.some(function (rule) {
+    return doesTrustedAdminDeviceRuleMatch_(rule, device || {});
+  });
 }
 
 function applyTrustedAdminDeviceNoteToRecord_(record, trustedRule) {
