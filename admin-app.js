@@ -4,6 +4,7 @@ const APPS_SCRIPT_DEPLOYMENT_ID =
 const APP_CONFIG = Object.freeze({
   remoteEndpoint: `https://script.google.com/macros/s/${APPS_SCRIPT_DEPLOYMENT_ID}/exec`,
 });
+const ADMIN_BACKGROUND_REFRESH_ENABLED = false;
 
 const STORAGE_KEYS = Object.freeze({
   adminToken: "ain-pathshala.adminToken",
@@ -2397,6 +2398,10 @@ async function loadDashboard(feedbackMessage = "", options = {}) {
 }
 
 async function refreshDashboardInBackground() {
+  if (!ADMIN_BACKGROUND_REFRESH_ENABLED) {
+    return;
+  }
+
   if (!state.token || typeof document === "undefined" || document.hidden || shouldPauseAdminBackgroundRefresh()) {
     return;
   }
@@ -4600,7 +4605,7 @@ async function handleAssignCourses() {
     const response = await requestAction("adminassigncourses", {
       studentIds: buildPipeList(selectedStudentIds),
       courseIds: buildPipeList(courseIds),
-      replaceExisting: "true",
+      replaceExisting: "false",
       courseRulesJson: JSON.stringify(courseRulesByCourse),
     });
 

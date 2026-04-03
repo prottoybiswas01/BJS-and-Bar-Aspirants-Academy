@@ -175,6 +175,7 @@ const PUBLIC_CACHE_KEYS_ = Object.freeze({
   courses: "ain-pathshala.public-courses",
 });
 const NOTIFICATION_SETTINGS_PROPERTY_KEY_ = "ain-pathshala.notificationSettings.v1";
+const REQUIRED_NOTIFICATION_SENDER_EMAIL_ = "bjsacademy38@gmail.com";
 const NOTIFICATION_EVENT_TYPES_ = Object.freeze({
   login: "login",
   profile: "profile",
@@ -664,16 +665,17 @@ function buildDefaultNotificationSettings_(spreadsheet) {
     admins[0] ||
     {};
   const primaryAdminEmail = sanitizeEmailAddress_(primaryAdmin.email || "");
+  const lockedSenderEmail = getRequiredNotificationSenderEmail_();
   const siteName = String((spreadsheet && spreadsheet.getName && spreadsheet.getName()) || "").trim();
 
   return {
     enabled: true,
     fromName: siteName || "BJS and Bar Aspirants Academy",
-    senderEmail: primaryAdminEmail,
-    replyToEmail: primaryAdminEmail,
-    adminCopyEnabled: !!primaryAdminEmail,
-    adminCopyEmail: primaryAdminEmail,
-    fallbackRecipientEmail: primaryAdminEmail,
+    senderEmail: lockedSenderEmail || primaryAdminEmail,
+    replyToEmail: lockedSenderEmail || primaryAdminEmail,
+    adminCopyEnabled: !!(lockedSenderEmail || primaryAdminEmail),
+    adminCopyEmail: lockedSenderEmail || primaryAdminEmail,
+    fallbackRecipientEmail: lockedSenderEmail || primaryAdminEmail,
     loginAlerts: true,
     profileAlerts: true,
     courseAlerts: true,
@@ -685,17 +687,18 @@ function buildDefaultNotificationSettings_(spreadsheet) {
 function normalizeNotificationSettings_(input, defaults) {
   const fallbackDefaults = defaults || {};
   const payload = input || {};
+  const lockedSenderEmail = getRequiredNotificationSenderEmail_();
 
   return {
     enabled: isTruthySettingValue_(payload.enabled, fallbackDefaults.enabled),
     fromName: String(payload.fromName || fallbackDefaults.fromName || "BJS and Bar Aspirants Academy").trim(),
-    senderEmail: sanitizeEmailAddress_(
+    senderEmail: lockedSenderEmail || sanitizeEmailAddress_(
       payload.senderEmail || payload.replyToEmail || fallbackDefaults.senderEmail || fallbackDefaults.replyToEmail || ""
     ),
-    replyToEmail: sanitizeEmailAddress_(payload.replyToEmail || fallbackDefaults.replyToEmail || ""),
+    replyToEmail: lockedSenderEmail || sanitizeEmailAddress_(payload.replyToEmail || fallbackDefaults.replyToEmail || ""),
     adminCopyEnabled: isTruthySettingValue_(payload.adminCopyEnabled, fallbackDefaults.adminCopyEnabled),
-    adminCopyEmail: sanitizeEmailAddress_(payload.adminCopyEmail || fallbackDefaults.adminCopyEmail || ""),
-    fallbackRecipientEmail: sanitizeEmailAddress_(
+    adminCopyEmail: lockedSenderEmail || sanitizeEmailAddress_(payload.adminCopyEmail || fallbackDefaults.adminCopyEmail || ""),
+    fallbackRecipientEmail: lockedSenderEmail || sanitizeEmailAddress_(
       payload.fallbackRecipientEmail || fallbackDefaults.fallbackRecipientEmail || ""
     ),
     loginAlerts: isTruthySettingValue_(payload.loginAlerts, fallbackDefaults.loginAlerts),
@@ -763,6 +766,32 @@ function formatNotificationDate_(value) {
   return Utilities.formatDate(date, Session.getScriptTimeZone() || "Asia/Dhaka", "dd MMM yyyy");
 }
 
+function getRequiredNotificationSenderEmail_() {
+  return sanitizeEmailAddress_(REQUIRED_NOTIFICATION_SENDER_EMAIL_);
+}
+
+function getEffectiveExecutionEmail_() {
+  try {
+    const effectiveUserEmail = Session.getEffectiveUser().getEmail();
+    if (effectiveUserEmail) {
+      return sanitizeEmailAddress_(effectiveUserEmail);
+    }
+  } catch (error) {
+    // Ignore Session lookup failures and try the next fallback.
+  }
+
+  try {
+    const activeUserEmail = Session.getActiveUser().getEmail();
+    if (activeUserEmail) {
+      return sanitizeEmailAddress_(activeUserEmail);
+    }
+  } catch (error) {
+    // Ignore Session lookup failures and fall back to an empty value.
+  }
+
+  return "";
+}
+
 function getConfiguredGmailAliases_() {
   try {
     return GmailApp.getAliases()
@@ -775,16 +804,41 @@ function getConfiguredGmailAliases_() {
 }
 
 function sendPortalEmail_(recipient, subject, body, messageOptions, settings) {
-  const senderEmail = sanitizeEmailAddress_((settings && settings.senderEmail) || "");
+  const lockedSenderEmail = getRequiredNotificationSenderEmail_();
+  const senderEmail = sanitizeEmailAddress_((settings && settings.senderEmail) || lockedSenderEmail || "");
+  const executionEmail = getEffectiveExecutionEmail_();
   const normalizedOptions = Object.assign({}, messageOptions || {});
 
   if (senderEmail) {
+    if (lockedSenderEmail && senderEmail !== lockedSenderEmail) {
+      throw new Error(
+        "Notification sender is locked to " +
+          lockedSenderEmail +
+          ". Save notification settings again and redeploy the latest script version."
+      );
+    }
+
+    if (executionEmail && senderEmail === executionEmail) {
+      MailApp.sendEmail(recipient, subject, body, normalizedOptions);
+      return;
+    }
+
     const aliases = getConfiguredGmailAliases_();
     if (aliases.indexOf(senderEmail) !== -1) {
       normalizedOptions.from = senderEmail;
       GmailApp.sendEmail(recipient, subject, body, normalizedOptions);
       return;
     }
+
+    throw new Error(
+      "Notifications are locked to " +
+        senderEmail +
+        ", but this Apps Script is currently running as " +
+        (executionEmail || "an unknown account") +
+        ". Redeploy the script with Execute as " +
+        senderEmail +
+        " or add that address as a Gmail alias."
+    );
   }
 
   MailApp.sendEmail(recipient, subject, body, normalizedOptions);
@@ -3781,10 +3835,17 @@ function handleAdminUpdateStudent_(request) {
   });
   const previousStudentSnapshot = existingStudent ? Object.assign({}, existingStudent) : null;
   const studentId = explicitStudentId || (existingStudent ? getStudentId_(existingStudent) : generateStudentId_(studentsData.records));
-  const courseIds = buildCourseIdList_(
+  const requestedCourseIds = buildCourseIdList_(
     payload.enrolledCourseIds || payload.courseIds || request.enrolledCourseIds || request.courseIds || "",
     courses
   );
+  const replaceExistingCourses = request.replaceExisting === "true";
+  const effectiveCourseIds = replaceExistingCourses
+    ? requestedCourseIds
+    : mergeUniqueStringLists_(
+        existingStudent ? getStudentAssignedCourseIds_(spreadsheet, existingStudent) : [],
+        requestedCourseIds
+      );
 
   const nextStudent = Object.assign(
     {
@@ -3846,7 +3907,7 @@ function handleAdminUpdateStudent_(request) {
   ) {
     nextStudent.highlight = "Access restored from admin panel.";
   }
-  nextStudent.enrolledCourseIds = buildPipeList_(courseIds);
+  nextStudent.enrolledCourseIds = buildPipeList_(effectiveCourseIds);
   nextStudent.maxDeviceCount = normalizeStudentMaxDeviceCountStorageValue_(nextStudent.maxDeviceCount);
 
   writeSheetEntries_(
@@ -3860,7 +3921,7 @@ function handleAdminUpdateStudent_(request) {
   );
 
   if (request.syncCourses !== "false") {
-    syncStudentCourses_(spreadsheet, [studentId], courseIds, {
+    syncStudentCourses_(spreadsheet, [studentId], requestedCourseIds, {
       accessStartDate: request.accessStartDate || "",
       accessEndDate: request.accessEndDate || "",
       videoAccessUntil: request.videoAccessUntil || "",
@@ -3870,12 +3931,12 @@ function handleAdminUpdateStudent_(request) {
       status: request.enrollmentStatus || request.status || "",
       paidMonths: request.paidMonths || "",
       unlimitedAccess: request.unlimitedAccess || "",
-      replaceExisting: request.replaceExisting === "true",
+      replaceExisting: replaceExistingCourses,
     });
   }
 
   syncLatestRegistrationReviewsForStudents_(spreadsheet, [nextStudent], auth);
-  notifyStudentProfileUpdate_(spreadsheet, previousStudentSnapshot, nextStudent, courseIds, courses, auth);
+  notifyStudentProfileUpdate_(spreadsheet, previousStudentSnapshot, nextStudent, effectiveCourseIds, courses, auth);
 
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
 }
@@ -5566,6 +5627,14 @@ function buildPipeList_(values) {
   return parseStringList_(values).join("|");
 }
 
+function mergeUniqueStringLists_() {
+  return Array.prototype.slice.call(arguments).reduce(function (result, value) {
+    return result.concat(parseStringList_(value));
+  }, []).filter(function (item, index, list) {
+    return item && list.indexOf(item) === index;
+  });
+}
+
 function buildRegistrationReviewFromStudent_(student) {
   const approvalValue = normalizeValue_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.loginApproval, ""));
   const statusValue = normalizeValue_(getStudentStatus_(student));
@@ -5900,8 +5969,14 @@ function syncStudentCourses_(spreadsheet, studentIds, courseIds, defaults) {
     selectedLookup[studentId] = true;
   });
 
-  const nextEnrollments = currentEnrollments.filter(function (enrollment) {
-    return !selectedLookup[String(enrollment.studentId || "")];
+  const nextEnrollments = replaceExisting
+    ? currentEnrollments.filter(function (enrollment) {
+        return !selectedLookup[String(enrollment.studentId || "")];
+      })
+    : currentEnrollments.slice();
+  const nextEnrollmentIndexMap = {};
+  nextEnrollments.forEach(function (enrollment, index) {
+    nextEnrollmentIndexMap[String(enrollment.studentId || "") + "::" + String(enrollment.courseId || "")] = index;
   });
 
   normalizedStudentIds.forEach(function (studentId) {
@@ -5982,7 +6057,7 @@ function syncStudentCourses_(spreadsheet, studentIds, courseIds, defaults) {
           ? courseDefaults.paidMonths
           : existing.paidMonths || courseDefaults.paidMonths || "";
 
-      nextEnrollments.push({
+      const nextEnrollment = {
         id: existing.id || Utilities.getUuid(),
         studentId: studentId,
         courseId: courseId,
@@ -5995,7 +6070,14 @@ function syncStudentCourses_(spreadsheet, studentIds, courseIds, defaults) {
         monthlyFee: monthlyFee,
         status: status,
         paidMonths: paidMonths,
-      });
+      };
+
+      if (Object.prototype.hasOwnProperty.call(nextEnrollmentIndexMap, key)) {
+        nextEnrollments[nextEnrollmentIndexMap[key]] = nextEnrollment;
+      } else {
+        nextEnrollmentIndexMap[key] = nextEnrollments.length;
+        nextEnrollments.push(nextEnrollment);
+      }
     });
   });
 
@@ -6009,7 +6091,21 @@ function syncStudentCourses_(spreadsheet, studentIds, courseIds, defaults) {
       }
 
       const nextStudent = Object.assign({}, student);
-      nextStudent.enrolledCourseIds = buildPipeList_(normalizedCourseIds);
+      const existingEnrollmentCourseIds = currentEnrollments
+        .filter(function (enrollment) {
+          return String(enrollment.studentId || "").trim() === studentId;
+        })
+        .map(function (enrollment) {
+          return String(enrollment.courseId || "").trim();
+        });
+      const mergedCourseIds = replaceExisting
+        ? normalizedCourseIds
+        : mergeUniqueStringLists_(
+            getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.enrolledCourseIds, ""),
+            existingEnrollmentCourseIds,
+            normalizedCourseIds
+          );
+      nextStudent.enrolledCourseIds = buildPipeList_(mergedCourseIds);
       return nextStudent;
     })
   );
