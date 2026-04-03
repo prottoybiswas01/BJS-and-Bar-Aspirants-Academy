@@ -11,8 +11,6 @@ const SHEET_NAMES = {
   payments: "Payments",
 };
 
-// Keep this ID when you want one fixed spreadsheet.
-// If you copy this project into a new spreadsheet-bound Apps Script, you can clear it to use the active sheet.
 const SPREADSHEET_ID = "1QvEuk1IL-yRZAtu8j54sNDIAHLoDUboBbxTZ6Bh4H20";
 
 const SHEET_HEADERS = {
@@ -176,11 +174,6 @@ const PUBLIC_CACHE_TTL_SECONDS_ = 0;
 const PUBLIC_CACHE_KEYS_ = Object.freeze({
   courses: "ain-pathshala.public-courses",
 });
-const OFFICIAL_SUPPORT_EMAIL_ = "bjsacademy38@gmail.com";
-const LEGACY_NOTIFICATION_EMAILS_ = Object.freeze([
-  "Prottoybiswas575358@gmail.com",
-  "support@ainpathshala.com",
-]);
 const NOTIFICATION_SETTINGS_PROPERTY_KEY_ = "ain-pathshala.notificationSettings.v1";
 const NOTIFICATION_EVENT_TYPES_ = Object.freeze({
   login: "login",
@@ -281,7 +274,8 @@ const SAMPLE_DATA = {
       profileImage: "",
       password: "law014",
       loginApproval: "Approved",
-      passwordResetUrl: "mailto:bjsacademy38@gmail.com?subject=Password%20Reset%20Request%20for%20LAW-2026-014",
+      passwordResetUrl:
+        "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20LAW-2026-014",
       highlight: "Preparing for judiciary exams.",
       enrolledCourseIds: "",
       completedLessonIds: "",
@@ -299,7 +293,8 @@ const SAMPLE_DATA = {
       profileImage: "",
       password: "bar008",
       loginApproval: "Approved",
-      passwordResetUrl: "mailto:bjsacademy38@gmail.com?subject=Password%20Reset%20Request%20for%20BAR-2026-008",
+      passwordResetUrl:
+        "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20BAR-2026-008",
       highlight: "Focused on bar viva and procedure.",
       enrolledCourseIds: "",
       completedLessonIds: "",
@@ -421,7 +416,7 @@ const SAMPLE_DATA = {
       id: "admin-01",
       username: "admin",
       name: "Portal Admin",
-      email: "bjsacademy38@gmail.com",
+      email: "support@ainpathshala.com",
       password: "admin123",
       status: "Active",
       role: "Super Admin",
@@ -603,37 +598,6 @@ function sanitizeEmailAddress_(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "";
 }
 
-function migrateLegacyNotificationEmail_(value) {
-  const email = sanitizeEmailAddress_(value);
-  if (!email) {
-    return "";
-  }
-
-  return LEGACY_NOTIFICATION_EMAILS_.indexOf(email) !== -1 ? OFFICIAL_SUPPORT_EMAIL_ : email;
-}
-
-function buildPasswordResetMailtoUrl_(studentId) {
-  return (
-    "mailto:" +
-    encodeURIComponent(OFFICIAL_SUPPORT_EMAIL_) +
-    "?subject=Password%20Reset%20Request%20for%20" +
-    encodeURIComponent(String(studentId || "student").trim() || "student")
-  );
-}
-
-function ensureOfficialPasswordResetUrl_(value, studentId) {
-  const rawUrl = String(value || "").trim();
-  if (!rawUrl) {
-    return buildPasswordResetMailtoUrl_(studentId);
-  }
-
-  const lowerUrl = rawUrl.toLowerCase();
-  const hasLegacyEmail = LEGACY_NOTIFICATION_EMAILS_.some(function (email) {
-    return lowerUrl.indexOf(String(email || "").toLowerCase()) !== -1;
-  });
-  return hasLegacyEmail ? buildPasswordResetMailtoUrl_(studentId) : rawUrl;
-}
-
 function escapeHtmlForEmail_(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -699,7 +663,7 @@ function buildDefaultNotificationSettings_(spreadsheet) {
     }) ||
     admins[0] ||
     {};
-  const primaryAdminEmail = migrateLegacyNotificationEmail_(primaryAdmin.email || "") || OFFICIAL_SUPPORT_EMAIL_;
+  const primaryAdminEmail = sanitizeEmailAddress_(primaryAdmin.email || "");
   const siteName = String((spreadsheet && spreadsheet.getName && spreadsheet.getName()) || "").trim();
 
   return {
@@ -724,10 +688,10 @@ function normalizeNotificationSettings_(input, defaults) {
   return {
     enabled: isTruthySettingValue_(payload.enabled, fallbackDefaults.enabled),
     fromName: String(payload.fromName || fallbackDefaults.fromName || "BJS and Bar Aspirants Academy").trim(),
-    replyToEmail: migrateLegacyNotificationEmail_(payload.replyToEmail || fallbackDefaults.replyToEmail || ""),
+    replyToEmail: sanitizeEmailAddress_(payload.replyToEmail || fallbackDefaults.replyToEmail || ""),
     adminCopyEnabled: isTruthySettingValue_(payload.adminCopyEnabled, fallbackDefaults.adminCopyEnabled),
-    adminCopyEmail: migrateLegacyNotificationEmail_(payload.adminCopyEmail || fallbackDefaults.adminCopyEmail || ""),
-    fallbackRecipientEmail: migrateLegacyNotificationEmail_(
+    adminCopyEmail: sanitizeEmailAddress_(payload.adminCopyEmail || fallbackDefaults.adminCopyEmail || ""),
+    fallbackRecipientEmail: sanitizeEmailAddress_(
       payload.fallbackRecipientEmail || fallbackDefaults.fallbackRecipientEmail || ""
     ),
     loginAlerts: isTruthySettingValue_(payload.loginAlerts, fallbackDefaults.loginAlerts),
@@ -775,32 +739,6 @@ function shouldSendNotificationForTypes_(settings, types) {
   return (types || []).some(function (type) {
     return isNotificationTypeEnabled_(settings, type);
   });
-}
-
-function getPreferredNotificationSenderEmail_(settings) {
-  return (
-    migrateLegacyNotificationEmail_(
-      (settings && (settings.replyToEmail || settings.adminCopyEmail || settings.fallbackRecipientEmail)) || ""
-    ) || OFFICIAL_SUPPORT_EMAIL_
-  );
-}
-
-function getAvailableNotificationSenderAlias_(settings) {
-  const preferredSender = getPreferredNotificationSenderEmail_(settings);
-  if (!preferredSender) {
-    return "";
-  }
-
-  try {
-    const aliases = GmailApp.getAliases() || [];
-    const normalizedPreferredSender = normalizeValue_(preferredSender);
-    const matchedAlias = aliases.find(function (alias) {
-      return normalizeValue_(alias) === normalizedPreferredSender;
-    });
-    return matchedAlias || "";
-  } catch (error) {
-    return "";
-  }
 }
 
 function formatNotificationDateTime_(value) {
@@ -992,17 +930,13 @@ function sendStudentNotification_(spreadsheet, student, options) {
     if (settings.replyToEmail) {
       messageOptions.replyTo = settings.replyToEmail;
     }
-    const senderAlias = getAvailableNotificationSenderAlias_(settings);
-    if (senderAlias) {
-      messageOptions.from = senderAlias;
-    }
 
     const adminCopyEmail = sanitizeEmailAddress_(settings.adminCopyEmail || "");
     if (settings.adminCopyEnabled && adminCopyEmail && adminCopyEmail !== primaryRecipient) {
       messageOptions.bcc = adminCopyEmail;
     }
 
-    GmailApp.sendEmail(
+    MailApp.sendEmail(
       primaryRecipient,
       buildStudentNotificationSubject_(spreadsheet, options),
       buildStudentNotificationTextBody_(student, options),
@@ -1410,7 +1344,9 @@ function handleStudentRegistration_(request) {
       password: password,
       loginApproval: selfRegistrationAccess.loginApproval,
       portalAccessMode: selfRegistrationAccess.portalAccessMode,
-      passwordResetUrl: buildPasswordResetMailtoUrl_(studentId),
+      passwordResetUrl:
+        "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20" +
+        encodeURIComponent(studentId),
       highlight: note,
       enrolledCourseIds: buildPipeList_(requestedCourses),
       completedLessonIds: "",
@@ -1428,7 +1364,6 @@ function handleStudentRegistration_(request) {
   nextStudent.password = password;
   nextStudent.loginApproval = selfRegistrationAccess.loginApproval;
   nextStudent.portalAccessMode = selfRegistrationAccess.portalAccessMode;
-  nextStudent.passwordResetUrl = ensureOfficialPasswordResetUrl_(nextStudent.passwordResetUrl, studentId);
   nextStudent.highlight = note;
   nextStudent.enrolledCourseIds = buildPipeList_(requestedCourses);
   nextStudent.joinedOn = nextStudent.joinedOn || today;
@@ -3833,7 +3768,9 @@ function handleAdminUpdateStudent_(request) {
       password: "",
       loginApproval: "Approved",
       portalAccessMode: "",
-      passwordResetUrl: buildPasswordResetMailtoUrl_(studentId),
+      passwordResetUrl:
+        "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20" +
+        encodeURIComponent(studentId),
       highlight: "Updated from admin panel.",
       enrolledCourseIds: "",
       completedLessonIds: "",
@@ -3867,7 +3804,6 @@ function handleAdminUpdateStudent_(request) {
   nextStudent.phone = normalizePhoneLookupValue_(nextStudent.phone || "");
   nextStudent.password = normalizePasswordValue_(nextStudent.password);
   nextStudent.portalAccessMode = String(nextStudent.portalAccessMode || "").trim();
-  nextStudent.passwordResetUrl = ensureOfficialPasswordResetUrl_(nextStudent.passwordResetUrl, studentId);
   if (isPreviewAccessStudent_(nextStudent)) {
     nextStudent.loginApproval = "Approved";
   }
@@ -4363,7 +4299,9 @@ function handleAdminApproveRegistration_(request) {
       password: normalizePasswordValue_(registration.password || ""),
       loginApproval: "Approved",
       portalAccessMode: "",
-      passwordResetUrl: buildPasswordResetMailtoUrl_(studentId),
+      passwordResetUrl:
+        "mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20" +
+        encodeURIComponent(studentId),
       highlight: "Approved from admin panel.",
       enrolledCourseIds: buildPipeList_(mergedCourseIds),
       completedLessonIds: "",
@@ -4376,7 +4314,6 @@ function handleAdminApproveRegistration_(request) {
   nextStudent.loginApproval = "Approved";
   nextStudent.portalAccessMode = "";
   nextStudent.password = normalizePasswordValue_(nextStudent.password || registration.password || "");
-  nextStudent.passwordResetUrl = ensureOfficialPasswordResetUrl_(nextStudent.passwordResetUrl, studentId);
   nextStudent.enrolledCourseIds = buildPipeList_(mergedCourseIds);
   nextStudent.joinedOn = nextStudent.joinedOn || getTodayIso_();
 
@@ -5733,34 +5670,17 @@ function syncLatestRegistrationReviewsForStudents_(spreadsheet, students, auth) 
 }
 
 function getSpreadsheet_() {
-  const activeSpreadsheet = SpreadsheetApp.getActiveSpreadsheet();
-
   if (SPREADSHEET_ID) {
-    try {
-      return SpreadsheetApp.openById(SPREADSHEET_ID);
-    } catch (error) {
-      if (activeSpreadsheet) {
-        return activeSpreadsheet;
-      }
-
-      throw new Error(
-        "The configured spreadsheet could not be opened. Share spreadsheet ID " +
-          SPREADSHEET_ID +
-          " with " +
-          OFFICIAL_SUPPORT_EMAIL_ +
-          " as Editor, or clear SPREADSHEET_ID if this Apps Script is already bound to the correct sheet."
-      );
-    }
+    return SpreadsheetApp.openById(SPREADSHEET_ID);
   }
 
-  if (activeSpreadsheet) {
-    return activeSpreadsheet;
+  const spreadsheet = SpreadsheetApp.getActiveSpreadsheet();
+  if (spreadsheet) {
+    return spreadsheet;
   }
 
   throw new Error(
-    "No spreadsheet is connected. Open the target Google Sheet with " +
-      OFFICIAL_SUPPORT_EMAIL_ +
-      " and use Extensions > Apps Script, or set a working SPREADSHEET_ID."
+    "No spreadsheet is connected. Bind this Apps Script to a Google Sheet or set SPREADSHEET_ID."
   );
 }
 
@@ -5782,7 +5702,7 @@ function ensureDefaultAdminIfMissing_(adminsData) {
       id: "admin-01",
       username: "prottoy",
       name: "Portal Admin",
-      email: OFFICIAL_SUPPORT_EMAIL_,
+      email: "Prottoybiswas575358@gmail.com",
       password: "Prottoy75@",
       status: "Active",
       role: "Super Admin",

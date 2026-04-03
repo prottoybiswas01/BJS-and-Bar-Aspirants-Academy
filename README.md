@@ -239,9 +239,9 @@ With that row:
 
 The frontend is currently configured to use this deployed Apps Script web app:
 
-- Deployment ID: `AKfycbycWa-JIbkkc7H0dp7wSqwkH-gHUw7exyCgswOtGEwJdBylsfNzo-1sZ2As_VF_n_sa`
-- Web app endpoint: `https://script.google.com/macros/s/AKfycbycWa-JIbkkc7H0dp7wSqwkH-gHUw7exyCgswOtGEwJdBylsfNzo-1sZ2As_VF_n_sa/exec`
-- Library: not required for frontend runtime; the portal uses the deployed Web App `/exec` URL
+- Deployment ID: `AKfycbwTggMJSfIRDC1TGURJwAca38O0ZWErf2sqAW_236WpxaFuge36t30FZXIrmd9d3JnP`
+- Web app endpoint: `https://script.google.com/macros/s/AKfycbwTggMJSfIRDC1TGURJwAca38O0ZWErf2sqAW_236WpxaFuge36t30FZXIrmd9d3JnP/exec`
+- Library: `https://script.google.com/macros/library/d/1BfW6Pqq6J8-7U_8o9xC0YLtPhs2Zf9TPYow6gosjmw1uA6Xud5McH1Zb/53`
 
 Connection flow:
 
