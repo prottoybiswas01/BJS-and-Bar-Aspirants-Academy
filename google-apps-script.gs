@@ -669,6 +669,7 @@ function buildDefaultNotificationSettings_(spreadsheet) {
   return {
     enabled: true,
     fromName: siteName || "BJS and Bar Aspirants Academy",
+    senderEmail: primaryAdminEmail,
     replyToEmail: primaryAdminEmail,
     adminCopyEnabled: !!primaryAdminEmail,
     adminCopyEmail: primaryAdminEmail,
@@ -688,6 +689,9 @@ function normalizeNotificationSettings_(input, defaults) {
   return {
     enabled: isTruthySettingValue_(payload.enabled, fallbackDefaults.enabled),
     fromName: String(payload.fromName || fallbackDefaults.fromName || "BJS and Bar Aspirants Academy").trim(),
+    senderEmail: sanitizeEmailAddress_(
+      payload.senderEmail || payload.replyToEmail || fallbackDefaults.senderEmail || fallbackDefaults.replyToEmail || ""
+    ),
     replyToEmail: sanitizeEmailAddress_(payload.replyToEmail || fallbackDefaults.replyToEmail || ""),
     adminCopyEnabled: isTruthySettingValue_(payload.adminCopyEnabled, fallbackDefaults.adminCopyEnabled),
     adminCopyEmail: sanitizeEmailAddress_(payload.adminCopyEmail || fallbackDefaults.adminCopyEmail || ""),
@@ -757,6 +761,33 @@ function formatNotificationDate_(value) {
   }
 
   return Utilities.formatDate(date, Session.getScriptTimeZone() || "Asia/Dhaka", "dd MMM yyyy");
+}
+
+function getConfiguredGmailAliases_() {
+  try {
+    return GmailApp.getAliases()
+      .map(sanitizeEmailAddress_)
+      .filter(Boolean);
+  } catch (error) {
+    Logger.log("Unable to load Gmail aliases: " + error);
+    return [];
+  }
+}
+
+function sendPortalEmail_(recipient, subject, body, messageOptions, settings) {
+  const senderEmail = sanitizeEmailAddress_((settings && settings.senderEmail) || "");
+  const normalizedOptions = Object.assign({}, messageOptions || {});
+
+  if (senderEmail) {
+    const aliases = getConfiguredGmailAliases_();
+    if (aliases.indexOf(senderEmail) !== -1) {
+      normalizedOptions.from = senderEmail;
+      GmailApp.sendEmail(recipient, subject, body, normalizedOptions);
+      return;
+    }
+  }
+
+  MailApp.sendEmail(recipient, subject, body, normalizedOptions);
 }
 
 function buildStudentNotificationActorLabel_(actor) {
@@ -936,11 +967,12 @@ function sendStudentNotification_(spreadsheet, student, options) {
       messageOptions.bcc = adminCopyEmail;
     }
 
-    MailApp.sendEmail(
+    sendPortalEmail_(
       primaryRecipient,
       buildStudentNotificationSubject_(spreadsheet, options),
       buildStudentNotificationTextBody_(student, options),
-      messageOptions
+      messageOptions,
+      settings
     );
 
     return { ok: true };

@@ -281,6 +281,7 @@ const dom = {
   notificationSettingsBadge: document.getElementById("notificationSettingsBadge"),
   notificationSettingsForm: document.getElementById("notificationSettingsForm"),
   notificationFromName: document.getElementById("notificationFromName"),
+  notificationSenderEmail: document.getElementById("notificationSenderEmail"),
   notificationReplyToEmail: document.getElementById("notificationReplyToEmail"),
   notificationAdminCopyEmail: document.getElementById("notificationAdminCopyEmail"),
   notificationFallbackEmail: document.getElementById("notificationFallbackEmail"),
@@ -561,6 +562,7 @@ function createDefaultNotificationSettings() {
   return {
     enabled: true,
     fromName: "BJS and Bar Aspirants Academy",
+    senderEmail: "bjsacademy38@gmail.com",
     replyToEmail: "bjsacademy38@gmail.com",
     adminCopyEnabled: true,
     adminCopyEmail: "bjsacademy38@gmail.com",
@@ -578,6 +580,7 @@ function normalizeNotificationSettings(settings = {}) {
   return {
     enabled: normalizeNotificationFlag(settings.enabled, defaults.enabled),
     fromName: String(settings.fromName || defaults.fromName).trim(),
+    senderEmail: String(settings.senderEmail || settings.replyToEmail || defaults.senderEmail || defaults.replyToEmail).trim(),
     replyToEmail: String(settings.replyToEmail || defaults.replyToEmail).trim(),
     adminCopyEnabled: normalizeNotificationFlag(settings.adminCopyEnabled, defaults.adminCopyEnabled),
     adminCopyEmail: String(settings.adminCopyEmail || defaults.adminCopyEmail).trim(),
@@ -2434,6 +2437,7 @@ function renderNotificationSettings() {
 
   const settings = normalizeNotificationSettings(state.data.notificationSettings || {});
   dom.notificationFromName.value = settings.fromName || "";
+  dom.notificationSenderEmail.value = settings.senderEmail || "";
   dom.notificationReplyToEmail.value = settings.replyToEmail || "";
   dom.notificationAdminCopyEmail.value = settings.adminCopyEmail || "";
   dom.notificationFallbackEmail.value = settings.fallbackRecipientEmail || "";
@@ -4455,6 +4459,7 @@ async function handleNotificationSettingsSave(event) {
   const payload = {
     enabled: dom.notificationEnabled.checked,
     fromName: dom.notificationFromName.value.trim(),
+    senderEmail: dom.notificationSenderEmail.value.trim(),
     replyToEmail: dom.notificationReplyToEmail.value.trim(),
     adminCopyEnabled: dom.notificationAdminCopyEnabled.checked,
     adminCopyEmail: dom.notificationAdminCopyEmail.value.trim(),
