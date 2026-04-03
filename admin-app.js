@@ -561,10 +561,10 @@ function createDefaultNotificationSettings() {
   return {
     enabled: true,
     fromName: "BJS and Bar Aspirants Academy",
-    replyToEmail: "",
+    replyToEmail: "bjsacademy38@gmail.com",
     adminCopyEnabled: true,
-    adminCopyEmail: "",
-    fallbackRecipientEmail: "",
+    adminCopyEmail: "bjsacademy38@gmail.com",
+    fallbackRecipientEmail: "bjsacademy38@gmail.com",
     loginAlerts: true,
     profileAlerts: true,
     courseAlerts: true,

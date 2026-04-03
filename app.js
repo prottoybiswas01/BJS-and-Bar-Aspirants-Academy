@@ -13,6 +13,11 @@ const APP_CONFIG = Object.freeze({
   studentInboxPollIntervalMs: 15000,
   deviceIpCacheTtlMs: 10 * 60 * 1000,
 });
+const OFFICIAL_SUPPORT_EMAIL = "bjsacademy38@gmail.com";
+const LEGACY_SUPPORT_EMAILS = Object.freeze([
+  "Prottoybiswas575358@gmail.com",
+  "support@ainpathshala.com",
+]);
 
 const SESSION_STORAGE_KEYS = Object.freeze({
   activeStudentId: "ain-pathshala.activeStudentId",
@@ -3430,12 +3435,17 @@ function setAvatarImage(imageUrl, imageElement, fallbackElement, fallbackText) {
 }
 
 function getPasswordResetUrl(student) {
-  return (
-    student.passwordResetUrl ||
-    `mailto:support@ainpathshala.com?subject=Password%20Reset%20Request%20for%20${encodeURIComponent(
-      student.id || "student"
-    )}`
-  );
+  const rawUrl = String(student.passwordResetUrl || "").trim();
+  if (rawUrl) {
+    const lowerUrl = rawUrl.toLowerCase();
+    if (!LEGACY_SUPPORT_EMAILS.some((email) => lowerUrl.includes(String(email || "").toLowerCase()))) {
+      return rawUrl;
+    }
+  }
+
+  return `mailto:${encodeURIComponent(OFFICIAL_SUPPORT_EMAIL)}?subject=Password%20Reset%20Request%20for%20${encodeURIComponent(
+    student.id || "student"
+  )}`;
 }
 
 function setFeedback(message, type = "neutral") {
