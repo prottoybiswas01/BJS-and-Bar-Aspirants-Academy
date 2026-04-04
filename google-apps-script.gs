@@ -187,6 +187,11 @@ const NOTIFICATION_EVENT_TYPES_ = Object.freeze({
   device: "device",
   payment: "payment",
 });
+const PORTAL_PUBLIC_URL_ = "https://bjs-academy.netlify.app/";
+const PASSWORD_RESET_CACHE_PREFIX_ = "ain-pathshala.password-reset.";
+const PASSWORD_RESET_OTP_TTL_SECONDS_ = 15 * 60;
+const PASSWORD_RESET_OTP_LENGTH_ = 6;
+const PASSWORD_RESET_MAX_FAILED_ATTEMPTS_ = 5;
 const LOCALIZED_DIGIT_RANGES_ = [
   Object.freeze({ start: 0x09e6, end: 0x09ef }),
   Object.freeze({ start: 0x0660, end: 0x0669 }),
@@ -487,6 +492,9 @@ function doPost(e) {
     if (action === "login") return handleLogin_(request);
     if (action === "adminlogin") return handleAdminLogin_(request);
     if (action === "registerstudent") return handleStudentRegistration_(request);
+    if (action === "studentrequestpasswordreset") return handleStudentRequestPasswordReset_(request);
+    if (action === "studentverifypasswordresetotp") return handleStudentVerifyPasswordResetOtp_(request);
+    if (action === "studentresetpassword") return handleStudentResetPassword_(request);
     if (action === "requeststudentcourses") return handleStudentCourseRequest_(request);
     if (action === "studentsubmitpayment") return handleStudentSubmitPayment_(request);
     if (action === "studentgetinbox") return handleStudentGetInbox_(request);
@@ -496,6 +504,7 @@ function doPost(e) {
     if (action === "admingetdashboard") return handleAdminGetDashboard_(request);
     if (action === "adminlogoutdevice") return handleAdminLogoutDevice_(request);
     if (action === "adminupdatestudent") return handleAdminUpdateStudent_(request);
+    if (action === "admindeletestudent") return handleAdminDeleteStudent_(request);
     if (action === "adminupdatenotificationsettings") return handleAdminUpdateNotificationSettings_(request);
     if (action === "adminbulkstudentaction") return handleAdminBulkStudentAction_(request);
     if (action === "adminassigncourses") return handleAdminAssignCourses_(request);
@@ -507,6 +516,7 @@ function doPost(e) {
     if (action === "adminrejectregistration") return handleAdminRejectRegistration_(request);
     if (action === "adminreviewpayment") return handleAdminReviewPayment_(request);
     if (action === "adminsendmessage") return handleAdminSendMessage_(request);
+    if (action === "adminsendstudentemail") return handleAdminSendStudentEmail_(request);
     if (action === "admindeletemessage") return handleAdminDeleteMessage_(request);
     if (action === "studentrespondmessage") return handleStudentRespondMessage_(request);
 
@@ -603,6 +613,19 @@ function sanitizeEmailAddress_(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : "";
 }
 
+function maskEmailAddress_(value) {
+  const email = sanitizeEmailAddress_(value);
+  if (!email) {
+    return "";
+  }
+
+  const parts = email.split("@");
+  const localPart = parts[0] || "";
+  const domain = parts[1] || "";
+  const visiblePrefix = localPart.slice(0, Math.min(2, localPart.length));
+  return visiblePrefix + (localPart.length > 2 ? "***" : "*") + "@" + domain;
+}
+
 function escapeHtmlForEmail_(value) {
   return String(value || "")
     .replace(/&/g, "&amp;")
@@ -610,6 +633,10 @@ function escapeHtmlForEmail_(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function formatPlainTextForHtmlEmail_(value) {
+  return escapeHtmlForEmail_(value).replace(/\r?\n/g, "<br>");
 }
 
 function isTruthySettingValue_(value, fallback) {
@@ -677,7 +704,7 @@ function buildDefaultNotificationSettings_(spreadsheet) {
     fromName: siteName || "BJS and Bar Aspirants Academy",
     senderEmail: lockedSenderEmail || primaryAdminEmail,
     replyToEmail: lockedSenderEmail || primaryAdminEmail,
-    adminCopyEnabled: !!(lockedSenderEmail || primaryAdminEmail),
+    adminCopyEnabled: false,
     adminCopyEmail: lockedSenderEmail || primaryAdminEmail,
     fallbackRecipientEmail: lockedSenderEmail || primaryAdminEmail,
     loginAlerts: true,
@@ -846,6 +873,29 @@ function sendPortalEmail_(recipient, subject, body, messageOptions, settings) {
   }
 
   MailApp.sendEmail(recipient, subject, body, normalizedOptions);
+}
+
+function applyAdminCopyToMessageOptions_(messageOptions, settings, primaryRecipient) {
+  const nextOptions = Object.assign({}, messageOptions || {});
+  const recipient = sanitizeEmailAddress_(primaryRecipient || "");
+  const adminCopyEmail = sanitizeEmailAddress_((settings && settings.adminCopyEmail) || "");
+  const senderEmail = sanitizeEmailAddress_((settings && settings.senderEmail) || getRequiredNotificationSenderEmail_() || "");
+  const executionEmail = getEffectiveExecutionEmail_();
+
+  if (
+    settings &&
+    settings.adminCopyEnabled &&
+    adminCopyEmail &&
+    adminCopyEmail !== recipient &&
+    adminCopyEmail !== senderEmail &&
+    (!executionEmail || adminCopyEmail !== executionEmail)
+  ) {
+    nextOptions.bcc = adminCopyEmail;
+  } else if (Object.prototype.hasOwnProperty.call(nextOptions, "bcc")) {
+    delete nextOptions.bcc;
+  }
+
+  return nextOptions;
 }
 
 function buildStudentNotificationActorLabel_(actor) {
@@ -1020,16 +1070,11 @@ function sendStudentNotification_(spreadsheet, student, options) {
       messageOptions.replyTo = settings.replyToEmail;
     }
 
-    const adminCopyEmail = sanitizeEmailAddress_(settings.adminCopyEmail || "");
-    if (settings.adminCopyEnabled && adminCopyEmail && adminCopyEmail !== primaryRecipient) {
-      messageOptions.bcc = adminCopyEmail;
-    }
-
     sendPortalEmail_(
       primaryRecipient,
       buildStudentNotificationSubject_(spreadsheet, options),
       buildStudentNotificationTextBody_(student, options),
-      messageOptions,
+      applyAdminCopyToMessageOptions_(messageOptions, settings, primaryRecipient),
       settings
     );
 
@@ -1038,6 +1083,345 @@ function sendStudentNotification_(spreadsheet, student, options) {
     Logger.log("Student notification send failed: " + error);
     return { ok: false, message: error && error.message ? error.message : "Notification send failed." };
   }
+}
+
+function getPortalPublicUrl_() {
+  return String(PORTAL_PUBLIC_URL_ || "").trim() || "https://bjs-academy.netlify.app/";
+}
+
+function generateNumericOtp_(length) {
+  const size = Math.max(4, Number(length) || PASSWORD_RESET_OTP_LENGTH_);
+  let otp = "";
+  for (let index = 0; index < size; index += 1) {
+    otp += String(Math.floor(Math.random() * 10));
+  }
+  return otp;
+}
+
+function normalizeOtpValue_(value) {
+  return digitsOnlyValue_(value);
+}
+
+function getPasswordResetCacheKey_(studentId) {
+  return PASSWORD_RESET_CACHE_PREFIX_ + String(studentId || "").trim();
+}
+
+function readPasswordResetSession_(studentId) {
+  if (!studentId) {
+    return null;
+  }
+
+  try {
+    const raw = CacheService.getScriptCache().get(getPasswordResetCacheKey_(studentId));
+    return raw ? parseJsonField_(raw) : null;
+  } catch (error) {
+    return null;
+  }
+}
+
+function writePasswordResetSession_(studentId, payload) {
+  if (!studentId) {
+    return;
+  }
+
+  try {
+    CacheService.getScriptCache().put(
+      getPasswordResetCacheKey_(studentId),
+      JSON.stringify(payload || {}),
+      PASSWORD_RESET_OTP_TTL_SECONDS_
+    );
+  } catch (error) {
+    Logger.log("Unable to cache password reset session: " + error);
+  }
+}
+
+function deletePasswordResetSession_(studentId) {
+  if (!studentId) {
+    return;
+  }
+
+  try {
+    CacheService.getScriptCache().remove(getPasswordResetCacheKey_(studentId));
+  } catch (error) {
+    // Ignore cache delete failures.
+  }
+}
+
+function getPasswordResetStudent_(spreadsheet, query) {
+  if (!spreadsheet || !query) {
+    return null;
+  }
+
+  const students = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students));
+  return findStudentForLogin_(spreadsheet, students, query);
+}
+
+function validatePasswordResetOtp_(studentId, providedOtp) {
+  const resetSession = readPasswordResetSession_(studentId);
+  if (!resetSession) {
+    return {
+      ok: false,
+      message: "No active OTP was found. Request a new password reset code.",
+    };
+  }
+
+  const normalizedProvidedOtp = normalizeOtpValue_(providedOtp);
+  const normalizedStoredOtp = normalizeOtpValue_(resetSession.otp || "");
+  if (!normalizedProvidedOtp || normalizedProvidedOtp !== normalizedStoredOtp) {
+    const failedAttempts = Number(resetSession.failedAttempts || 0) + 1;
+    if (failedAttempts >= PASSWORD_RESET_MAX_FAILED_ATTEMPTS_) {
+      deletePasswordResetSession_(studentId);
+      return {
+        ok: false,
+        message: "Too many incorrect OTP attempts. Request a new password reset code.",
+      };
+    }
+
+    resetSession.failedAttempts = failedAttempts;
+    writePasswordResetSession_(studentId, resetSession);
+    return {
+      ok: false,
+      message: "The OTP did not match. Check the code from your email and try again.",
+    };
+  }
+
+  resetSession.failedAttempts = 0;
+  resetSession.verifiedOn = getNowIso_();
+  writePasswordResetSession_(studentId, resetSession);
+  return {
+    ok: true,
+    session: resetSession,
+  };
+}
+
+function sendStudentSelfRegistrationEmail_(spreadsheet, student, registrationId, requestedCourseIds, courses, accessState) {
+  const requestedCourseNames = buildCourseNameList_(requestedCourseIds, courses);
+  const isPreviewOnly = !!(accessState && accessState.portalAccessMode);
+
+  return sendStudentNotification_(spreadsheet, student, {
+    types: [NOTIFICATION_EVENT_TYPES_.profile],
+    subject: "Registration submitted",
+    title: "Registration submitted",
+    intro: isPreviewOnly
+      ? "your registration has been saved and preview access is already active."
+      : "your registration has been saved and is now waiting for admin approval.",
+    details: [
+      { label: "Student ID", value: getStudentId_(student) },
+      { label: "Registration Number", value: registrationId },
+      { label: "Password", value: getStudentPassword_(student) },
+      { label: "Email", value: getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.email, "Not provided") },
+      { label: "Batch", value: getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.batch, "Pending Batch") },
+      { label: "Session", value: getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.session, "Pending Session") },
+      { label: "Requested Courses", value: requestedCourseNames.length ? requestedCourseNames.join(", ") : "Not selected" },
+      { label: "Portal Link", value: getPortalPublicUrl_() },
+    ],
+    footnote: isPreviewOnly
+      ? "Use your student ID or registration number with the same password to log in and review the class list right away."
+      : "Keep this email safely. As soon as admin approval is completed, you can log in with the same student ID and password.",
+  });
+}
+
+function sendPasswordResetOtpEmail_(spreadsheet, student, otp, expiresAt) {
+  const recipient = sanitizeEmailAddress_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.email, ""));
+  if (!recipient) {
+    throw new Error("No valid email address is saved for this student account.");
+  }
+
+  const settings = getNotificationSettings_(spreadsheet);
+  const portalUrl = getPortalPublicUrl_();
+  const expiryIso = new Date(Number(expiresAt) || Date.now()).toISOString();
+  const expiryLabel = formatNotificationDateTime_(expiryIso);
+  const studentName = String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.name, "Student")).trim() || "Student";
+  const studentId = getStudentId_(student) || "Unknown";
+  const subject = "Password reset OTP";
+  const textBody =
+    "Hello " +
+    studentName +
+    ",\n\n" +
+    "A password reset request was received for your student portal account.\n\n" +
+    "Student ID: " +
+    studentId +
+    "\n" +
+    "OTP: " +
+    otp +
+    "\n" +
+    "Portal link: " +
+    portalUrl +
+    "\n" +
+    "OTP valid until: " +
+    expiryLabel +
+    "\n\n" +
+    "Return to the portal, open the Forgot Password form, and enter this OTP to continue.\n\n" +
+    "If you did not request this code, ignore this email.";
+  const htmlBody =
+    '<div style="margin:0;padding:24px;background:#f8fafc;color:#0f172a;font-family:Arial,sans-serif;">' +
+    '<div style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;">' +
+    '<div style="padding:22px 24px;background:linear-gradient(135deg,#0f172a,#1d4ed8,#0f766e);color:#ffffff;">' +
+    '<p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;color:rgba(255,255,255,0.72);">Student Portal Security</p>' +
+    '<h2 style="margin:12px 0 0;font-size:28px;line-height:1.1;">Password Reset OTP</h2>' +
+    "</div>" +
+    '<div style="padding:24px;">' +
+    '<p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#334155;">Hello ' +
+    escapeHtmlForEmail_(studentName) +
+    ", a password reset request was received for your student portal account.</p>" +
+    '<div style="margin:0 0 18px;padding:18px;border:1px solid #dbeafe;border-radius:16px;background:#eff6ff;">' +
+    '<p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;color:#2563eb;">Your OTP</p>' +
+    '<p style="margin:10px 0 0;font-size:34px;font-weight:800;letter-spacing:0.18em;color:#0f172a;">' +
+    escapeHtmlForEmail_(otp) +
+    "</p>" +
+    '<p style="margin:12px 0 0;font-size:13px;line-height:1.7;color:#475569;">This code is valid until ' +
+    escapeHtmlForEmail_(expiryLabel) +
+    ".</p>" +
+    "</div>" +
+    '<table style="width:100%;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">' +
+    '<tr><td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:700;background:#f8fafc;color:#475569;">Student ID</td><td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:14px;color:#0f172a;">' +
+    escapeHtmlForEmail_(studentId) +
+    '</td></tr><tr><td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:700;background:#f8fafc;color:#475569;">Portal Link</td><td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:14px;"><a href="' +
+    escapeHtmlForEmail_(portalUrl) +
+    '" style="color:#1d4ed8;text-decoration:none;">Open Student Portal</a></td></tr><tr><td style="padding:12px 14px;font-size:13px;font-weight:700;background:#f8fafc;color:#475569;">Instruction</td><td style="padding:12px 14px;font-size:14px;color:#0f172a;">Return to the portal, open Forgot Password, enter the OTP, then set a new password.</td></tr></table>' +
+    '<p style="margin:18px 0 0;font-size:13px;line-height:1.7;color:#64748b;">If you did not request this code, ignore this email.</p>' +
+    "</div></div></div>";
+  const messageOptions = {
+    name: String(settings.fromName || "Student Portal").trim() || "Student Portal",
+    htmlBody: htmlBody,
+  };
+  if (settings.replyToEmail) {
+    messageOptions.replyTo = settings.replyToEmail;
+  }
+
+  sendPortalEmail_(
+    recipient,
+    subject,
+    textBody,
+    applyAdminCopyToMessageOptions_(messageOptions, settings, recipient),
+    settings
+  );
+}
+
+function notifyStudentPasswordReset_(spreadsheet, student) {
+  return sendStudentNotification_(spreadsheet, student, {
+    types: [NOTIFICATION_EVENT_TYPES_.profile],
+    subject: "Password updated",
+    title: "Password updated",
+    intro: "your portal password was updated successfully.",
+    details: [
+      { label: "Student ID", value: getStudentId_(student) },
+      { label: "Time", value: formatNotificationDateTime_(getNowIso_()) },
+      { label: "Portal Link", value: getPortalPublicUrl_() },
+    ],
+    footnote: "If this password update was not requested by you, contact the academy immediately.",
+  });
+}
+
+function buildDirectStudentEmailDetailEntries_(student) {
+  return [
+    { label: "Student ID", value: getStudentId_(student) || "-" },
+    { label: "Name", value: getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.name, "Unnamed Student") },
+    { label: "Phone", value: getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.phone, "Not set") },
+    { label: "Email", value: getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.email, "Not set") },
+    { label: "Batch", value: getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.batch, "Not set") },
+    { label: "Session", value: getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.session, "Not set") },
+    { label: "Status", value: getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.status, "Active") },
+  ];
+}
+
+function buildDirectStudentEmailTextBody_(student, message, actor, includeStudentDetails) {
+  const detailEntries = includeStudentDetails ? buildDirectStudentEmailDetailEntries_(student) : [];
+
+  return (
+    "Hello " +
+    String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.name, "Student")).trim() +
+    ",\n\n" +
+    String(message || "").trim() +
+    (detailEntries.length
+      ? "\n\nStudent Details:\n" +
+        detailEntries
+          .map(function (entry) {
+            return entry.label + ": " + entry.value;
+          })
+          .join("\n")
+      : "") +
+    "\n\nSent by: " +
+    buildStudentNotificationActorLabel_(actor) +
+    "\nPortal: " +
+    getPortalPublicUrl_()
+  );
+}
+
+function buildDirectStudentEmailHtmlBody_(student, subject, message, actor, includeStudentDetails) {
+  const detailEntries = includeStudentDetails ? buildDirectStudentEmailDetailEntries_(student) : [];
+  const detailMarkup = detailEntries
+    .map(function (entry) {
+      return (
+        '<tr><td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:13px;font-weight:700;background:#f8fafc;color:#475569;">' +
+        escapeHtmlForEmail_(entry.label) +
+        '</td><td style="padding:12px 14px;border-bottom:1px solid #e2e8f0;font-size:14px;color:#0f172a;">' +
+        escapeHtmlForEmail_(entry.value) +
+        "</td></tr>"
+      );
+    })
+    .join("");
+
+  return (
+    '<div style="margin:0;padding:24px;background:#f8fafc;color:#0f172a;font-family:Arial,sans-serif;">' +
+    '<div style="max-width:620px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:18px;overflow:hidden;">' +
+    '<div style="padding:22px 24px;background:linear-gradient(135deg,#0f172a,#1d4ed8,#0f766e);color:#ffffff;">' +
+    '<p style="margin:0;font-size:11px;font-weight:700;letter-spacing:0.22em;text-transform:uppercase;color:rgba(255,255,255,0.72);">Admin Email</p>' +
+    '<h2 style="margin:12px 0 0;font-size:26px;line-height:1.15;">' +
+    escapeHtmlForEmail_(subject) +
+    "</h2>" +
+    "</div>" +
+    '<div style="padding:24px;">' +
+    '<p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#334155;">Hello ' +
+    escapeHtmlForEmail_(String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.name, "Student")).trim()) +
+    ",</p>" +
+    '<div style="font-size:15px;line-height:1.75;color:#334155;">' +
+    formatPlainTextForHtmlEmail_(message) +
+    "</div>" +
+    (detailMarkup
+      ? '<table style="width:100%;margin-top:18px;border-collapse:collapse;border:1px solid #e2e8f0;border-radius:14px;overflow:hidden;">' +
+        detailMarkup +
+        "</table>"
+      : "") +
+    '<p style="margin:18px 0 0;font-size:13px;line-height:1.7;color:#64748b;">Sent by ' +
+    escapeHtmlForEmail_(buildStudentNotificationActorLabel_(actor)) +
+    '. Student portal: <a href="' +
+    escapeHtmlForEmail_(getPortalPublicUrl_()) +
+    '" style="color:#1d4ed8;text-decoration:none;">' +
+    escapeHtmlForEmail_(getPortalPublicUrl_()) +
+    "</a></p>" +
+    "</div></div></div>"
+  );
+}
+
+function sendAdminDirectStudentMail_(spreadsheet, student, subject, message, actor, includeStudentDetails) {
+  const recipient = sanitizeEmailAddress_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.email, ""));
+  if (!recipient) {
+    return {
+      ok: false,
+      skipped: true,
+      message: "No valid student email is available.",
+    };
+  }
+
+  const settings = getNotificationSettings_(spreadsheet);
+  const messageOptions = {
+    name: String(settings.fromName || "Student Portal").trim() || "Student Portal",
+    htmlBody: buildDirectStudentEmailHtmlBody_(student, subject, message, actor, includeStudentDetails),
+  };
+  if (settings.replyToEmail) {
+    messageOptions.replyTo = settings.replyToEmail;
+  }
+
+  sendPortalEmail_(
+    recipient,
+    String(subject || "").trim(),
+    buildDirectStudentEmailTextBody_(student, message, actor, includeStudentDetails),
+    applyAdminCopyToMessageOptions_(messageOptions, settings, recipient),
+    settings
+  );
+
+  return { ok: true };
 }
 
 function notifyStudentLogin_(spreadsheet, student, request, deviceLoginResult) {
@@ -1499,6 +1883,8 @@ function handleStudentRegistration_(request) {
     createdBy: "System",
   });
 
+  sendStudentSelfRegistrationEmail_(spreadsheet, nextStudent, registrationId, requestedCourses, courses, selfRegistrationAccess);
+
   return jsonOutput_({
     ok: true,
     message: selfRegistrationAccess.responseMessage,
@@ -1506,6 +1892,156 @@ function handleStudentRegistration_(request) {
     previewOnly: !!selfRegistrationAccess.portalAccessMode,
     studentId: studentId,
     registrationId: registrationId,
+  });
+}
+
+function handleStudentRequestPasswordReset_(request) {
+  const query = String(request.query || request.studentQuery || request.identifier || "").trim();
+  if (!query) {
+    return jsonOutput_({
+      ok: false,
+      message: "Enter your student ID, phone number, or email address first.",
+    });
+  }
+
+  const spreadsheet = getSpreadsheet_();
+  const student = getPasswordResetStudent_(spreadsheet, query);
+  if (!student) {
+    return jsonOutput_({
+      ok: false,
+      message: "No matching student account was found.",
+    });
+  }
+
+  const studentId = getStudentId_(student);
+  const recipientEmail = sanitizeEmailAddress_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.email, ""));
+  if (!studentId || !recipientEmail) {
+    return jsonOutput_({
+      ok: false,
+      message: "No valid email address is saved for this student account.",
+    });
+  }
+
+  const expiresAt = Date.now() + PASSWORD_RESET_OTP_TTL_SECONDS_ * 1000;
+  const otp = generateNumericOtp_(PASSWORD_RESET_OTP_LENGTH_);
+  const resetSession = {
+    studentId: studentId,
+    otp: otp,
+    email: recipientEmail,
+    requestedOn: getNowIso_(),
+    expiresAt: expiresAt,
+    failedAttempts: 0,
+  };
+
+  writePasswordResetSession_(studentId, resetSession);
+
+  try {
+    sendPasswordResetOtpEmail_(spreadsheet, student, otp, expiresAt);
+  } catch (error) {
+    deletePasswordResetSession_(studentId);
+    return jsonOutput_({
+      ok: false,
+      message: error && error.message ? error.message : "Unable to send the OTP email right now.",
+    });
+  }
+
+  return jsonOutput_({
+    ok: true,
+    message: "An OTP has been sent to your saved email address.",
+    studentId: studentId,
+    maskedEmail: maskEmailAddress_(recipientEmail),
+  });
+}
+
+function handleStudentVerifyPasswordResetOtp_(request) {
+  const query = String(request.query || request.studentQuery || request.identifier || "").trim();
+  const otp = normalizeOtpValue_(request.otp || request.code || "");
+  if (!query || !otp) {
+    return jsonOutput_({
+      ok: false,
+      message: "Enter the same student ID, phone number, or email and the OTP first.",
+    });
+  }
+
+  const spreadsheet = getSpreadsheet_();
+  const student = getPasswordResetStudent_(spreadsheet, query);
+  if (!student) {
+    return jsonOutput_({
+      ok: false,
+      message: "No matching student account was found.",
+    });
+  }
+
+  const validation = validatePasswordResetOtp_(getStudentId_(student), otp);
+  if (!validation.ok) {
+    return jsonOutput_(validation);
+  }
+
+  return jsonOutput_({
+    ok: true,
+    message: "OTP verified. Set your new password now.",
+    studentId: getStudentId_(student),
+    maskedEmail: maskEmailAddress_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.email, "")),
+  });
+}
+
+function handleStudentResetPassword_(request) {
+  const query = String(request.query || request.studentQuery || request.identifier || "").trim();
+  const otp = normalizeOtpValue_(request.otp || request.code || "");
+  const newPassword = normalizePasswordValue_(request.password || request.newPassword || "");
+  if (!query || !otp || !newPassword) {
+    return jsonOutput_({
+      ok: false,
+      message: "Student ID, OTP, and the new password are required.",
+    });
+  }
+
+  const spreadsheet = getSpreadsheet_();
+  const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
+  const student = findStudentForLogin_(spreadsheet, studentsData.records, query);
+  if (!student) {
+    return jsonOutput_({
+      ok: false,
+      message: "No matching student account was found.",
+    });
+  }
+
+  const studentId = getStudentId_(student);
+  const validation = validatePasswordResetOtp_(studentId, otp);
+  if (!validation.ok) {
+    return jsonOutput_(validation);
+  }
+
+  const nextStudents = studentsData.records.map(function (entry) {
+    if (getStudentId_(entry) !== studentId) {
+      return entry;
+    }
+
+    const nextEntry = Object.assign({}, entry);
+    nextEntry.password = newPassword;
+    return nextEntry;
+  });
+
+  writeSheetEntries_(studentsData.sheet, studentsData.headers, nextStudents);
+
+  const nextStudent = nextStudents.find(function (entry) {
+    return getStudentId_(entry) === studentId;
+  });
+  if (nextStudent) {
+    syncLatestRegistrationReviewsForStudents_(spreadsheet, [nextStudent], {
+      username: "Password Reset OTP",
+      name: "Password Reset OTP",
+      id: "system",
+    });
+    notifyStudentPasswordReset_(spreadsheet, nextStudent);
+  }
+
+  deletePasswordResetSession_(studentId);
+
+  return jsonOutput_({
+    ok: true,
+    message: "Password updated successfully.",
+    studentId: studentId,
   });
 }
 
@@ -1988,7 +2524,7 @@ function buildSelfRegistrationHighlight_(requestedCourses, accessState) {
     : "Registered online. Login activated automatically.";
 }
 
-function buildRegistrationAlertMessage_(studentId, name, batch, session, requestedCourseIds, courses) {
+function buildCourseNameList_(courseIds, courses) {
   const courseLookup = {};
   (courses || []).forEach(function (course) {
     const courseId = String(course.id || course.courseId || "").trim();
@@ -1997,11 +2533,15 @@ function buildRegistrationAlertMessage_(studentId, name, batch, session, request
     }
   });
 
-  const requestedCourseLabels = (requestedCourseIds || [])
+  return parseStringList_(courseIds)
     .map(function (courseId) {
       return courseLookup[courseId] || courseId;
     })
     .filter(Boolean);
+}
+
+function buildRegistrationAlertMessage_(studentId, name, batch, session, requestedCourseIds, courses) {
+  const requestedCourseLabels = buildCourseNameList_(requestedCourseIds, courses);
   const requestedCourseText = requestedCourseLabels.length ? requestedCourseLabels.join(", ") : "No course requested";
 
   return (
@@ -3951,6 +4491,122 @@ function handleAdminUpdateStudent_(request) {
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
 }
 
+function registrationMatchesStudent_(registration, student) {
+  const studentId = getStudentId_(student);
+  const studentPhone = normalizePhoneLookupValue_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.phone, ""));
+  const studentEmail = normalizeValue_(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.email, ""));
+
+  return (
+    (studentId && String(registration.studentId || "").trim() === studentId) ||
+    (studentPhone && normalizePhoneLookupValue_(registration.phone || "") === studentPhone) ||
+    (studentEmail && normalizeValue_(registration.email || "") === studentEmail)
+  );
+}
+
+function pruneStudentFromMessageRecords_(records, studentId) {
+  return (records || []).reduce(function (result, entry) {
+    const targetedStudentIds = parseStringList_(entry.studentIds || "");
+    if (targetedStudentIds.indexOf(studentId) === -1) {
+      result.push(entry);
+      return result;
+    }
+
+    const nextStudentIds = targetedStudentIds.filter(function (candidateId) {
+      return candidateId !== studentId;
+    });
+    if (!nextStudentIds.length) {
+      return result;
+    }
+
+    const recipientState = parseMessageRecipientState_(
+      entry.recipientStateJson || entry.recipientState || "",
+      targetedStudentIds
+    );
+    delete recipientState[studentId];
+
+    const nextEntry = Object.assign({}, entry);
+    nextEntry.studentIds = buildPipeList_(nextStudentIds);
+    nextEntry.status = buildMessageAggregateStatus_(recipientState);
+    nextEntry.recipientStateJson = serializeMessageRecipientState_(recipientState);
+    result.push(nextEntry);
+    return result;
+  }, []);
+}
+
+function handleAdminDeleteStudent_(request) {
+  const auth = getAuthorizedAdminSession_(request);
+  if (!auth) {
+    return unauthorizedOutput_();
+  }
+  const readOnlyResponse = requireAdminWriteAccess_(auth);
+  if (readOnlyResponse) {
+    return readOnlyResponse;
+  }
+
+  const studentId = String(request.studentId || request.id || "").trim();
+  if (!studentId) {
+    return jsonOutput_({ ok: false, message: "Student ID is required." });
+  }
+
+  const spreadsheet = getSpreadsheet_();
+  const studentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.students);
+  const registrationsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.registrations);
+  const enrollmentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.enrollments);
+  const devicesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.devices);
+  const paymentsData = loadSheetEntries_(spreadsheet, SHEET_NAMES.payments);
+  const messagesData = loadSheetEntries_(spreadsheet, SHEET_NAMES.messages);
+
+  const student = studentsData.records.find(function (entry) {
+    return getStudentId_(entry) === studentId;
+  });
+  if (!student) {
+    return jsonOutput_({ ok: false, message: "Student account was not found." });
+  }
+
+  writeSheetEntries_(
+    studentsData.sheet,
+    studentsData.headers,
+    studentsData.records.filter(function (entry) {
+      return getStudentId_(entry) !== studentId;
+    })
+  );
+  writeSheetEntries_(
+    registrationsData.sheet,
+    registrationsData.headers,
+    registrationsData.records.filter(function (entry) {
+      return !registrationMatchesStudent_(entry, student);
+    })
+  );
+  writeSheetEntries_(
+    enrollmentsData.sheet,
+    enrollmentsData.headers,
+    enrollmentsData.records.filter(function (entry) {
+      return String(entry.studentId || "").trim() !== studentId;
+    })
+  );
+  writeSheetEntries_(
+    devicesData.sheet,
+    devicesData.headers,
+    devicesData.records.filter(function (entry) {
+      return String(entry.studentId || "").trim() !== studentId;
+    })
+  );
+  writeSheetEntries_(
+    paymentsData.sheet,
+    paymentsData.headers,
+    paymentsData.records.filter(function (entry) {
+      return String(entry.studentId || "").trim() !== studentId;
+    })
+  );
+  writeSheetEntries_(
+    messagesData.sheet,
+    messagesData.headers,
+    pruneStudentFromMessageRecords_(messagesData.records, studentId)
+  );
+
+  return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
+}
+
 function handleAdminBulkStudentAction_(request) {
   const auth = getAuthorizedAdminSession_(request);
   if (!auth) {
@@ -4707,6 +5363,85 @@ function handleAdminSendMessage_(request) {
   );
 
   return jsonOutput_(buildAdminPayload_(spreadsheet, auth));
+}
+
+function handleAdminSendStudentEmail_(request) {
+  const auth = getAuthorizedAdminSession_(request);
+  if (!auth) {
+    return unauthorizedOutput_();
+  }
+  const readOnlyResponse = requireAdminWriteAccess_(auth);
+  if (readOnlyResponse) {
+    return readOnlyResponse;
+  }
+
+  const studentIds = parseStringList_(request.studentIds || request.ids || "");
+  const subject = String(request.subject || request.title || "").trim();
+  const message = String(request.message || request.body || "").trim();
+  const includeStudentDetails = isTruthySettingValue_(request.includeStudentDetails, false);
+
+  if (!studentIds.length || !subject || !message) {
+    return jsonOutput_({ ok: false, message: "Select students, write a subject, and write a message first." });
+  }
+
+  const spreadsheet = getSpreadsheet_();
+  const students = readSheet_(spreadsheet.getSheetByName(SHEET_NAMES.students));
+  const selectedStudents = studentIds
+    .map(function (studentId) {
+      return students.find(function (entry) {
+        return getStudentId_(entry) === studentId;
+      });
+    })
+    .filter(Boolean);
+
+  if (!selectedStudents.length) {
+    return jsonOutput_({ ok: false, message: "No matching student account was found for the selected email request." });
+  }
+
+  const sentNames = [];
+  const skippedNames = [];
+  const failedMessages = [];
+
+  selectedStudents.forEach(function (student) {
+    try {
+      const result = sendAdminDirectStudentMail_(
+        spreadsheet,
+        student,
+        subject,
+        message,
+        auth,
+        includeStudentDetails
+      );
+      if (result && result.ok) {
+        sentNames.push(String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.name, getStudentId_(student))).trim());
+        return;
+      }
+
+      skippedNames.push(String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.name, getStudentId_(student))).trim());
+      if (result && result.message) {
+        failedMessages.push(result.message);
+      }
+    } catch (error) {
+      skippedNames.push(String(getFirstAvailableValue_(student, STUDENT_FIELD_KEYS_.name, getStudentId_(student))).trim());
+      failedMessages.push(error && error.message ? error.message : "Email send failed.");
+    }
+  });
+
+  if (!sentNames.length) {
+    return jsonOutput_({
+      ok: false,
+      message: failedMessages[0] || "No email could be sent to the selected students.",
+    });
+  }
+
+  const payload = buildAdminPayload_(spreadsheet, auth);
+  payload.mailSummary =
+    "Email sent to " +
+    sentNames.length +
+    " student" +
+    (sentNames.length === 1 ? "" : "s") +
+    (skippedNames.length ? ". Skipped: " + skippedNames.join(", ") + "." : ".");
+  return jsonOutput_(payload);
 }
 
 function handleAdminDeleteMessage_(request) {

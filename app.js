@@ -5,6 +5,7 @@ const APP_CONFIG = Object.freeze({
   dataMode: "remote",
   remoteEndpoint: `https://script.google.com/macros/s/${APPS_SCRIPT_DEPLOYMENT_ID}/exec`,
   remoteRequestTimeoutMs: 30000,
+  passwordResetTimeoutMs: 20000,
   remoteLoginRetryCount: 1,
   remotePaymentTimeoutMs: 45000,
   remotePaymentRetryCount: 1,
@@ -266,6 +267,11 @@ const state = {
   activePaymentCourseId: "",
   messageInboxPollHandle: 0,
   loginBusy: false,
+  passwordResetBusy: false,
+  passwordResetQuery: "",
+  passwordResetStudentId: "",
+  passwordResetMaskedEmail: "",
+  passwordResetOtp: "",
 };
 
 let remoteWarmupPromise = null;
@@ -364,6 +370,24 @@ const dom = {
   profilePaymentDate: document.getElementById("profilePaymentDate"),
   profileCourseGrid: document.getElementById("profileCourseGrid"),
   profileResetLink: document.getElementById("profileResetLink"),
+  forgotPasswordBtn: document.getElementById("forgotPasswordBtn"),
+  forgotPasswordModal: document.getElementById("forgotPasswordModal"),
+  forgotPasswordBackdrop: document.getElementById("forgotPasswordBackdrop"),
+  closeForgotPasswordBtn: document.getElementById("closeForgotPasswordBtn"),
+  forgotPasswordTitle: document.getElementById("forgotPasswordTitle"),
+  forgotPasswordMeta: document.getElementById("forgotPasswordMeta"),
+  forgotPasswordStepLookup: document.getElementById("forgotPasswordStepLookup"),
+  forgotPasswordStepOtp: document.getElementById("forgotPasswordStepOtp"),
+  forgotPasswordStepReset: document.getElementById("forgotPasswordStepReset"),
+  forgotPasswordQuery: document.getElementById("forgotPasswordQuery"),
+  forgotPasswordRequestBtn: document.getElementById("forgotPasswordRequestBtn"),
+  forgotPasswordOtp: document.getElementById("forgotPasswordOtp"),
+  forgotPasswordVerifyBtn: document.getElementById("forgotPasswordVerifyBtn"),
+  forgotPasswordResendBtn: document.getElementById("forgotPasswordResendBtn"),
+  forgotPasswordNewPassword: document.getElementById("forgotPasswordNewPassword"),
+  forgotPasswordConfirmPassword: document.getElementById("forgotPasswordConfirmPassword"),
+  forgotPasswordSaveBtn: document.getElementById("forgotPasswordSaveBtn"),
+  forgotPasswordFeedback: document.getElementById("forgotPasswordFeedback"),
 };
 
 function syncStudentPasswordToggle() {
@@ -1890,6 +1914,44 @@ async function fetchRemoteResponseWithTimeout(url, options = {}, timeoutOptions 
       clearTimeout(timeoutHandle);
     }
   }
+}
+
+async function requestPasswordResetAction(action, payload = {}) {
+  if (APP_CONFIG.dataMode !== "remote" || !APP_CONFIG.remoteEndpoint) {
+    throw new Error("Password reset is available only when the live portal is connected.");
+  }
+
+  const response = await fetchRemoteResponseWithTimeout(
+    APP_CONFIG.remoteEndpoint,
+    {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+      },
+      body: new URLSearchParams(
+        Object.entries({
+          action,
+          ...payload,
+        }).reduce((result, [key, value]) => {
+          if (value !== undefined && value !== null) {
+            result[key] = String(value);
+          }
+          return result;
+        }, {})
+      ),
+    },
+    {
+      timeoutMs: APP_CONFIG.passwordResetTimeoutMs,
+      timeoutMessage: "Password reset request timed out. Please try again.",
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error("Unable to complete the password reset request.");
+  }
+
+  return response.json();
 }
 
 function warmRemoteConnection() {
@@ -3435,17 +3497,7 @@ function setAvatarImage(imageUrl, imageElement, fallbackElement, fallbackText) {
 }
 
 function getPasswordResetUrl(student) {
-  const rawUrl = String(student.passwordResetUrl || "").trim();
-  if (rawUrl) {
-    const lowerUrl = rawUrl.toLowerCase();
-    if (!LEGACY_SUPPORT_EMAILS.some((email) => lowerUrl.includes(String(email || "").toLowerCase()))) {
-      return rawUrl;
-    }
-  }
-
-  return `mailto:${encodeURIComponent(OFFICIAL_SUPPORT_EMAIL)}?subject=Password%20Reset%20Request%20for%20${encodeURIComponent(
-    student.id || "student"
-  )}`;
+  return "#forgot-password";
 }
 
 function setFeedback(message, type = "neutral") {
@@ -3489,6 +3541,7 @@ function syncBodyOverflow() {
     dom.videoModal,
     dom.profileModal,
     dom.paymentModal,
+    dom.forgotPasswordModal,
     dom.approvalStatusModal,
     dom.studentMessageModal,
   ].filter(Boolean);
@@ -3564,6 +3617,284 @@ function closeApprovalStatusModal() {
   dom.approvalStatusModal.classList.add("hidden");
   dom.approvalStatusModal.classList.remove("flex");
   syncBodyOverflow();
+}
+
+function setForgotPasswordFeedback(message, tone = "neutral") {
+  if (!dom.forgotPasswordFeedback) {
+    return;
+  }
+
+  const palette = {
+    neutral: "text-slate-500",
+    success: "text-emerald-700",
+    error: "text-red-600",
+    info: "text-blue-700",
+  };
+
+  dom.forgotPasswordFeedback.textContent = message || "";
+  dom.forgotPasswordFeedback.className = `mt-5 text-sm ${palette[tone] || palette.neutral}`;
+}
+
+function setForgotPasswordBusy(isBusy, busyLabel = "") {
+  state.passwordResetBusy = !!isBusy;
+
+  [
+    dom.forgotPasswordQuery,
+    dom.forgotPasswordOtp,
+    dom.forgotPasswordNewPassword,
+    dom.forgotPasswordConfirmPassword,
+    dom.forgotPasswordRequestBtn,
+    dom.forgotPasswordVerifyBtn,
+    dom.forgotPasswordResendBtn,
+    dom.forgotPasswordSaveBtn,
+    dom.closeForgotPasswordBtn,
+  ]
+    .filter(Boolean)
+    .forEach((element) => {
+      element.disabled = !!isBusy;
+    });
+
+  if (dom.forgotPasswordRequestBtn) {
+    dom.forgotPasswordRequestBtn.textContent = isBusy && busyLabel === "request" ? "Sending OTP..." : "Send OTP";
+  }
+  if (dom.forgotPasswordVerifyBtn) {
+    dom.forgotPasswordVerifyBtn.textContent = isBusy && busyLabel === "verify" ? "Checking OTP..." : "Verify OTP";
+  }
+  if (dom.forgotPasswordResendBtn) {
+    dom.forgotPasswordResendBtn.textContent = isBusy && busyLabel === "resend" ? "Sending..." : "Send Again";
+  }
+  if (dom.forgotPasswordSaveBtn) {
+    dom.forgotPasswordSaveBtn.textContent = isBusy && busyLabel === "save" ? "Updating..." : "Update Password";
+  }
+}
+
+function setForgotPasswordStep(step = "lookup") {
+  const normalizedStep = ["lookup", "otp", "reset"].includes(step) ? step : "lookup";
+  const maskedEmail = state.passwordResetMaskedEmail || "your saved email";
+
+  if (dom.forgotPasswordStepLookup) {
+    dom.forgotPasswordStepLookup.classList.toggle("hidden", normalizedStep !== "lookup");
+  }
+  if (dom.forgotPasswordStepOtp) {
+    dom.forgotPasswordStepOtp.classList.toggle("hidden", normalizedStep !== "otp");
+  }
+  if (dom.forgotPasswordStepReset) {
+    dom.forgotPasswordStepReset.classList.toggle("hidden", normalizedStep !== "reset");
+  }
+
+  if (dom.forgotPasswordTitle) {
+    dom.forgotPasswordTitle.textContent =
+      normalizedStep === "lookup"
+        ? "Reset Portal Password"
+        : normalizedStep === "otp"
+        ? "Enter OTP"
+        : "Set New Password";
+  }
+  if (dom.forgotPasswordMeta) {
+    dom.forgotPasswordMeta.textContent =
+      normalizedStep === "lookup"
+        ? "Enter your student ID, phone number, or email. We will send an OTP to the email saved on your account."
+        : normalizedStep === "otp"
+        ? `We sent an OTP to ${maskedEmail}. Enter the code below to continue.`
+        : `OTP verified for ${maskedEmail}. Set your new password now.`;
+  }
+}
+
+function resetForgotPasswordFlow(options = {}) {
+  const initialQuery = String(options.query || "").trim();
+  state.passwordResetQuery = initialQuery;
+  state.passwordResetStudentId = "";
+  state.passwordResetMaskedEmail = "";
+  state.passwordResetOtp = "";
+
+  if (dom.forgotPasswordQuery) {
+    dom.forgotPasswordQuery.value = initialQuery;
+  }
+  if (dom.forgotPasswordOtp) {
+    dom.forgotPasswordOtp.value = "";
+  }
+  if (dom.forgotPasswordNewPassword) {
+    dom.forgotPasswordNewPassword.value = "";
+  }
+  if (dom.forgotPasswordConfirmPassword) {
+    dom.forgotPasswordConfirmPassword.value = "";
+  }
+
+  setForgotPasswordStep("lookup");
+  setForgotPasswordBusy(false);
+  setForgotPasswordFeedback(options.feedback || "");
+}
+
+function openForgotPasswordModal(initialQuery = "") {
+  const fallbackQuery =
+    String(initialQuery || "").trim() ||
+    (state.activeStudentId
+      ? state.activeStudentId
+      : String(dom.query?.value || "").trim());
+  resetForgotPasswordFlow({ query: fallbackQuery });
+  dom.forgotPasswordModal.classList.remove("hidden");
+  dom.forgotPasswordModal.classList.add("flex");
+  syncBodyOverflow();
+  window.setTimeout(() => {
+    dom.forgotPasswordQuery?.focus();
+  }, 60);
+}
+
+function closeForgotPasswordModal(options = {}) {
+  dom.forgotPasswordModal.classList.add("hidden");
+  dom.forgotPasswordModal.classList.remove("flex");
+  if (!options.preserveState) {
+    resetForgotPasswordFlow({
+      query: state.activeStudentId ? state.activeStudentId : String(dom.query?.value || "").trim(),
+    });
+  }
+  syncBodyOverflow();
+}
+
+async function handleForgotPasswordRequest(options = {}) {
+  if (state.passwordResetBusy) {
+    return;
+  }
+
+  const query = String(
+    options.reuseExistingQuery ? state.passwordResetQuery || dom.forgotPasswordQuery?.value || "" : dom.forgotPasswordQuery?.value || ""
+  ).trim();
+  if (!query) {
+    setForgotPasswordFeedback("Enter your student ID, phone number, or email first.", "error");
+    return;
+  }
+
+  state.passwordResetQuery = query;
+  setForgotPasswordBusy(true, options.reuseExistingQuery ? "resend" : "request");
+  setForgotPasswordFeedback("Sending OTP to the saved student email...", "info");
+
+  try {
+    const response = await requestPasswordResetAction("studentrequestpasswordreset", {
+      query,
+    });
+    if (!response?.ok) {
+      throw new Error(response?.message || "Unable to send the OTP.");
+    }
+
+    state.passwordResetStudentId = String(response.studentId || "").trim();
+    state.passwordResetMaskedEmail = String(response.maskedEmail || "").trim();
+    if (dom.forgotPasswordOtp) {
+      dom.forgotPasswordOtp.value = "";
+    }
+    setForgotPasswordStep("otp");
+    setForgotPasswordFeedback(response.message || "OTP sent successfully.", "success");
+    dom.forgotPasswordOtp?.focus();
+  } catch (error) {
+    setForgotPasswordFeedback(error?.message || "Unable to send the OTP.", "error");
+  } finally {
+    setForgotPasswordBusy(false);
+  }
+}
+
+async function handleForgotPasswordVerify() {
+  if (state.passwordResetBusy) {
+    return;
+  }
+
+  const query = String(dom.forgotPasswordQuery?.value || state.passwordResetQuery || "").trim();
+  const otp = getDigitsOnlyValue(dom.forgotPasswordOtp?.value || "");
+  if (!query || !otp) {
+    setForgotPasswordFeedback("Enter both the student identifier and the OTP.", "error");
+    return;
+  }
+
+  state.passwordResetQuery = query;
+  state.passwordResetOtp = otp;
+  setForgotPasswordBusy(true, "verify");
+  setForgotPasswordFeedback("Verifying OTP...", "info");
+
+  try {
+    const response = await requestPasswordResetAction("studentverifypasswordresetotp", {
+      query,
+      otp,
+    });
+    if (!response?.ok) {
+      throw new Error(response?.message || "OTP verification failed.");
+    }
+
+    state.passwordResetStudentId = String(response.studentId || state.passwordResetStudentId || "").trim();
+    state.passwordResetMaskedEmail = String(response.maskedEmail || state.passwordResetMaskedEmail || "").trim();
+    setForgotPasswordStep("reset");
+    setForgotPasswordFeedback(response.message || "OTP verified. Set your new password now.", "success");
+    dom.forgotPasswordNewPassword?.focus();
+  } catch (error) {
+    setForgotPasswordFeedback(error?.message || "OTP verification failed.", "error");
+  } finally {
+    setForgotPasswordBusy(false);
+  }
+}
+
+function finalizeForgotPasswordReset(studentId, newPassword) {
+  const nextQuery = String(studentId || state.passwordResetStudentId || state.passwordResetQuery || "").trim();
+  closeForgotPasswordModal();
+
+  if (state.activeStudentId) {
+    logout({
+      message: "Password updated. Use the new password below to enter the portal again.",
+      feedbackTone: "success",
+      toastMessage: "Password updated successfully.",
+      toastType: "success",
+      syncRemoteLogout: true,
+    });
+  } else {
+    togglePage("login");
+    setFeedback("Password updated. Use the new password below to enter the portal.", "success");
+    showToast("Password updated successfully.", "success");
+  }
+
+  dom.query.value = nextQuery;
+  dom.password.value = newPassword;
+  dom.password.type = "password";
+  syncStudentPasswordToggle();
+  syncLoginDraft();
+  dom.password.focus();
+}
+
+async function handleForgotPasswordSave() {
+  if (state.passwordResetBusy) {
+    return;
+  }
+
+  const query = String(dom.forgotPasswordQuery?.value || state.passwordResetQuery || "").trim();
+  const otp = getDigitsOnlyValue(dom.forgotPasswordOtp?.value || state.passwordResetOtp || "");
+  const password = normalizePasswordValue(dom.forgotPasswordNewPassword?.value || "");
+  const confirmPassword = normalizePasswordValue(dom.forgotPasswordConfirmPassword?.value || "");
+
+  if (!query || !otp || !password || !confirmPassword) {
+    setForgotPasswordFeedback("Enter the identifier, OTP, new password, and confirm password.", "error");
+    return;
+  }
+  if (password !== confirmPassword) {
+    setForgotPasswordFeedback("New password and confirm password did not match.", "error");
+    return;
+  }
+
+  state.passwordResetQuery = query;
+  state.passwordResetOtp = otp;
+  setForgotPasswordBusy(true, "save");
+  setForgotPasswordFeedback("Updating password in the live sheet...", "info");
+
+  try {
+    const response = await requestPasswordResetAction("studentresetpassword", {
+      query,
+      otp,
+      password,
+    });
+    if (!response?.ok) {
+      throw new Error(response?.message || "Unable to update the password.");
+    }
+
+    finalizeForgotPasswordReset(String(response.studentId || "").trim(), password);
+  } catch (error) {
+    setForgotPasswordFeedback(error?.message || "Unable to update the password.", "error");
+  } finally {
+    setForgotPasswordBusy(false);
+  }
 }
 
 function getCurrentPendingStudentMessage(student = getActiveStudent()) {
@@ -3643,6 +3974,7 @@ function togglePage(page) {
   if (isLogin) {
     closeProfileModal();
     closePaymentModal();
+    closeForgotPasswordModal({ preserveState: true });
     closeStudentMessageModal();
   }
 
@@ -5397,6 +5729,7 @@ function logout(options = {}) {
   closePaymentModal();
   closeVideo();
   closeProfileModal();
+  closeForgotPasswordModal({ preserveState: true });
   closeStudentMessageModal();
   stopStudentInboxPolling();
   state.activeStudentId = "";
@@ -5712,6 +6045,65 @@ dom.profileBackdrop.addEventListener("click", closeProfileModal);
 dom.closeApprovalStatusBtn.addEventListener("click", closeApprovalStatusModal);
 dom.approvalStatusBackdrop.addEventListener("click", closeApprovalStatusModal);
 dom.approvalStatusOkBtn.addEventListener("click", closeApprovalStatusModal);
+if (dom.forgotPasswordBtn) {
+  dom.forgotPasswordBtn.addEventListener("click", () => {
+    openForgotPasswordModal(dom.query?.value || "");
+  });
+}
+if (dom.closeForgotPasswordBtn) {
+  dom.closeForgotPasswordBtn.addEventListener("click", () => {
+    closeForgotPasswordModal();
+  });
+}
+if (dom.forgotPasswordBackdrop) {
+  dom.forgotPasswordBackdrop.addEventListener("click", () => {
+    closeForgotPasswordModal();
+  });
+}
+if (dom.forgotPasswordRequestBtn) {
+  dom.forgotPasswordRequestBtn.addEventListener("click", async () => {
+    await handleForgotPasswordRequest();
+  });
+}
+if (dom.forgotPasswordVerifyBtn) {
+  dom.forgotPasswordVerifyBtn.addEventListener("click", async () => {
+    await handleForgotPasswordVerify();
+  });
+}
+if (dom.forgotPasswordResendBtn) {
+  dom.forgotPasswordResendBtn.addEventListener("click", async () => {
+    await handleForgotPasswordRequest({ reuseExistingQuery: true });
+  });
+}
+if (dom.forgotPasswordSaveBtn) {
+  dom.forgotPasswordSaveBtn.addEventListener("click", async () => {
+    await handleForgotPasswordSave();
+  });
+}
+if (dom.forgotPasswordQuery) {
+  dom.forgotPasswordQuery.addEventListener("keydown", async (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      await handleForgotPasswordRequest();
+    }
+  });
+}
+if (dom.forgotPasswordOtp) {
+  dom.forgotPasswordOtp.addEventListener("keydown", async (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      await handleForgotPasswordVerify();
+    }
+  });
+}
+if (dom.forgotPasswordConfirmPassword) {
+  dom.forgotPasswordConfirmPassword.addEventListener("keydown", async (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      await handleForgotPasswordSave();
+    }
+  });
+}
 if (dom.closeStudentMessageBtn) {
   dom.closeStudentMessageBtn.addEventListener("click", () => {
     dismissStudentMessage();
@@ -5739,9 +6131,12 @@ dom.profileLogoutBtn.addEventListener("click", () => {
   logout();
   window.scrollTo({ top: 0, behavior: "smooth" });
 });
-dom.profileResetLink.addEventListener("click", () => {
+dom.profileResetLink.addEventListener("click", (event) => {
+  event.preventDefault();
+  const activeStudent = getActiveStudent();
+  openForgotPasswordModal(activeStudent?.id || dom.query?.value || "");
   if (state.activeStudentId) {
-    showToast("Password reset option opened.", "info");
+    showToast("OTP reset option opened.", "info");
   }
 });
 
@@ -5760,6 +6155,11 @@ document.addEventListener("keydown", (event) => {
 
     if (!dom.approvalStatusModal.classList.contains("hidden")) {
       closeApprovalStatusModal();
+      return;
+    }
+
+    if (dom.forgotPasswordModal && !dom.forgotPasswordModal.classList.contains("hidden")) {
+      closeForgotPasswordModal();
       return;
     }
 

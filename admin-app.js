@@ -346,6 +346,11 @@ const dom = {
   messageBodyInput: document.getElementById("messageBodyInput"),
   sendMessageBtn: document.getElementById("sendMessageBtn"),
   messageFeedback: document.getElementById("messageFeedback"),
+  emailSubjectInput: document.getElementById("emailSubjectInput"),
+  emailBodyInput: document.getElementById("emailBodyInput"),
+  emailIncludeDetails: document.getElementById("emailIncludeDetails"),
+  sendEmailBtn: document.getElementById("sendEmailBtn"),
+  emailFeedback: document.getElementById("emailFeedback"),
   clearCourseFormBtn: document.getElementById("clearCourseFormBtn"),
   courseForm: document.getElementById("courseForm"),
   courseIdInput: document.getElementById("courseIdInput"),
@@ -565,7 +570,7 @@ function createDefaultNotificationSettings() {
     fromName: "BJS and Bar Aspirants Academy",
     senderEmail: "bjsacademy38@gmail.com",
     replyToEmail: "bjsacademy38@gmail.com",
-    adminCopyEnabled: true,
+    adminCopyEnabled: false,
     adminCopyEmail: "bjsacademy38@gmail.com",
     fallbackRecipientEmail: "bjsacademy38@gmail.com",
     loginAlerts: true,
@@ -1845,6 +1850,7 @@ function renderSelectionState() {
     setButtonDisabled(dom.applyBulkActionBtn, true);
     setButtonDisabled(dom.assignCoursesBtn, true);
     setButtonDisabled(dom.sendMessageBtn, true);
+    setButtonDisabled(dom.sendEmailBtn, true);
     [...dom.studentQuickActionBar.querySelectorAll("button")].forEach((button) => {
       setButtonDisabled(button, true);
     });
@@ -1874,6 +1880,7 @@ function renderSelectionState() {
   setButtonDisabled(dom.applyBulkActionBtn, !hasSelection);
   setButtonDisabled(dom.assignCoursesBtn, !hasSelection);
   setButtonDisabled(dom.sendMessageBtn, !hasSelection);
+  setButtonDisabled(dom.sendEmailBtn, !hasSelection);
 
   [...dom.studentQuickActionBar.querySelectorAll("button")].forEach((button) => {
     setButtonDisabled(button, !hasSelection);
@@ -2946,16 +2953,23 @@ function renderStudentMobileList(students) {
             >
               View
             </button>
-            <button
-              type="button"
-              data-edit-student="${escapeHtml(student.id)}"
-              class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
-            >
-              Open Editor
-            </button>
-          </div>
-        </article>
-      `;
+              <button
+                type="button"
+                data-edit-student="${escapeHtml(student.id)}"
+                class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold text-slate-700 transition hover:bg-slate-50"
+              >
+                Open Editor
+              </button>
+              <button
+                type="button"
+                data-delete-student="${escapeHtml(student.id)}"
+                class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100"
+              >
+                Delete
+              </button>
+            </div>
+          </article>
+        `;
     })
     .join("");
 }
@@ -3077,6 +3091,13 @@ function renderStudentTable() {
                 class="rounded-2xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-700 transition hover:bg-slate-50"
               >
                 Edit
+              </button>
+              <button
+                type="button"
+                data-delete-student="${escapeHtml(student.id)}"
+                class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-2 text-xs font-bold text-rose-700 transition hover:border-rose-300 hover:bg-rose-100"
+              >
+                Delete
               </button>
             </div>
           </td>
@@ -4655,6 +4676,44 @@ async function handleSendMessage() {
   }
 }
 
+async function handleSendStudentEmail() {
+  if (guardReadOnlyAction(dom.emailFeedback)) {
+    return;
+  }
+
+  const selectedStudentIds = getSelectedStudentIds();
+  const subject = dom.emailSubjectInput.value.trim();
+  const message = dom.emailBodyInput.value.trim();
+  const includeStudentDetails = !!dom.emailIncludeDetails.checked;
+
+  if (!selectedStudentIds.length || !subject || !message) {
+    setFeedback(dom.emailFeedback, "Select students, write a subject, and write a message first.", "error");
+    return;
+  }
+
+  try {
+    setFeedback(dom.emailFeedback, "Sending direct email...", "info");
+    const response = await requestAction("adminsendstudentemail", {
+      studentIds: buildPipeList(selectedStudentIds),
+      subject,
+      message,
+      includeStudentDetails: includeStudentDetails ? "true" : "false",
+    });
+
+    if (!response.ok) {
+      throw new Error(response.message || "Unable to send the email.");
+    }
+
+    applyDashboardPayload(response, response.mailSummary || "Direct email sent.");
+    dom.emailSubjectInput.value = "";
+    dom.emailBodyInput.value = "";
+    dom.emailIncludeDetails.checked = false;
+    setFeedback(dom.emailFeedback, response.mailSummary || "Direct email sent to the selected students.", "success");
+  } catch (error) {
+    setFeedback(dom.emailFeedback, error.message || "Unable to send the email.", "error");
+  }
+}
+
 async function handleCourseSave(event) {
   event.preventDefault();
   if (guardReadOnlyAction(dom.courseFeedback)) {
@@ -4785,6 +4844,39 @@ async function handleCourseDelete(courseId) {
     setFeedback(dom.courseFeedback, "Course deleted.", "success");
   } catch (error) {
     setFeedback(dom.courseFeedback, error.message || "Unable to delete the course.", "error");
+  }
+}
+
+async function handleStudentDelete(studentId) {
+  if (guardReadOnlyAction(dom.adminTopFeedback)) {
+    return;
+  }
+
+  const student = getStudentById(studentId) || null;
+  const confirmed = window.confirm(
+    `Delete "${student?.name || studentId}" permanently? This removes the student from the live sheet, registrations, course access, payments, devices, and message recipients.`
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    setFeedback(dom.adminTopFeedback, "Deleting student permanently...", "info");
+    const response = await requestAction("admindeletestudent", {
+      studentId,
+    });
+
+    if (!response.ok) {
+      throw new Error(response.message || "Unable to delete the student.");
+    }
+
+    applyDashboardPayload(response, "Student deleted permanently.");
+    if (state.editingStudentId === studentId) {
+      resetStudentEditor();
+    }
+    setFeedback(dom.adminTopFeedback, "Student deleted permanently.", "success");
+  } catch (error) {
+    setFeedback(dom.adminTopFeedback, error.message || "Unable to delete the student.", "error");
   }
 }
 
@@ -4957,6 +5049,12 @@ function handleStudentTableClick(event) {
   const viewButton = event.target.closest("[data-view-student]");
   if (viewButton) {
     openStudentPreview(String(viewButton.dataset.viewStudent || "").trim());
+    return;
+  }
+
+  const deleteButton = event.target.closest("[data-delete-student]");
+  if (deleteButton) {
+    handleStudentDelete(String(deleteButton.dataset.deleteStudent || "").trim());
     return;
   }
 
@@ -5243,6 +5341,7 @@ dom.studentQuickActionBar.addEventListener("click", handleStudentQuickActionClic
 dom.applyBulkActionBtn.addEventListener("click", handleBulkActionApply);
 dom.assignCoursesBtn.addEventListener("click", handleAssignCourses);
 dom.sendMessageBtn.addEventListener("click", handleSendMessage);
+dom.sendEmailBtn.addEventListener("click", handleSendStudentEmail);
 dom.courseForm.addEventListener("submit", handleCourseSave);
 dom.clearCourseFormBtn.addEventListener("click", clearCourseForm);
 dom.courseListPanel.addEventListener("click", handleCourseListClick);

@@ -447,6 +447,13 @@
                 >
                   Enter Portal
                 </button>
+                <button
+                  id="forgotPasswordBtn"
+                  type="button"
+                  class="w-full rounded-2xl border border-blue-100 bg-blue-50 px-5 py-3 text-sm font-bold text-blue-700 transition hover:border-blue-200 hover:bg-blue-100"
+                >
+                  Forgot Password
+                </button>
               </form>
 
               <div class="portal-register-note">
@@ -808,9 +815,7 @@
                 </div>
                 <a
                   id="profileResetLink"
-                  href="#"
-                  target="_blank"
-                  rel="noreferrer"
+                  href="#forgot-password"
                   class="inline-flex w-full items-center justify-center rounded-2xl border border-blue-100 bg-blue-50 px-5 py-3 text-sm font-bold text-blue-700 transition hover:border-blue-200 hover:bg-blue-100 sm:w-auto"
                 >
                   Forgot Password
@@ -838,6 +843,131 @@
             </div>
           </section>
         </div>
+      </div>
+    </div>
+
+    <div
+      id="forgotPasswordModal"
+      class="fixed inset-0 z-[82] hidden items-center justify-center p-4"
+    >
+      <div
+        id="forgotPasswordBackdrop"
+        class="absolute inset-0 bg-slate-950/80 backdrop-blur-sm"
+      ></div>
+      <div
+        class="relative w-full max-w-xl rounded-[2rem] border border-blue-100 bg-white p-6 shadow-2xl sm:p-8"
+      >
+        <button
+          id="closeForgotPasswordBtn"
+          type="button"
+          class="absolute right-4 top-4 rounded-full bg-slate-100 p-2 text-slate-500 transition hover:bg-slate-900 hover:text-white"
+        >
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            class="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M6 18L18 6M6 6l12 12"
+            />
+          </svg>
+        </button>
+
+        <span class="inline-flex rounded-full bg-blue-50 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.28em] text-blue-700">
+          Forgot Password
+        </span>
+        <h3 id="forgotPasswordTitle" class="mt-5 text-2xl font-extrabold text-slate-950">
+          Reset Portal Password
+        </h3>
+        <p id="forgotPasswordMeta" class="mt-3 text-sm leading-6 text-slate-600">
+          Enter your student ID, phone number, or email. We will send an OTP to the email saved on your account.
+        </p>
+
+        <div id="forgotPasswordStepLookup" class="mt-6 space-y-4">
+          <label class="block">
+            <span class="mb-2 block text-xs font-bold uppercase tracking-[0.22em] text-slate-500">Student Identifier</span>
+            <input
+              id="forgotPasswordQuery"
+              type="text"
+              placeholder="Student ID / phone / email"
+              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:bg-white"
+            />
+          </label>
+          <button
+            id="forgotPasswordRequestBtn"
+            type="button"
+            class="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+          >
+            Send OTP
+          </button>
+        </div>
+
+        <div id="forgotPasswordStepOtp" class="mt-6 hidden space-y-4">
+          <label class="block">
+            <span class="mb-2 block text-xs font-bold uppercase tracking-[0.22em] text-slate-500">OTP Code</span>
+            <input
+              id="forgotPasswordOtp"
+              type="text"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              placeholder="Enter the OTP from your email"
+              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:bg-white"
+            />
+          </label>
+          <div class="flex flex-col gap-3 sm:flex-row">
+            <button
+              id="forgotPasswordVerifyBtn"
+              type="button"
+              class="w-full rounded-2xl bg-slate-950 px-5 py-3 text-sm font-bold text-white transition hover:bg-slate-800"
+            >
+              Verify OTP
+            </button>
+            <button
+              id="forgotPasswordResendBtn"
+              type="button"
+              class="w-full rounded-2xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-700 transition hover:border-slate-300 hover:bg-slate-50"
+            >
+              Send Again
+            </button>
+          </div>
+        </div>
+
+        <div id="forgotPasswordStepReset" class="mt-6 hidden space-y-4">
+          <label class="block">
+            <span class="mb-2 block text-xs font-bold uppercase tracking-[0.22em] text-slate-500">New Password</span>
+            <input
+              id="forgotPasswordNewPassword"
+              type="password"
+              autocomplete="new-password"
+              placeholder="Enter new password"
+              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:bg-white"
+            />
+          </label>
+          <label class="block">
+            <span class="mb-2 block text-xs font-bold uppercase tracking-[0.22em] text-slate-500">Confirm Password</span>
+            <input
+              id="forgotPasswordConfirmPassword"
+              type="password"
+              autocomplete="new-password"
+              placeholder="Confirm new password"
+              class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm outline-none transition focus:border-blue-400 focus:bg-white"
+            />
+          </label>
+          <button
+            id="forgotPasswordSaveBtn"
+            type="button"
+            class="w-full rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-bold text-white transition hover:bg-emerald-700"
+          >
+            Update Password
+          </button>
+        </div>
+
+        <p id="forgotPasswordFeedback" class="mt-5 text-sm text-slate-500"></p>
       </div>
     </div>
 
