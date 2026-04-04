@@ -27,12 +27,14 @@
       radial-gradient(circle at top left, rgba(29, 78, 216, 0.12), transparent 28%),
       radial-gradient(circle at bottom right, rgba(13, 148, 136, 0.14), transparent 22%),
       linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+    overflow-x: hidden;
   }
 
   body.admin-page {
     background:
       radial-gradient(circle at top right, rgba(217, 119, 6, 0.12), transparent 28%),
       linear-gradient(180deg, #f8fafc 0%, #eef2ff 100%);
+    overflow-x: hidden;
   }
 
   ::-webkit-scrollbar {
@@ -101,6 +103,40 @@
   #courseList h3,
   #courseList h4,
   #courseList p {
+    overflow-wrap: anywhere;
+  }
+
+  .panel-card,
+  #studentMobileList,
+  #studentSelectionBar,
+  #selectedStudentWorkspace,
+  #studentEditorForm,
+  #courseForm,
+  #notificationSettingsForm,
+  #courseListPanel,
+  #paymentQueue,
+  #deviceRegistryPanel,
+  #messageLogPanel,
+  #profileCourseGrid,
+  #messageInboxList {
+    min-width: 0;
+  }
+
+  #studentMobileList h3,
+  #studentMobileList h4,
+  #studentMobileList p,
+  #studentTableBody td,
+  #selectedStudentWorkspace h3,
+  #selectedStudentWorkspace h4,
+  #selectedStudentWorkspace p,
+  #courseListPanel h4,
+  #courseListPanel p,
+  #paymentQueue h4,
+  #paymentQueue p,
+  #deviceRegistryPanel h4,
+  #deviceRegistryPanel p,
+  #messageLogPanel h4,
+  #messageLogPanel p {
     overflow-wrap: anywhere;
   }
 
@@ -945,6 +981,21 @@
 
   footer .md\:justify-end {
     justify-content: flex-start;
+  }
+
+  .panel-card {
+    border-radius: 1.65rem;
+  }
+
+  #studentSelectionBar {
+    top: 0.75rem;
+  }
+
+  #studentQuickActionBar > button,
+  #studentEditorForm > button,
+  #selectedStudentWorkspace button,
+  #courseForm > button {
+    width: 100%;
   }
 
   .academy-player-chrome {

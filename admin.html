@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://script.google.com" />
     <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin />
-    <link rel="stylesheet" href="./styles/app.css?v=20260331-14" />
+    <link rel="stylesheet" href="./styles/app.css?v=20260404-1" />
     <link
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
@@ -132,6 +132,37 @@
         gap: 0.75rem;
       }
 
+      .student-preview-lesson-row {
+        display: flex;
+        gap: 1rem;
+        align-items: flex-start;
+        border: 1px solid #e2e8f0;
+        border-radius: 1.15rem;
+        background: #ffffff;
+        padding: 1rem;
+      }
+
+      .student-preview-lesson-icon {
+        display: inline-flex;
+        width: 2.85rem;
+        height: 2.85rem;
+        flex: 0 0 auto;
+        align-items: center;
+        justify-content: center;
+        border-radius: 999px;
+        background: #dbeafe;
+        color: #1d4ed8;
+        font-size: 0.85rem;
+        font-weight: 800;
+      }
+
+      .student-preview-lesson-meta {
+        margin-top: 0.35rem;
+        font-size: 0.78rem;
+        line-height: 1.6;
+        color: #64748b;
+      }
+
       .student-preview-lesson-item {
         border: 1px solid #e2e8f0;
         border-radius: 1rem;
@@ -139,22 +170,26 @@
         padding: 0.95rem 1rem;
       }
 
-      .student-preview-lesson-item.is-open {
+      .student-preview-lesson-item.is-open,
+      .student-preview-lesson-row.is-open {
         border-color: #bbf7d0;
         background: linear-gradient(180deg, #ecfdf5, #ffffff);
       }
 
-      .student-preview-lesson-item.is-public {
+      .student-preview-lesson-item.is-public,
+      .student-preview-lesson-row.is-public {
         border-color: #bfdbfe;
         background: linear-gradient(180deg, #eff6ff, #ffffff);
       }
 
-      .student-preview-lesson-item.is-scheduled {
+      .student-preview-lesson-item.is-scheduled,
+      .student-preview-lesson-row.is-scheduled {
         border-color: #fde68a;
         background: linear-gradient(180deg, #fffbeb, #ffffff);
       }
 
-      .student-preview-lesson-item.is-locked {
+      .student-preview-lesson-item.is-locked,
+      .student-preview-lesson-row.is-locked {
         border-color: #fecaca;
         background: linear-gradient(180deg, #fff1f2, #ffffff);
       }
@@ -190,6 +225,99 @@
         color: #475569;
       }
 
+      .student-preview-course-map {
+        background:
+          radial-gradient(circle at top right, rgba(59, 130, 246, 0.08), transparent 22%),
+          linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(239, 246, 255, 0.82));
+      }
+
+      .student-preview-course-summary {
+        display: grid;
+        width: 100%;
+        gap: 0.75rem;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      }
+
+      .student-preview-course-stat {
+        border: 1px solid #dbeafe;
+        border-radius: 1.2rem;
+        background: rgba(255, 255, 255, 0.94);
+        padding: 1rem;
+      }
+
+      .student-preview-course-pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.6rem;
+      }
+
+      .student-preview-course-index {
+        display: inline-flex;
+        width: 3rem;
+        height: 3rem;
+        flex: 0 0 auto;
+        align-items: center;
+        justify-content: center;
+        border-radius: 1rem;
+        background: linear-gradient(135deg, #eff6ff, #dbeafe);
+        color: #1e3a8a;
+        font-size: 0.95rem;
+        font-weight: 800;
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+      }
+
+      .student-preview-course-summary-grid {
+        display: grid;
+        gap: 1rem;
+      }
+
+      .student-preview-course-overview {
+        display: grid;
+        gap: 0.75rem;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      }
+
+      .student-preview-course-note {
+        border-radius: 1.25rem;
+        border: 1px solid #dbeafe;
+        background: linear-gradient(180deg, #eff6ff, #ffffff);
+        padding: 1rem;
+      }
+
+      .student-preview-course-note.tone-emerald {
+        border-color: #bbf7d0;
+        background: linear-gradient(180deg, #ecfdf5, #ffffff);
+      }
+
+      .student-preview-course-note.tone-amber {
+        border-color: #fde68a;
+        background: linear-gradient(180deg, #fffbeb, #ffffff);
+      }
+
+      .student-preview-course-note.tone-rose {
+        border-color: #fecaca;
+        background: linear-gradient(180deg, #fff1f2, #ffffff);
+      }
+
+      .student-preview-course-note.tone-indigo {
+        border-color: #c7d2fe;
+        background: linear-gradient(180deg, #eef2ff, #ffffff);
+      }
+
+      .student-preview-course-note.tone-slate {
+        border-color: #cbd5e1;
+        background: linear-gradient(180deg, #f8fafc, #ffffff);
+      }
+
+      .student-preview-empty {
+        border: 1px dashed #cbd5e1;
+        border-radius: 1.25rem;
+        background: rgba(248, 250, 252, 0.9);
+        padding: 1rem 1.1rem;
+        font-size: 0.92rem;
+        color: #64748b;
+      }
+
       @media (min-width: 640px) {
         .student-preview-shell {
           align-items: center;
@@ -202,6 +330,52 @@
         .student-preview-surface,
         .student-preview-course-card {
           padding: 1.4rem;
+        }
+      }
+
+      @media (min-width: 960px) {
+        .student-preview-course-summary-grid {
+          grid-template-columns: minmax(0, 1fr) minmax(260px, 0.4fr);
+          align-items: start;
+        }
+      }
+
+      @media (max-width: 639px) {
+        .student-preview-shell {
+          padding: 0.35rem;
+        }
+
+        .student-preview-panel {
+          width: 100%;
+          max-height: calc(100dvh - 0.7rem);
+          border-radius: 1.35rem;
+        }
+
+        .student-preview-surface,
+        .student-preview-course-card {
+          border-radius: 1.35rem;
+          padding: 1rem;
+        }
+
+        .student-preview-course-summary,
+        .student-preview-course-overview,
+        .student-preview-account-grid,
+        .student-preview-kpi-grid,
+        .student-preview-mini-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .student-preview-lesson-row {
+          gap: 0.75rem;
+          flex-direction: column;
+          padding: 0.9rem;
+        }
+
+        .student-preview-lesson-icon,
+        .student-preview-course-index {
+          width: 2.65rem;
+          height: 2.65rem;
+          border-radius: 0.95rem;
         }
       }
     </style>
@@ -862,8 +1036,8 @@
         <div class="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 bg-white px-5 py-4 sm:px-6">
           <div class="min-w-0">
             <p class="text-xs font-bold uppercase tracking-[0.28em] text-blue-500">Student View</p>
-            <h3 id="studentPreviewTitle" class="mt-2 truncate text-2xl font-extrabold text-slate-950">Live Preview</h3>
-            <p id="studentPreviewMeta" class="mt-1 text-sm text-slate-500">See the selected student's current dashboard snapshot.</p>
+            <h3 id="studentPreviewTitle" class="mt-2 max-w-[40rem] break-words text-2xl font-extrabold text-slate-950">Live Preview</h3>
+            <p id="studentPreviewMeta" class="mt-1 max-w-[48rem] text-sm text-slate-500">See the selected student's current dashboard snapshot.</p>
           </div>
           <div class="flex flex-wrap items-center gap-2">
             <button
@@ -887,6 +1061,6 @@
     </div>
 
     <script src="./portal-copy.js?v=20260315-1" defer></script>
-    <script src="./admin-app.js?v=20260403-1" defer></script>
+    <script src="./admin-app.js?v=20260404-1" defer></script>
   </body>
 </html>
