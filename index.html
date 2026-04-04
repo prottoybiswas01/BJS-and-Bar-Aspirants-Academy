@@ -10,7 +10,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://script.google.com" />
     <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin />
-    <link rel="stylesheet" href="./styles/app.css?v=20260404-1" />
+    <link rel="stylesheet" href="./styles/app.css?v=20260404-2" />
     <link
       href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap"
       rel="stylesheet"
@@ -642,13 +642,15 @@
               <p id="videoMeta" class="academy-player-meta">
                 Stream opens only inside your logged-in academy portal.
               </p>
-              <button
-                id="startVideoBtn"
-                type="button"
-                class="academy-player-start"
-              >
-                Start Class
-              </button>
+              <div class="academy-player-actions">
+                <button
+                  id="startVideoBtn"
+                  type="button"
+                  class="academy-player-start"
+                >
+                  Start Class
+                </button>
+              </div>
             </div>
           </div>
           <iframe
@@ -658,13 +660,25 @@
             frameborder="0"
             loading="lazy"
             referrerpolicy="strict-origin-when-cross-origin"
-            allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowfullscreen
           ></iframe>
           <div
             id="videoLiveWatermark"
             class="academy-player-watermark academy-player-watermark-live hidden"
           ></div>
+        </div>
+        <div class="academy-player-helpbar">
+          <p id="videoSupportText" class="academy-player-support-text">
+            If the class does not start inside this window, open it directly in YouTube.
+          </p>
+          <button
+            id="openVideoExternallyBtn"
+            type="button"
+            class="academy-player-open-external"
+          >
+            Open in YouTube
+          </button>
         </div>
         <div class="academy-player-footer">
           <span>Screen recording, link sharing, and third-party extraction are prohibited.</span>
@@ -1243,6 +1257,6 @@
     </div>
 
     <script src="./portal-copy.js?v=20260315-1" defer></script>
-    <script src="./app.js?v=20260402-2" defer></script>
+    <script src="./app.js?v=20260404-3" defer></script>
   </body>
 </html>

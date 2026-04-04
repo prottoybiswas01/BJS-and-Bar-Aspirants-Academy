@@ -115,6 +115,8 @@ const SECURITY_LOCK_LOGIN_MESSAGE =
 const SECURITY_LOCK_VIDEO_MESSAGE =
   "Only orientation classes remain open. Every paid video, including previously unlocked courses, stays blocked until the admin removes this security lock.";
 
+const VIDEO_EXTERNAL_PLAYBACK_SHELLS = Object.freeze(["Android WebView", "Embedded App"]);
+
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
   day: "2-digit",
   month: "2-digit",
@@ -333,7 +335,9 @@ const dom = {
   videoWatermark: document.getElementById("videoWatermark"),
   videoLiveWatermark: document.getElementById("videoLiveWatermark"),
   videoStatusText: document.getElementById("videoStatusText"),
+  videoSupportText: document.getElementById("videoSupportText"),
   startVideoBtn: document.getElementById("startVideoBtn"),
+  openVideoExternallyBtn: document.getElementById("openVideoExternallyBtn"),
   profileModal: document.getElementById("profileModal"),
   profileBackdrop: document.getElementById("profileBackdrop"),
   closeProfileBtn: document.getElementById("closeProfileBtn"),
@@ -1419,13 +1423,75 @@ function buildYouTubeEmbedUrl(videoId) {
     iv_load_policy: "3",
     cc_load_policy: "0",
     modestbranding: "1",
+    enablejsapi: "1",
   });
 
   if (window.location.origin) {
     params.set("origin", window.location.origin);
   }
 
-  return `https://www.youtube-nocookie.com/embed/${videoId}?${params.toString()}`;
+  return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
+}
+
+function buildYouTubeWatchUrl(videoId) {
+  return videoId ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}` : "";
+}
+
+function getVideoPlaybackEnvironment() {
+  const clientShell = detectPortalClientShell();
+  const prefersExternalPlayback = VIDEO_EXTERNAL_PLAYBACK_SHELLS.includes(clientShell);
+  const supportText = prefersExternalPlayback
+    ? `${clientShell} can trigger YouTube's sign-in check. Open this class in YouTube or Chrome for the most reliable playback.`
+    : "If this class stays blank or YouTube asks you to sign in, use Open in YouTube.";
+
+  return {
+    clientShell,
+    prefersExternalPlayback,
+    supportText,
+  };
+}
+
+function syncVideoPlaybackSupport(videoId) {
+  const playbackEnvironment = getVideoPlaybackEnvironment();
+  const watchUrl = buildYouTubeWatchUrl(videoId);
+
+  if (dom.videoPlayer) {
+    dom.videoPlayer.dataset.watchUrl = watchUrl;
+    dom.videoPlayer.dataset.clientShell = playbackEnvironment.clientShell;
+    dom.videoPlayer.dataset.prefersExternalPlayback = playbackEnvironment.prefersExternalPlayback ? "true" : "false";
+  }
+
+  if (dom.startVideoBtn) {
+    dom.startVideoBtn.textContent = playbackEnvironment.prefersExternalPlayback ? "Try In Portal" : "Start Class";
+  }
+
+  if (dom.openVideoExternallyBtn) {
+    dom.openVideoExternallyBtn.disabled = !watchUrl;
+  }
+
+  if (dom.videoSupportText) {
+    dom.videoSupportText.textContent = playbackEnvironment.supportText;
+  }
+
+  return playbackEnvironment;
+}
+
+function openCurrentVideoExternally() {
+  const resolvedVideoId = dom.videoPlayer?.dataset.videoId || "";
+  const watchUrl = dom.videoPlayer?.dataset.watchUrl || buildYouTubeWatchUrl(resolvedVideoId);
+  if (!watchUrl) {
+    showToast("This lesson is not ready for YouTube playback yet.", "error");
+    return;
+  }
+
+  if (dom.videoStatusText) {
+    dom.videoStatusText.textContent = "Opening in YouTube";
+  }
+
+  const openedWindow = window.open(watchUrl, "_blank", "noopener,noreferrer");
+  if (!openedWindow) {
+    window.location.assign(watchUrl);
+  }
 }
 
 function buildVideoMetaLabel(moduleName, duration) {
@@ -1552,6 +1618,9 @@ function resetVideoPlayerState(options = {}) {
     dom.videoPlayer.classList.add("hidden");
     if (!preserveSession) {
       delete dom.videoPlayer.dataset.videoId;
+      delete dom.videoPlayer.dataset.watchUrl;
+      delete dom.videoPlayer.dataset.clientShell;
+      delete dom.videoPlayer.dataset.prefersExternalPlayback;
     }
   }
 
@@ -1566,6 +1635,10 @@ function resetVideoPlayerState(options = {}) {
   if (dom.videoStatusText) {
     dom.videoStatusText.textContent = "Ready to play";
   }
+
+  if (dom.videoSupportText && !preserveSession) {
+    dom.videoSupportText.textContent = "If this class stays blank or YouTube asks you to sign in, use Open in YouTube.";
+  }
 }
 
 function startVideoPlayback() {
@@ -1579,12 +1652,23 @@ function startVideoPlayback() {
   dom.videoPlayer.classList.remove("hidden");
   dom.videoPosterLayer.classList.add("hidden");
 
+  const prefersExternalPlayback = dom.videoPlayer?.dataset.prefersExternalPlayback === "true";
+  const clientShell = dom.videoPlayer?.dataset.clientShell || "This app";
+
   if (dom.videoLiveWatermark) {
     dom.videoLiveWatermark.classList.remove("hidden");
   }
 
   if (dom.videoStatusText) {
-    dom.videoStatusText.textContent = "Streaming in secure view";
+    dom.videoStatusText.textContent = prefersExternalPlayback
+      ? "Trying secure stream in current app"
+      : "Streaming in secure view";
+  }
+
+  if (dom.videoSupportText) {
+    dom.videoSupportText.textContent = prefersExternalPlayback
+      ? `${clientShell} may still show the YouTube sign-in check. If that happens, tap Open in YouTube.`
+      : "If this class stays blank or asks you to sign in, tap Open in YouTube.";
   }
 
   void requestMobileLandscapeMode();
@@ -4128,13 +4212,18 @@ function openVideo(videoConfig, title) {
   dom.videoMeta.textContent = buildVideoMetaLabel(payload.module, payload.duration);
   dom.videoPlayer.dataset.videoId = resolvedVideoId;
   resetVideoPlayerState({ preserveSession: true });
+  const playbackEnvironment = syncVideoPlaybackSupport(resolvedVideoId);
   setVideoPoster(resolvedVideoId, resolvedTitle);
   updateVideoWatermarks();
   dom.videoModal.classList.remove("hidden");
   dom.videoModal.classList.add("flex");
   syncBodyOverflow();
 
-  if (isPhoneOnlyDevice()) {
+  if (dom.videoStatusText && playbackEnvironment.prefersExternalPlayback) {
+    dom.videoStatusText.textContent = "Open in YouTube if the portal player is blocked";
+  }
+
+  if (isPhoneOnlyDevice() && !playbackEnvironment.prefersExternalPlayback) {
     if (dom.videoStatusText) {
       dom.videoStatusText.textContent = "Opening secure stream";
     }
@@ -5994,6 +6083,9 @@ dom.closeVideoBtn.addEventListener("click", closeVideo);
 dom.videoBackdrop.addEventListener("click", closeVideo);
 if (dom.startVideoBtn) {
   dom.startVideoBtn.addEventListener("click", startVideoPlayback);
+}
+if (dom.openVideoExternallyBtn) {
+  dom.openVideoExternallyBtn.addEventListener("click", openCurrentVideoExternally);
 }
 if (dom.videoPosterImage) {
   dom.videoPosterImage.addEventListener("dragstart", (event) => event.preventDefault());
